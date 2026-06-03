@@ -32,6 +32,23 @@
           <el-button size="small" type="primary" @click="handleSave">
             <el-icon><DocumentAdd /></el-icon> 保存
           </el-button>
+          <el-button size="small" type="info" @click="injectDocumentToChat">
+            <el-icon><MagicStick /></el-icon> AI 分析
+          </el-button>
+        </div>
+
+        <!-- 对话面板切换按钮 -->
+        <div class="toolbar-chat-toggle">
+          <el-tooltip :content="chatStore.isPanelOpen ? '收起对话面板' : '展开对话面板'" placement="bottom">
+            <el-button
+              size="small"
+              :type="chatStore.isPanelOpen ? 'primary' : 'default'"
+              circle
+              @click="chatStore.togglePanel()"
+            >
+              <el-icon><ChatDotRound /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
 
@@ -245,6 +262,9 @@
       <div class="menu-item" @click="handleContextAction('closeOthers')">关闭其他</div>
       <div class="menu-item" @click="handleContextAction('closeAll')">全部关闭</div>
     </div>
+
+    <!-- 智能对话面板 -->
+    <ChatPanel />
   </div>
 </template>
 
@@ -255,13 +275,16 @@ import FolderBrowser from '@/components/FolderBrowser.vue'
 import FavoritesPanel from '@/components/FavoritesPanel.vue'
 import FavoritesFull from '@/components/FavoritesFull.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
+import ChatPanel from '@/components/ChatPanel.vue'
 import { useFileStore } from '@/stores/file'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useChatStore } from '@/stores/chat'
 import { useSettingsStore, type ReplaceRule } from '@/stores/settings'
 import cantoneseDict from '@/data/cantonese-dict.json'
 
 const fileStore = useFileStore()
 const favoritesStore = useFavoritesStore()
+const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
 const editorContent = ref('')
@@ -716,6 +739,39 @@ function getPlainText(): string {
   return editPlainText.value
 }
 
+/** 获取当前文档纯文本内容供AI分析 */
+function getCurrentDocText(): string {
+  if (!fileStore.selectedFile) return ''
+  syncPlainToStore()
+  const content = fileStore.fileContent
+  if (fileStore.fileType === 'html') {
+    const div = document.createElement('div')
+    div.innerHTML = content
+    return div.textContent || ''
+  }
+  return content
+}
+
+/** 将当前文档内容注入对话上下文 */
+function injectDocumentToChat() {
+  if (!fileStore.selectedFile) {
+    ElMessage.warning('请先打开一个文档')
+    return
+  }
+  const text = getCurrentDocText()
+  if (!text.trim()) {
+    ElMessage.warning('文档内容为空')
+    return
+  }
+  chatStore.setDocumentContext({
+    snippet: text.substring(0, 4000),
+    filePath: fileStore.selectedFile.path,
+    description: `文档「${fileStore.selectedFile.name}」的完整内容`
+  })
+  ElMessage.success('文档内容已注入对话上下文，AI 将基于此文档进行分析')
+  chatStore.openPanel()
+}
+
 function executeReplace() {
   const text = getPlainText()
   if (!text) {
@@ -840,6 +896,12 @@ async function executeCantoneseTranslate() {
   margin-left: auto;
   display: flex;
   gap: 8px;
+}
+
+.toolbar-chat-toggle {
+  display: flex;
+  gap: 8px;
+  margin-left: 8px;
 }
 
 .content-area {

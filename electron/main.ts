@@ -292,6 +292,44 @@ ipcMain.handle('open-external', async (_event, url: string) => {
   shell.openExternal(url)
 })
 
+ipcMain.handle('select-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile'],
+    filters: [
+      { name: '文本文件', extensions: ['txt', 'json', 'csv', 'md', 'html', 'xml'] },
+      { name: '所有文件', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
+  try {
+    const ext = path.extname(filePath).toLowerCase()
+    if (ext === '.txt' || ext === '.json' || ext === '.csv' || ext === '.md' || ext === '.html' || ext === '.xml') {
+      return { success: true, content: fs.readFileSync(filePath, 'utf-8') }
+    }
+    if (ext === '.docx' || ext === '.doc') {
+      const buffer = fs.readFileSync(filePath)
+      const result = await mammoth.extractRawText({ buffer })
+      return { success: true, content: result.value }
+    }
+    if (ext === '.xlsx') {
+      const workbook = XLSX.readFile(filePath)
+      let content = ''
+      workbook.SheetNames.forEach((sn: string) => {
+        const sheet = workbook.Sheets[sn]
+        content += XLSX.utils.sheet_to_csv(sheet) + '\n'
+      })
+      return { success: true, content }
+    }
+    return { success: false, error: '不支持的文件格式' }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
 ipcMain.handle('save-xlsx-file', async (_event, filePath: string, content: string) => {
   try {
     const rows = content.split('\n').map((line: string) => line.split(','))

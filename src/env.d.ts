@@ -11,6 +11,8 @@ export interface IElectronAPI {
   openFileLocation: (filePath: string) => Promise<void>
   openWithDefaultApp: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
+  selectFile: () => Promise<string | null>
+  readFileAsText: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
 }
 
 export interface FileEntry {
