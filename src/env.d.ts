@@ -10,6 +10,7 @@ export interface IElectronAPI {
   searchInFiles: (folderPath: string, keyword: string) => Promise<SearchResult[]>
   openFileLocation: (filePath: string) => Promise<void>
   openWithDefaultApp: (filePath: string) => Promise<void>
+  openExternal: (url: string) => Promise<void>
 }
 
 export interface FileEntry {

@@ -288,6 +288,10 @@ ipcMain.handle('open-with-default-app', async (_event, filePath: string) => {
   shell.openPath(filePath)
 })
 
+ipcMain.handle('open-external', async (_event, url: string) => {
+  shell.openExternal(url)
+})
+
 ipcMain.handle('save-xlsx-file', async (_event, filePath: string, content: string) => {
   try {
     const rows = content.split('\n').map((line: string) => line.split(','))

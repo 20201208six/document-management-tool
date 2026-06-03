@@ -194,16 +194,39 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showCantoneseDialog" title="普通话转粤语" width="420px">
+    <el-dialog v-model="showCantoneseDialog" title="普通话转粤语" width="480px">
       <div class="cantonese-tip">
-        <p>将对当前编辑器中选中的文本进行转换。</p>
-        <p>模式：<el-tag :type="settingsStore.cantoneseMode === 'api' ? 'success' : 'warning'" size="small">
-          {{ settingsStore.cantoneseMode === 'api' ? 'API模式' : '词库映射模式' }}
-        </el-tag></p>
+        <p>将对当前编辑器中的文本进行转换。</p>
+        <el-form label-width="80px" size="small" style="margin-top:12px">
+          <el-form-item label="转换模式">
+            <el-radio-group v-model="settingsStore.cantoneseMode" @change="settingsStore.saveCantoneseSettings()">
+              <el-radio value="dictionary">词库映射</el-radio>
+              <el-radio value="api">API 智能转换</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="settingsStore.cantoneseMode === 'api'" label="API 密钥">
+            <el-input 
+              v-model="settingsStore.cantoneseApiKey" 
+              placeholder="输入 DeepSeek API Key (sk-...)" 
+              show-password
+              @change="settingsStore.saveCantoneseSettings()"
+            >
+              <template #append>
+                <el-tooltip content="前往 DeepSeek 官网获取 API Key">
+                  <el-button @click="window.electronAPI.openExternal('https://platform.deepseek.com/api_keys')">
+                    获取
+                  </el-button>
+                </el-tooltip>
+              </template>
+            </el-input>
+          </el-form-item>
+        </el-form>
       </div>
       <template #footer>
         <el-button @click="showCantoneseDialog = false">取消</el-button>
-        <el-button type="primary" @click="executeCantoneseTranslate">执行转换</el-button>
+        <el-button type="primary" @click="executeCantoneseTranslate" :loading="isTranslating">
+          执行转换
+        </el-button>
       </template>
     </el-dialog>
 
@@ -326,6 +349,7 @@ function onRichKeydown(e: KeyboardEvent) {
 }
 const showReplaceDialog = ref(false)
 const showCantoneseDialog = ref(false)
+const isTranslating = ref(false)
 
 const newFileForm = ref({ name: '', type: 'docx' })
 const newRule = ref({ from: '', to: '' })
@@ -565,6 +589,12 @@ function onEditorSearchKeydown(e: KeyboardEvent) {
   } else if (e.key === 'Escape') {
     e.preventDefault()
     closeEditorSearch()
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    navigateEditorMatch(-1)
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    navigateEditorMatch(1)
   }
 }
 
@@ -585,54 +615,31 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
 })
 
-function scrollToMatch(matchText: string, keyword: string) {
-  if (fileStore.fileType === 'html') {
-    const el = richEditorRef.value
-    if (!el) return
-    const text = el.textContent || ''
-    let targetPos = 0
-    if (matchText) {
-      const idx = text.indexOf(matchText.trim())
-      targetPos = idx >= 0 ? idx : 0
-    } else {
-      const idx = text.toLowerCase().indexOf(keyword.toLowerCase())
-      targetPos = idx >= 0 ? idx : 0
-    }
-    findAndSelectText(el, keyword, targetPos)
-    return
-  }
-  const ta = textareaRef.value
-  const content = ta.value
-  const lineHeight = 26
-  let targetLine = 0
-
-  if (matchText) {
-    const cleanMatch = matchText.trim()
-    const lines = content.split('\n')
-    const idx = lines.findIndex(l => l.includes(cleanMatch))
-    targetLine = idx >= 0 ? idx : 0
-  } else {
-    const idx = content.toLowerCase().indexOf(keyword.toLowerCase())
-    if (idx >= 0) {
-      targetLine = content.substring(0, idx).split('\n').length - 1
-    }
-  }
-
-  ta.scrollTop = targetLine * lineHeight
-  const linesBefore = content.split('\n').slice(0, targetLine).join('\n')
-  const startIdx = targetLine > 0 ? linesBefore.length + 1 : 0
-  const remainder = content.substring(startIdx)
-  const kwIdxInRemainder = remainder.toLowerCase().indexOf(keyword.toLowerCase())
-  if (kwIdxInRemainder >= 0) {
-    const absIdx = startIdx + kwIdxInRemainder
-    ta.setSelectionRange(absIdx, absIdx + keyword.length)
-  }
-  ta.focus()
+function findEditorMatchIndex(matchText: string): number {
+  const matches = editorMatches.value
+  if (!matchText || matches.length === 0) return 0
+  const text = fileStore.fileType === 'html' ? (richEditorRef.value?.textContent || '') : editPlainText.value
+  const lines = text.split('\n')
+  const trimmedMatch = matchText.trim()
+  const lineIdx = lines.findIndex(l => l.includes(trimmedMatch))
+  if (lineIdx < 0) return 0
+  const idx = matches.findIndex(m => m.line === lineIdx)
+  return idx >= 0 ? idx : 0
 }
 
 watch(() => fileStore.searchJumpId, () => {
+  const kw = fileStore.highlightKeyword
+  if (!kw) return
+  showEditorSearch.value = true
+  editorSearchKeyword.value = kw
   nextTick(() => {
-    scrollToMatch(fileStore.highlightMatchText, fileStore.highlightKeyword)
+    // 延迟确保编辑器 DOM 完全渲染（HTML 富文本需要 innerHTML 生效）
+    setTimeout(() => {
+      if (editorMatches.value.length > 0) {
+        currentEditorMatch.value = findEditorMatchIndex(fileStore.highlightMatchText)
+        scrollToEditorMatch(currentEditorMatch.value)
+      }
+    }, 100)
   })
 })
 
@@ -727,32 +734,69 @@ function executeReplace() {
   }
 }
 
-function executeCantoneseTranslate() {
+async function executeCantoneseTranslate() {
   const text = getPlainText()
   if (!text) {
     ElMessage.warning('编辑器内容为空')
     return
   }
-  if (settingsStore.cantoneseMode === 'api' && settingsStore.cantoneseApiKey) {
-    ElMessage.info('API模式暂未接入，先使用词库映射模式')
-    settingsStore.cantoneseMode = 'dictionary'
-  }
-  let result = text
-  let count = 0
-  const dict = cantoneseDict as Record<string, string>
-  const sortedKeys = Object.keys(dict).sort((a, b) => b.length - a.length)
-  for (const key of sortedKeys) {
-    if (result.includes(key)) {
-      const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-      const matches = result.match(regex)
-      if (matches) count += matches.length
-      result = result.replace(regex, dict[key])
+  isTranslating.value = true
+  try {
+    let result = text
+    let count = 0
+
+    if (settingsStore.cantoneseMode === 'api' && settingsStore.cantoneseApiKey) {
+      // DeepSeek API 智能转换
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settingsStore.cantoneseApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: '你是一个粤语翻译专家。请将用户输入的普通话文本转换为地道粤语口语表达。只输出转换后的粤语文本，不要添加任何解释或额外内容。' },
+            { role: 'user', content: text }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096
+        })
+      })
+      const data = await response.json()
+      if (data.choices && data.choices.length > 0) {
+        result = data.choices[0].message.content
+        count = 1
+      } else if (data.error) {
+        throw new Error(data.error.message || 'API 请求失败')
+      }
+    } else if (settingsStore.cantoneseMode === 'api') {
+      ElMessage.warning('请先填写 DeepSeek API 密钥')
+      isTranslating.value = false
+      return
+    } else {
+      // 词库映射模式
+      const dict = cantoneseDict as Record<string, string>
+      const sortedKeys = Object.keys(dict).sort((a, b) => b.length - a.length)
+      for (const key of sortedKeys) {
+        if (result.includes(key)) {
+          const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+          const matches = result.match(regex)
+          if (matches) count += matches.length
+          result = result.replace(regex, dict[key])
+        }
+      }
     }
+
+    editPlainText.value = result
+    syncPlainToStore()
+    showCantoneseDialog.value = false
+    ElMessage.success(`粤语转换完成${typeof count === 'number' ? '，共转换 ' + count + ' 处' : ''}`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '转换失败，请检查 API 密钥')
+  } finally {
+    isTranslating.value = false
   }
-  editPlainText.value = result
-  syncPlainToStore()
-  showCantoneseDialog.value = false
-  ElMessage.success(`粤语转换完成，共转换 ${count} 处`)
 }
 </script>
 

@@ -16,6 +16,7 @@ const DEFAULT_RULES: ReplaceRule[] = [
 ]
 
 const STORAGE_KEY = 'copywriting-replace-rules'
+const CANTONESE_STORAGE_KEY = 'copywriting-cantonese-settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   const replaceRules = ref<ReplaceRule[]>(loadRules())
@@ -34,6 +35,26 @@ export const useSettingsStore = defineStore('settings', () => {
   function saveRules() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(replaceRules.value))
   }
+
+  function loadCantoneseSettings() {
+    try {
+      const data = localStorage.getItem(CANTONESE_STORAGE_KEY)
+      if (data) {
+        const parsed = JSON.parse(data)
+        cantoneseApiKey.value = parsed.apiKey || ''
+        cantoneseMode.value = parsed.mode || 'dictionary'
+      }
+    } catch {}
+  }
+
+  function saveCantoneseSettings() {
+    localStorage.setItem(CANTONESE_STORAGE_KEY, JSON.stringify({
+      apiKey: cantoneseApiKey.value,
+      mode: cantoneseMode.value
+    }))
+  }
+
+  loadCantoneseSettings()
 
   function addRule(from: string, to: string) {
     replaceRules.value.push({ from, to })
@@ -65,6 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
     replaceRules,
     cantoneseApiKey,
     cantoneseMode,
+    saveCantoneseSettings,
     addRule,
     removeRule,
     resetRules,

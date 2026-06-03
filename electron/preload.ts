@@ -11,5 +11,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteFile: (filePath: string) => ipcRenderer.invoke('delete-file', filePath),
   searchInFiles: (folderPath: string, keyword: string) => ipcRenderer.invoke('search-in-files', folderPath, keyword),
   openFileLocation: (filePath: string) => ipcRenderer.invoke('open-file-location', filePath),
-  openWithDefaultApp: (filePath: string) => ipcRenderer.invoke('open-with-default-app', filePath)
+  openWithDefaultApp: (filePath: string) => ipcRenderer.invoke('open-with-default-app', filePath),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url)
 })
