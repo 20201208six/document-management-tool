@@ -7,6 +7,15 @@ import * as docx from 'docx'
 
 app.setName('文案助手')
 
+// 全局异常捕获：防止 webview 崩溃导致主进程退出
+process.on('uncaughtException', (err) => {
+  if (err.message?.includes('Render frame was disposed') || err.message?.includes('WebFrameMain')) {
+    console.error('[WebView] 内部导航错误（已忽略）:', err.message)
+    return
+  }
+  console.error('未捕获异常:', err)
+})
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {

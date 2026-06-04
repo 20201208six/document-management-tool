@@ -50,18 +50,24 @@
           <p class="welcome-hint">粘贴抖音/快手分享文案，自动提取链接并打开</p>
         </div>
         <template v-else>
+          <div v-if="iframeBlocked" class="browser-blocked">
+            <div class="blocked-icon">🔒</div>
+            <p>该网站不允许嵌入显示或发生错误</p>
+            <el-button type="primary" @click="openExternal(currentUrl)">在外部浏览器打开</el-button>
+            <el-button size="small" style="margin-top:8px" @click="retryLoad">🔄 重试加载</el-button>
+          </div>
           <webview
             v-show="!iframeBlocked"
             ref="webviewRef"
             :src="currentUrl"
             class="browser-iframe"
+            :preload="'file://' + webviewPreloadPath"
+            :allowpopups="true"
             @dom-ready="onIframeLoad"
+            @did-fail-load="onWebviewFail"
+            @crashed="onWebviewCrashed"
+            @destroyed="onWebviewDestroyed"
           ></webview>
-          <div v-if="iframeBlocked" class="browser-blocked">
-            <div class="blocked-icon">🔒</div>
-            <p>该网站不允许嵌入显示</p>
-            <el-button type="primary" @click="openExternal(currentUrl)">在外部浏览器打开</el-button>
-          </div>
         </template>
       </div>
 
@@ -125,6 +131,8 @@ const urlInput = ref('')
 const currentUrl = ref('')
 const webviewRef = ref<any>(null)
 const showBookmarks = ref(false)
+// webview 崩溃时标记，阻止 Electron 抛出未捕获异常
+const webviewPreloadPath = 'about:blank'
 const bmSearch = ref('')
 const collapsedCats = ref(new Set<string>())
 const iframeBlocked = ref(false)
@@ -215,6 +223,23 @@ function refreshIframe() {
 function onIframeLoad() {
   if (iframeTimeout) { clearTimeout(iframeTimeout); iframeTimeout = null }
   iframeBlocked.value = false
+}
+
+function onWebviewFail() {
+  iframeBlocked.value = true
+}
+
+function onWebviewCrashed() {
+  iframeBlocked.value = true
+}
+
+function onWebviewDestroyed() {
+  // webview 被销毁，不额外操作
+}
+
+function retryLoad() {
+  iframeBlocked.value = false
+  navigateTo(currentUrl.value)
 }
 
 function openExternal(url: string) {
