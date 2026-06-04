@@ -16,6 +16,9 @@
           <el-button size="small" :type="fileStore.activeTab === 'favorites' ? 'primary' : ''" @click="fileStore.activeTab = 'favorites'">
             <el-icon><Star /></el-icon> 收藏
           </el-button>
+          <el-button size="small" :type="fileStore.activeTab === 'browser' ? 'primary' : ''" @click="fileStore.activeTab = 'browser'">
+            <el-icon><Link /></el-icon> 浏览
+          </el-button>
         </el-button-group>
 
         <div class="toolbar-actions" v-if="fileStore.activeTab === 'editor' && fileStore.selectedFile">
@@ -167,6 +170,10 @@
         <div v-if="fileStore.activeTab === 'favorites'" class="tab-content">
           <DocFavoritesPanel />
         </div>
+
+        <div v-if="fileStore.activeTab === 'browser'" class="tab-content">
+          <BrowserPanel />
+        </div>
       </div>
     </div>
 
@@ -281,6 +288,7 @@ import { ElMessage } from 'element-plus'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import FavoritesPanel from '@/components/FavoritesPanel.vue'
 import DocFavoritesPanel from '@/components/DocFavoritesPanel.vue'
+import BrowserPanel from '@/components/BrowserPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import { useFileStore } from '@/stores/file'
