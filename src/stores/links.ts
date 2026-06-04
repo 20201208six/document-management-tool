@@ -1,100 +1,121 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
-export interface SavedLink {
+export interface Bookmark {
   id: string
-  /** 用户输入的原始文本 */
-  rawText: string
-  /** 提取出的链接标题（从原始文本中取前30字） */
-  title: string
-  /** 提取的 URL */
+  /** 用户自定义名称 */
+  name: string
+  /** URL */
   url: string
-  /** 创建时间 */
+  /** 所属分类（null=未分类） */
+  category: string | null
   createdAt: string
 }
 
-const STORAGE_KEY = 'copywriting-browser-links'
+export interface BookmarkCategory {
+  id: string
+  name: string
+}
+
+const BOOKMARKS_KEY = 'copywriting-bookmarks'
+const CATEGORIES_KEY = 'copywriting-bookmark-categories'
 
 export const useLinkStore = defineStore('links', () => {
-  const links = ref<SavedLink[]>(loadLinks())
+  const bookmarks = ref<Bookmark[]>(loadBookmarks())
+  const categories = ref<BookmarkCategory[]>(loadCategories())
 
-  function loadLinks(): SavedLink[] {
+  function loadBookmarks(): Bookmark[] {
     try {
-      const data = localStorage.getItem(STORAGE_KEY)
+      const data = localStorage.getItem(BOOKMARKS_KEY)
       return data ? JSON.parse(data) : []
     } catch { return [] }
   }
-
-  function saveLinks() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(links.value))
+  function saveBookmarks() {
+    localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(bookmarks.value))
   }
 
-  /** 从文本中提取所有 URL */
-  function extractUrls(text: string): string[] {
-    const regex = /https?:\/\/[^\s`"']+/g
-    const matches = text.match(regex)
-    return matches ? [...new Set(matches)] : []
+  function loadCategories(): BookmarkCategory[] {
+    try {
+      const data = localStorage.getItem(CATEGORIES_KEY)
+      return data ? JSON.parse(data) : []
+    } catch { return [] }
+  }
+  function saveCategories() {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories.value))
   }
 
-  /** 添加链接（自动提取URL） */
-  function addLink(rawText: string): SavedLink[] {
-    const urls = extractUrls(rawText)
-    if (urls.length === 0) return []
+  /** 从文本中提取 URL */
+  function extractUrl(text: string): string | null {
+    const match = text.match(/https?:\/\/[^\s`"']+/)
+    return match ? match[0] : null
+  }
 
-    const added: SavedLink[] = []
-    for (const url of urls) {
-      // 去重
-      if (links.value.some(l => l.url === url)) continue
-      // 从原始文本中提取标题：移除URL后的前30个字
-      const cleanText = rawText.replace(url, '').replace(/\s+/g, ' ').trim()
-      const title = cleanText.substring(0, 30) || url
-      const link: SavedLink = {
-        id: 'link_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-        rawText: rawText.substring(0, 500),
-        title,
-        url,
-        createdAt: new Date().toLocaleString('zh-CN')
-      }
-      links.value.unshift(link)
-      added.push(link)
+  /** 添加书签 */
+  function addBookmark(url: string, name: string, category: string | null = null): Bookmark {
+    const existing = bookmarks.value.find(b => b.url === url)
+    if (existing) return existing
+    const bm: Bookmark = {
+      id: 'bm_' + Date.now(),
+      name: name || new URL(url).hostname,
+      url,
+      category,
+      createdAt: new Date().toLocaleString('zh-CN')
     }
-    if (added.length > 0) saveLinks()
-    return added
+    bookmarks.value.unshift(bm)
+    saveBookmarks()
+    return bm
   }
 
-  /** 删除链接 */
-  function removeLink(id: string) {
-    links.value = links.value.filter(l => l.id !== id)
-    saveLinks()
+  function removeBookmark(id: string) {
+    bookmarks.value = bookmarks.value.filter(b => b.id !== id)
+    saveBookmarks()
   }
 
-  /** 清空所有 */
-  function clearAll() {
-    links.value = []
-    saveLinks()
+  function updateBookmark(id: string, patch: Partial<Pick<Bookmark, 'name' | 'category'>>) {
+    const bm = bookmarks.value.find(b => b.id === id)
+    if (bm) { Object.assign(bm, patch); saveBookmarks() }
   }
 
-  /** 按日期分组 */
-  const groupedByDate = computed(() => {
-    const groups: { date: string; items: SavedLink[] }[] = []
-    const seen = new Set<string>()
-    for (const link of links.value) {
-      const date = link.createdAt.split(' ')[0] || link.createdAt
-      if (!seen.has(date)) {
-        seen.add(date)
-        groups.push({ date, items: [] })
-      }
-      groups.find(g => g.date === date)!.items.push(link)
-    }
-    return groups
-  })
+  function moveBookmarkToCategory(bookmarkId: string, category: string | null) {
+    const bm = bookmarks.value.find(b => b.id === bookmarkId)
+    if (bm) { bm.category = category; saveBookmarks() }
+  }
+
+  /** 分类管理 */
+  function addCategory(name: string): BookmarkCategory {
+    const cat: BookmarkCategory = { id: 'cat_' + Date.now(), name: name.trim() || '未命名' }
+    categories.value.push(cat)
+    saveCategories()
+    return cat
+  }
+
+  function removeCategory(id: string) {
+    categories.value = categories.value.filter(c => c.id !== id)
+    for (const b of bookmarks.value) { if (b.category === id) b.category = null }
+    saveCategories()
+    saveBookmarks()
+  }
+
+  function renameCategory(id: string, name: string) {
+    const c = categories.value.find(c => c.id === id)
+    if (c) { c.name = name.trim() || '未命名'; saveCategories() }
+  }
+
+  function getCategoryBookmarks(categoryId: string): Bookmark[] {
+    return bookmarks.value.filter(b => b.category === categoryId)
+  }
 
   return {
-    links,
-    addLink,
-    removeLink,
-    clearAll,
-    extractUrls,
-    groupedByDate,
+    bookmarks,
+    categories,
+    addBookmark,
+    removeBookmark,
+    updateBookmark,
+    moveBookmarkToCategory,
+    extractUrl,
+    addCategory,
+    removeCategory,
+    renameCategory,
+    getCategoryBookmarks,
   }
 })
