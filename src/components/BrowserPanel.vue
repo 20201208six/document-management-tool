@@ -24,20 +24,18 @@
       </el-button>
     </div>
 
-    <!-- 书签快捷栏（按日期分组的近期书签） -->
-    <div v-if="linkStore.bookmarks.length > 0" class="bookmark-strip">
-      <div v-for="group in recentGroups" :key="group.date" class="strip-group">
-        <span class="strip-date">{{ group.label }}</span>
-        <span
-          v-for="bm in group.items"
-          :key="bm.id"
-          class="strip-item"
-          @click="navigateTo(bm.url)"
-          :title="bm.url"
-        >
-          {{ bm.name }}
-          <el-button size="small" text class="strip-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
-        </span>
+    <!-- 访问历史时间轴 -->
+    <div v-if="visitHistory.length > 0" class="history-strip">
+      <div class="history-timeline">
+        <template v-for="(item, idx) in visitHistory" :key="idx">
+          <div v-if="idx === 0 || item.dateLabel !== visitHistory[idx-1]?.dateLabel" class="history-date-divider">
+            <span>{{ item.dateLabel }}</span>
+          </div>
+          <div class="history-item" @click="navigateTo(item.url)" :title="item.url">
+            <span class="history-time">{{ item.time }}</span>
+            <span class="history-title">{{ item.title || item.url }}</span>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -61,8 +59,7 @@
             ref="webviewRef"
             :src="currentUrl"
             class="browser-iframe"
-            :preload="'file://' + webviewPreloadPath"
-            :allowpopups="true"
+            allowpopups
             @dom-ready="onIframeLoad"
             @did-fail-load="onWebviewFail"
             @crashed="onWebviewCrashed"
@@ -131,8 +128,9 @@ const urlInput = ref('')
 const currentUrl = ref('')
 const webviewRef = ref<any>(null)
 const showBookmarks = ref(false)
-// webview 崩溃时标记，阻止 Electron 抛出未捕获异常
-const webviewPreloadPath = 'about:blank'
+// 访问历史（仅在粘贴分享文案时记录）
+interface VisitEntry { url: string; title: string; time: string; dateLabel: string }
+const visitHistory = ref<VisitEntry[]>([])
 const bmSearch = ref('')
 const collapsedCats = ref(new Set<string>())
 const iframeBlocked = ref(false)
@@ -145,18 +143,15 @@ const historyIdx = ref(-1)
 const canGoBack = computed(() => historyIdx.value > 0)
 const canGoForward = computed(() => historyIdx.value < history.value.length - 1)
 
-/** URL 输入：自动提取链接并导航 */
+/** URL 输入：自动提取链接并导航（不自动收藏） */
 function handleUrlEnter() {
   const raw = urlInput.value.trim()
   if (!raw) return
   const extracted = linkStore.extractUrl(raw)
   if (extracted) {
-    // 有 URL → 导航 + 自动收藏
-    const bm = linkStore.addBookmark(extracted, raw.replace(extracted, '').replace(/\s+/g, ' ').trim().substring(0, 30) || extracted)
-    if (bm) ElMessage.success('已自动收藏')
+    addToHistory(extracted, raw)
     navigateTo(extracted)
   } else if (/^https?:\/\//i.test(raw) || /^[\w-]+\.\w/.test(raw)) {
-    // 看起来像 URL
     navigateTo(raw)
   } else {
     ElMessage.warning('未检测到链接，请粘贴包含 https:// 链接的文本')
@@ -168,13 +163,27 @@ function onUrlPaste() {
     const raw = urlInput.value.trim()
     const extracted = linkStore.extractUrl(raw)
     if (extracted) {
-      // 粘贴后自动导航 + 收藏
-      const bm = linkStore.addBookmark(extracted, raw.replace(extracted, '').replace(/\s+/g, ' ').trim().substring(0, 30) || extracted)
-      ElMessage.success('已提取链接并自动收藏')
+      addToHistory(extracted, raw)
       navigateTo(extracted)
       urlInput.value = extracted
     }
   }, 50)
+}
+
+/** 添加到访问历史 */
+function addToHistory(url: string, rawText: string) {
+  const clean = rawText.replace(url, '').replace(/\s+/g, ' ').trim()
+  const title = clean.substring(0, 40) || url
+  const now = new Date()
+  const entry: VisitEntry = {
+    url,
+    title,
+    time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    dateLabel: now.toLocaleDateString('zh-CN')
+  }
+  visitHistory.value.unshift(entry)
+  // 最多保留 50 条
+  if (visitHistory.value.length > 50) visitHistory.value = visitHistory.value.slice(0, 50)
 }
 
 function navigateTo(url: string) {
@@ -256,26 +265,9 @@ async function handleBookmark() {
   if (name) { linkStore.addBookmark(currentUrl.value, name.trim()); ElMessage.success('已收藏') }
 }
 
-// 书签快捷栏：按日期分组，显示最近 3 天的书签
-const recentGroups = computed(() => {
-  const today = new Date().toLocaleDateString('zh-CN')
-  const groups: { date: string; label: string; items: Bookmark[] }[] = []
-  const seen = new Set<string>()
-  for (const bm of linkStore.bookmarks.slice(0, 30)) {
-    const d = bm.createdAt.split(' ')[0]
-    const key = d || bm.createdAt
-    if (!seen.has(key)) {
-      seen.add(key)
-      const label = key === today ? '今天' : key
-      groups.push({ date: key, label, items: [] })
-    }
-    const g = groups[groups.length - 1]
-    if (g.items.length < 8) g.items.push(bm)
-  }
-  return groups.slice(0, 2) // 最多显示2组
-})
+// ===== 以下为书签侧栏逻辑 =====
 
-// 未分类书签按日期分组
+// 分类
 const uncategorizedGroups = computed(() => {
   const groups: { date: string; items: Bookmark[] }[] = []
   const seen = new Set<string>()
@@ -329,55 +321,62 @@ function handleDropBM(_e: DragEvent, catId: string) {
 .browser-url-bar { display: flex; align-items: center; gap: 6px; flex: 1; }
 .browser-url-bar .el-input { flex: 1; }
 
-/* 书签快捷栏 */
-.bookmark-strip {
-  display: flex;
-  gap: 12px;
-  padding: 6px 14px;
+/* 访问历史时间轴 */
+.history-strip {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px 14px;
   background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
-  overflow-x: auto;
   flex-shrink: 0;
 }
 
-.strip-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+.history-timeline {
+  border-left: 2px solid #e0e3e8;
+  padding-left: 14px;
 }
 
-.strip-date {
+.history-date-divider {
   font-size: 10px;
   color: #c0c4cc;
   font-weight: 600;
-  margin-right: 2px;
-  white-space: nowrap;
+  margin: 6px 0 4px -20px;
+  padding-left: 6px;
 }
 
-.strip-item {
-  font-size: 11px;
-  color: #409eff;
-  background: #ecf5ff;
-  padding: 2px 8px;
-  border-radius: 10px;
+.history-date-divider span {
+  background: #fafbfc;
+  padding: 0 6px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
   cursor: pointer;
+  font-size: 12px;
+  transition: color 0.15s;
+}
+
+.history-item:hover { color: #409eff; }
+
+.history-time {
+  font-size: 10px;
+  color: #c0c4cc;
   white-space: nowrap;
-  max-width: 120px;
+  font-family: monospace;
+  min-width: 42px;
+}
+
+.history-title {
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.15s;
+  white-space: nowrap;
+  color: #606266;
 }
 
-.strip-item:hover { background: #d9ecff; }
-
-.strip-del {
-  visibility: hidden;
-  margin-left: 2px;
-  font-size: 12px;
-}
-
-.strip-item:hover .strip-del { visibility: visible; }
+.history-item:hover .history-title { color: #409eff; }
 
 /* 主区域 */
 .browser-main { display: flex; flex: 1; min-height: 0; }
