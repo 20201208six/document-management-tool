@@ -26,7 +26,7 @@
         <!-- 历史对话 -->
         <el-popover
           placement="bottom"
-          :width="300"
+          :width="340"
           trigger="click"
           v-model:visible="showHistoryPopover"
         >
@@ -35,32 +35,157 @@
               <el-icon><Clock /></el-icon>
             </el-button>
           </template>
-          <div class="history-list">
-            <div v-if="chatStore.sessions.length === 0" class="history-empty">
-              暂无历史对话
-            </div>
-            <div
-              v-for="session in chatStore.sessions"
-              :key="session.id"
-              class="history-item"
-              :class="{ active: session.id === chatStore.currentSessionId }"
-              @click="chatStore.switchSession(session.id); showHistoryPopover = false"
-            >
-              <div class="history-item-main">
-                <span class="history-title">{{ session.title }}</span>
-                <span class="history-meta">{{ session.messages.length }} 条消息</span>
-              </div>
-              <span class="history-time">{{ formatSessionTime(session.updatedAt) }}</span>
-              <el-button
+          <div class="history-panel">
+            <!-- 搜索栏 -->
+            <div class="history-search">
+              <el-input
+                v-model="historySearchKeyword"
                 size="small"
-                text
-                type="danger"
-                class="history-delete"
-                @click.stop="handleDeleteSession(session.id)"
-              >
-                <el-icon><Delete /></el-icon>
+                placeholder="搜索对话内容..."
+                clearable
+                :prefix-icon="Search"
+              />
+            </div>
+            <!-- 工具栏 -->
+            <div class="history-toolbar">
+              <span class="history-toolbar-title">历史对话</span>
+              <el-button size="small" text @click="handleAddFolder">
+                <el-icon><FolderAdd /></el-icon>
               </el-button>
             </div>
+
+            <!-- 搜索结果 -->
+            <div v-if="historySearchKeyword.trim()" class="history-search-results">
+              <div v-if="searchResults.length === 0" class="history-empty">
+                未找到包含「{{ historySearchKeyword }}」的对话
+              </div>
+              <div
+                v-for="(result, idx) in searchResults"
+                :key="idx"
+                class="history-search-item"
+                @click="jumpToMessage(result.sessionId, result.messageId)"
+              >
+                <div class="history-search-title">{{ getSessionTitle(result.sessionId) }}</div>
+                <div class="history-search-preview" v-html="result.highlight"></div>
+              </div>
+            </div>
+
+            <!-- 正常列表 -->
+            <div v-else>
+
+            <div v-if="allSessions.length === 0" class="history-empty">
+              暂无历史对话
+            </div>
+            <div v-else class="history-list">
+              <!-- 置顶 -->
+              <div v-if="pinnedSessions.length > 0" class="history-section">
+                <div class="history-section-header">
+                  <el-icon :size="14"><Top /></el-icon>
+                  <span>置顶</span>
+                </div>
+                <div
+                  v-for="session in pinnedSessions"
+                  :key="session.id"
+                  class="history-item"
+                  :class="{ active: session.id === chatStore.currentSessionId }"
+                  :style="{ '--session-color': sessionColor(session.id) }"
+                  @click="chatStore.switchSession(session.id); showHistoryPopover = false"
+                >
+                  <div class="history-color-bar"></div>
+                  <div class="history-item-main">
+                    <span class="history-title">{{ session.title }}</span>
+                    <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                  </div>
+                  <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
+                    <el-icon :size="14"><Top /></el-icon>
+                  </el-button>
+                  <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
+                    <el-icon :size="14"><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+
+              <!-- 文件夹 -->
+              <div v-for="folder in chatStore.folders" :key="folder.id" class="history-section">
+                <div
+                  class="history-section-header folder-header"
+                  :class="{ collapsed: collapsedFolders.has(folder.id) }"
+                  @click="toggleFolder(folder.id)"
+                >
+                  <el-icon :size="12"><ArrowRight /></el-icon>
+                  <el-icon :size="14"><Folder /></el-icon>
+                  <span class="folder-name" @dblclick.stop="handleRenameFolder(folder)">{{ folder.name }}</span>
+                  <span class="folder-count">{{ chatStore.getFolderCount(folder.id) }}</span>
+                  <el-button size="small" text type="danger" class="folder-delete" @click.stop="handleDeleteFolder(folder.id)">
+                    <el-icon :size="12"><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <div v-show="!collapsedFolders.has(folder.id)"
+                  class="folder-drop-zone"
+                  @dragover.prevent="dragOverFolder = folder.id"
+                  @dragleave="dragOverFolder = null"
+                  @drop.prevent="handleDropToFolder($event, folder.id)"
+                  :class="{ 'drag-over': dragOverFolder === folder.id }"
+                >
+                  <div
+                    v-for="session in getFolderSessions(folder.id)"
+                    :key="session.id"
+                    class="history-item"
+                    :draggable="true"
+                    :class="{ active: session.id === chatStore.currentSessionId }"
+                    :style="{ '--session-color': sessionColor(session.id) }"
+                    @dragstart="handleDragStart($event, session.id)"
+                    @click="chatStore.switchSession(session.id); showHistoryPopover = false"
+                  >
+                    <div class="history-color-bar"></div>
+                    <div class="history-item-main">
+                      <span class="history-title">{{ session.title }}</span>
+                      <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                    </div>
+                    <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
+                      <el-icon :size="14"><Top /></el-icon>
+                    </el-button>
+                    <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
+                      <el-icon :size="14"><Delete /></el-icon>
+                    </el-button>
+                  </div>
+                  <div v-if="getFolderSessions(folder.id).length === 0" class="folder-empty">
+                    拖拽对话到此处
+                  </div>
+                </div>
+              </div>
+
+              <!-- 未分类 -->
+              <div v-if="uncategorizedSessions.length > 0" class="history-section">
+                <div class="history-section-header">
+                  <el-icon :size="14"><ChatLineSquare /></el-icon>
+                  <span>未分类</span>
+                </div>
+                <div
+                  v-for="session in uncategorizedSessions"
+                  :key="session.id"
+                  class="history-item"
+                  :draggable="true"
+                  :class="{ active: session.id === chatStore.currentSessionId }"
+                  :style="{ '--session-color': sessionColor(session.id) }"
+                  @dragstart="handleDragStart($event, session.id)"
+                  @click="chatStore.switchSession(session.id); showHistoryPopover = false"
+                >
+                  <div class="history-color-bar"></div>
+                  <div class="history-item-main">
+                    <span class="history-title">{{ session.title }}</span>
+                    <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                  </div>
+                  <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
+                    <el-icon :size="14"><Top /></el-icon>
+                  </el-button>
+                  <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
+                    <el-icon :size="14"><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            </div> <!-- v-else 闭合 -->
           </div>
         </el-popover>
 
@@ -388,6 +513,134 @@ const showDisplayPopover = ref(false)
 const showHistoryPopover = ref(false)
 const favoritesSearchKeyword = ref('')
 
+// 历史对话 — 文件夹折叠状态
+const collapsedFolders = ref(new Set<string>())
+const dragOverFolder = ref<string | null>(null)
+const dragSessionId = ref<string | null>(null)
+const historySearchKeyword = ref('')
+
+// 搜索
+const searchResults = computed(() => {
+  const kw = historySearchKeyword.value.trim().toLowerCase()
+  if (!kw) return []
+  const results: { sessionId: string; messageId: string; highlight: string }[] = []
+  for (const s of allSessions.value) {
+    for (const m of s.messages) {
+      const content = m.content.toLowerCase()
+      const idx = content.indexOf(kw)
+      if (idx === -1) continue
+      // 截取关键词周围 60 字的上下文并高亮
+      const start = Math.max(0, idx - 20)
+      const end = Math.min(m.content.length, idx + kw.length + 40)
+      let preview = escapeHtml(m.content.substring(start, end))
+      // 高亮所有匹配
+      const escapedKw = escapeHtml(kw)
+      preview = preview.replace(new RegExp(escapedKw, 'gi'), m => `<mark>${m}</mark>`)
+      if (start > 0) preview = '…' + preview
+      if (end < m.content.length) preview = preview + '…'
+      results.push({ sessionId: s.id, messageId: m.id, highlight: preview })
+      break // 每个会话只取第一条匹配
+    }
+  }
+  return results.slice(0, 20)
+})
+
+function getSessionTitle(sessionId: string): string {
+  return allSessions.value.find(s => s.id === sessionId)?.title || '未知对话'
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function jumpToMessage(sessionId: string, messageId: string) {
+  chatStore.switchSession(sessionId)
+  showHistoryPopover.value = false
+  // 轮询直到 DOM 出现，然后滚动
+  const tryScroll = () => {
+    const el = document.querySelector(`[data-msg-id="${messageId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('msg-highlight-flash')
+      setTimeout(() => el.classList.remove('msg-highlight-flash'), 2000)
+    } else {
+      setTimeout(tryScroll, 100)
+    }
+  }
+  nextTick(() => setTimeout(tryScroll, 50))
+}
+
+// 计算属性
+const allSessions = computed(() => chatStore.sessions)
+
+const pinnedSessions = computed(() =>
+  allSessions.value.filter(s => s.pinned && !s.folderId)
+)
+
+const uncategorizedSessions = computed(() =>
+  allSessions.value.filter(s => !s.pinned && !s.folderId)
+)
+
+function getFolderSessions(folderId: string) {
+  return allSessions.value.filter(s => s.folderId === folderId && !s.pinned)
+}
+
+function toggleFolder(folderId: string) {
+  const s = collapsedFolders.value
+  if (s.has(folderId)) s.delete(folderId); else s.add(folderId)
+  // 触发响应式
+  collapsedFolders.value = new Set(s)
+}
+
+// 拖拽
+function handleDragStart(e: DragEvent, sessionId: string) {
+  dragSessionId.value = sessionId
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+function handleDropToFolder(e: DragEvent, folderId: string) {
+  dragOverFolder.value = null
+  if (dragSessionId.value) {
+    chatStore.moveSessionToFolder(dragSessionId.value, folderId)
+    dragSessionId.value = null
+  }
+}
+
+// 文件夹操作
+function handleAddFolder() {
+  ElMessageBox.prompt('请输入文件夹名称', '新建文件夹', {
+    confirmButtonText: '创建',
+    cancelButtonText: '取消',
+    inputPattern: /.+/,
+    inputErrorMessage: '名称不能为空'
+  }).then(({ value }) => {
+    const name = (value || '').trim()
+    if (name) chatStore.createFolder(name)
+  }).catch(() => {})
+}
+
+function handleDeleteFolder(folderId: string) {
+  const count = chatStore.getFolderCount(folderId)
+  ElMessageBox.confirm(
+    `删除后文件夹内的 ${count} 个对话将移至「未分类」。`,
+    '删除文件夹',
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => chatStore.deleteFolder(folderId)).catch(() => {})
+}
+
+function handleRenameFolder(folder: { id: string; name: string }) {
+  ElMessageBox.prompt('请输入新名称', '重命名文件夹', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    inputValue: folder.name,
+    inputPattern: /.+/,
+    inputErrorMessage: '名称不能为空'
+  }).then(({ value }) => {
+    const name = (value || '').trim()
+    if (name) chatStore.renameFolder(folder.id, name)
+  }).catch(() => {})
+}
+
 // 显示设置本地状态（v-model 不能直接绑定 store 深层属性）
 const display = reactive({
   fontSize: chatStore.displaySettings.fontSize,
@@ -531,10 +784,21 @@ function formatSessionTime(isoStr: string): string {
     if (diff < 60000) return '刚刚'
     if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
     if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
     return d.toLocaleDateString('zh-CN')
   } catch {
     return ''
   }
+}
+
+// 根据 session ID 生成唯一主题色
+const COLORS = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#7c5cfc', '#00bcd4', '#ff9800', '#9c27b0', '#4caf50']
+function sessionColor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return COLORS[Math.abs(hash) % COLORS.length]
 }
 
 // 文件上传
@@ -747,8 +1011,8 @@ onMounted(() => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--msg-padding, 16px);
-  background: #fff;
+  padding: 8px 0;
+  background: #f0f2f5;
 }
 
 .chat-empty {
@@ -797,24 +1061,39 @@ onMounted(() => {
 
 /* 输入区域 */
 .chat-input-area {
-  border-top: 1px solid #e4e7ed;
-  padding: 10px 12px;
-  background: #fafafa;
+  border-top: 1px solid #e8eaed;
+  padding: 12px 16px 14px;
+  background: #fff;
   flex-shrink: 0;
 }
 
 .chat-input-area :deep(.el-textarea__inner) {
   font-size: 14px;
   line-height: 1.6;
-  border-radius: 8px;
+  border-radius: 12px;
+  border-color: #e0e3e8;
+  background: #f5f6f8;
+  padding: 10px 14px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.chat-input-area :deep(.el-textarea__inner:focus) {
+  border-color: #409eff;
+  background: #fff;
 }
 
 .chat-input-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 6px;
-  gap: 8px;
+  margin-top: 8px;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.chat-input-actions .el-button {
+  border-radius: 8px;
+  font-weight: 500;
 }
 
 .streaming-hint {
@@ -906,8 +1185,77 @@ onMounted(() => {
 }
 
 /* 历史对话列表 */
-.history-list {
+.history-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-search {
+  padding: 0 4px 8px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 8px;
+}
+
+.history-search-results {
   max-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 8px;
+}
+
+.history-search-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+
+.history-search-item:hover {
+  background: #f0f5ff;
+}
+
+.history-search-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #409eff;
+  margin-bottom: 4px;
+}
+
+.history-search-preview {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-search-preview :deep(mark) {
+  background: #fff3cd;
+  color: #856404;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 8px;
+}
+
+.history-toolbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.history-list {
+  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -918,12 +1266,89 @@ onMounted(() => {
   font-size: 13px;
 }
 
+.history-section {
+  margin-bottom: 2px;
+}
+
+.history-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #909399;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.folder-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.folder-header:hover {
+  background: #f5f7fa;
+}
+
+.folder-header .el-icon:first-child {
+  transition: transform 0.2s;
+}
+
+.folder-header.collapsed .el-icon:first-child {
+  transform: rotate(-90deg);
+}
+
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #606266;
+}
+
+.folder-count {
+  font-size: 11px;
+  color: #c0c4cc;
+  background: #f5f7fa;
+  padding: 0 6px;
+  border-radius: 10px;
+}
+
+.folder-delete {
+  visibility: hidden;
+  padding: 0;
+}
+
+.folder-header:hover .folder-delete {
+  visibility: visible;
+}
+
+.folder-drop-zone {
+  min-height: 28px;
+  transition: background 0.2s;
+  border-radius: 6px;
+  border: 1px dashed transparent;
+}
+
+.folder-drop-zone.drag-over {
+  background: #ecf5ff;
+  border-color: #409eff;
+}
+
+.folder-empty {
+  text-align: center;
+  font-size: 11px;
+  color: #c0c4cc;
+  padding: 8px 0;
+}
+
 .history-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 6px;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -938,6 +1363,14 @@ onMounted(() => {
 
 .history-item.active .history-title {
   color: #409eff;
+}
+
+.history-color-bar {
+  flex-shrink: 0;
+  width: 3px;
+  height: 28px;
+  border-radius: 2px;
+  background: var(--session-color);
 }
 
 .history-item-main {
@@ -961,23 +1394,30 @@ onMounted(() => {
   color: #909399;
 }
 
-.history-time {
-  font-size: 11px;
-  color: #c0c4cc;
-  white-space: nowrap;
-}
-
+.history-pin,
 .history-delete {
   visibility: hidden;
   padding: 0;
-  min-height: auto;
 }
 
+.history-item:hover .history-pin,
 .history-item:hover .history-delete {
   visibility: visible;
 }
 
 .history-delete:hover {
   color: #f56c6c !important;
+}
+</style>
+
+<style>
+/* 搜索跳转高亮闪烁 */
+.msg-highlight-flash {
+  animation: msg-flash 0.5s ease-in-out 3;
+}
+
+@keyframes msg-flash {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: #fff3cd; border-radius: 8px; }
 }
 </style>

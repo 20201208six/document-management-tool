@@ -36,6 +36,19 @@ export interface ChatSession {
   messages: ChatMessage[]
   createdAt: string
   updatedAt: string
+  /** 是否置顶 */
+  pinned: boolean
+  /** 所属文件夹ID（null 表示根目录） */
+  folderId: string | null
+}
+
+// ===== 对话文件夹类型 =====
+
+/** 对话文件夹 */
+export interface ChatFolder {
+  id: string
+  name: string
+  createdAt: string
 }
 
 // ===== AI 模型类型 =====
@@ -119,16 +132,16 @@ export interface DocumentContext {
 // ===== 默认 DeepSeek 模型 =====
 export const DEFAULT_DEEPSEEK_MODEL: AIModel = {
   id: 'deepseek-default',
-  name: 'DeepSeek Chat',
+  name: 'DeepSeek V4 Pro',
   provider: 'deepseek',
   apiUrl: 'https://api.deepseek.com/chat/completions',
   apiKey: '',
   supportDeepThinking: true,
   isDefault: true,
-  modelParam: 'deepseek-chat'
+  modelParam: 'deepseek-v4-pro'
 }
 
-/** DeepSeek 深度思考模型 */
+/** DeepSeek 深度思考模型（旧版兼容） */
 export const DEEPSEEK_REASONER_MODEL: AIModel = {
   id: 'deepseek-reasoner',
   name: 'DeepSeek Reasoner（深度思考）',

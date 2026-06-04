@@ -54,10 +54,33 @@ export async function sendChatMessage(
   const systemPrompt = buildSystemPrompt(deepThinking, documentContext, webSearch?.results)
   const apiMessages = buildApiMessages(messageHistory, systemPrompt)
 
-  // 如果启用深度思考且使用 deepseek-chat，切换到 deepseek-reasoner
-  const modelParam = deepThinking && model.provider === 'deepseek'
+  // V4 模型通过 thinking 参数控制思考模式，旧模型切换到 deepseek-reasoner
+  const isV4 = model.modelParam.includes('v4')
+  const modelParam = !isV4 && deepThinking && model.provider === 'deepseek'
     ? 'deepseek-reasoner'
     : model.modelParam
+
+  const body: Record<string, any> = {
+    model: modelParam,
+    messages: apiMessages,
+    stream: false
+  }
+
+  if (isV4) {
+    // V4: 使用 thinking 对象控制，默认 disabled 保证非思考模式速度
+    if (deepThinking) {
+      body.thinking = { type: 'enabled' }
+      body.reasoning_effort = 'high'
+      // 思考模式不支持 temperature/top_p，不传
+    } else {
+      body.thinking = { type: 'disabled' }
+      body.temperature = 1.0
+    }
+  } else {
+    // 旧模型
+    body.temperature = deepThinking ? 0.3 : 1.0
+    body.max_tokens = deepThinking ? 4096 : 2048
+  }
 
   const response = await fetch(model.apiUrl, {
     method: 'POST',
@@ -65,13 +88,7 @@ export async function sendChatMessage(
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${model.apiKey}`
     },
-    body: JSON.stringify({
-      model: modelParam,
-      messages: apiMessages,
-      temperature: deepThinking ? 0.3 : 0.7,
-      max_tokens: deepThinking ? 4096 : 2048,
-      stream: false
-    })
+    body: JSON.stringify(body)
   })
 
   if (!response.ok) {
@@ -109,44 +126,106 @@ export async function sendChatMessageStream(
   const systemPrompt = buildSystemPrompt(deepThinking, documentContext, webSearch?.results)
   const apiMessages = buildApiMessages(messageHistory, systemPrompt)
 
-  // 如果启用深度思考且使用 deepseek-chat，切换到 deepseek-reasoner
-  const modelParam = deepThinking && model.provider === 'deepseek'
+  // V4 模型通过 thinking 参数控制思考模式，旧模型切换到 deepseek-reasoner
+  const isV4 = model.modelParam.includes('v4')
+  const modelParam = !isV4 && deepThinking && model.provider === 'deepseek'
     ? 'deepseek-reasoner'
     : model.modelParam
 
+  // 超时控制：非思考 60s，思考模式 180s
+  const timeoutMs = deepThinking ? 180_000 : 60_000
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => {
+    console.error('[DeepSeek] 请求超时 (%ds)，主动中止', timeoutMs / 1000)
+    timeoutController.abort()
+  }, timeoutMs)
+
+  // 监听外部 abort 信号（用户点击停止按钮）
+  const onExternalAbort = () => {
+    console.error('[DeepSeek] 用户中止请求')
+    timeoutController.abort()
+  }
+  abortSignal?.addEventListener('abort', onExternalAbort)
+
+  // 清理函数：在退出时清理定时器和事件监听
+  function cleanup() {
+    clearTimeout(timeoutId)
+    abortSignal?.removeEventListener('abort', onExternalAbort)
+  }
+
   try {
+    const body: Record<string, any> = {
+      model: modelParam,
+      messages: apiMessages,
+      stream: true
+    }
+
+    if (isV4) {
+      // V4: 使用 thinking 对象控制，默认 disabled 保证非思考模式速度
+      if (deepThinking) {
+        body.thinking = { type: 'enabled' }
+        body.reasoning_effort = 'high'
+        // 思考模式不支持 temperature/top_p，不传
+      } else {
+        body.thinking = { type: 'disabled' }
+        body.temperature = 1.0
+      }
+    } else {
+      // 旧模型
+      body.temperature = deepThinking ? 0.3 : 1.0
+      body.max_tokens = deepThinking ? 4096 : 2048
+    }
+
+    console.error('[DeepSeek] 发起请求', {
+      model: body.model,
+      thinking: body.thinking,
+      stream: body.stream,
+      messagesCount: body.messages.length
+    })
+
     const response = await fetch(model.apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${model.apiKey}`
       },
-      body: JSON.stringify({
-        model: modelParam,
-        messages: apiMessages,
-        temperature: deepThinking ? 0.3 : 0.7,
-        max_tokens: deepThinking ? 4096 : 2048,
-        stream: true
-      }),
-      signal: abortSignal
+      body: JSON.stringify(body),
+      signal: timeoutController.signal
     })
+
+    console.error('[DeepSeek] 收到响应，状态码:', response.status)
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}))
-      throw new Error(errData.error?.message || `API 请求失败: ${response.status}`)
+      const errMsg = errData.error?.message || `API 请求失败: ${response.status}`
+      console.error('[DeepSeek] API 错误:', errMsg, errData)
+      cleanup()
+      throw new Error(errMsg)
     }
 
     const reader = response.body?.getReader()
     if (!reader) {
+      cleanup()
       throw new Error('无法获取响应流')
     }
 
+    // 当外部触发 abort 时，同步取消 reader，保证停止按钮即时生效
+    let readerCancelled = false
+    const onReaderAbort = () => {
+      readerCancelled = true
+      reader.cancel().catch(() => {})
+    }
+    timeoutController.signal.addEventListener('abort', onReaderAbort)
+
+    console.error('[DeepSeek] 开始读取流式数据...')
+
     const decoder = new TextDecoder()
     let buffer = ''
+    let chunkCount = 0
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done || readerCancelled) break
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -157,6 +236,8 @@ export async function sendChatMessageStream(
         if (!trimmed || !trimmed.startsWith('data: ')) continue
         const dataStr = trimmed.slice(6)
         if (dataStr === '[DONE]') {
+          console.error('[DeepSeek] 流式输出完成, 共 %d 个 chunk', chunkCount)
+          cleanup()
           onDone()
           return
         }
@@ -164,19 +245,21 @@ export async function sendChatMessageStream(
           const parsed = JSON.parse(dataStr)
           const delta = parsed.choices?.[0]?.delta
           if (delta?.reasoning_content && onReasoning) {
+            chunkCount++
             onReasoning(delta.reasoning_content)
           }
           if (delta?.content) {
+            chunkCount++
             onChunk(delta.content)
           }
         } catch {
-          // 跳过无法解析的行
+          // 跳过无法解析的行（如初始的空 data 行）
         }
       }
     }
 
     // 处理缓冲区中剩余的数据
-    if (buffer.trim()) {
+    if (!readerCancelled && buffer.trim()) {
       const trimmed = buffer.trim()
       if (trimmed.startsWith('data: ') && trimmed.slice(6) !== '[DONE]') {
         try {
@@ -188,13 +271,18 @@ export async function sendChatMessageStream(
       }
     }
 
+    console.error('[DeepSeek] 流读取结束, readerCancelled=%s', readerCancelled)
+    cleanup()
     onDone()
   } catch (e: any) {
+    cleanup()
     if (e.name === 'AbortError') {
+      console.error('[DeepSeek] 请求被中止 (AbortError)')
       onDone()
       return
     }
-    onError(e)
+    console.error('[DeepSeek] 请求异常:', e.message || e)
+    onError(e instanceof Error ? e : new Error(e.message || '网络请求失败'))
   }
 }
 

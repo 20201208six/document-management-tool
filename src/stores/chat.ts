@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatSession, ChatMessage, AIModel, WebSearchContext, DocumentContext } from '@/types/chat'
+import type { ChatSession, ChatMessage, AIModel, WebSearchContext, DocumentContext, ChatFolder } from '@/types/chat'
 import { DEFAULT_DEEPSEEK_MODEL } from '@/types/chat'
 import { generateId, sendChatMessageStream, performWebSearch, analyzeFileContent } from '@/services/deepseek'
 import { ElMessage } from 'element-plus'
@@ -8,6 +8,7 @@ import { useChatFavoritesStore } from './chatFavorites'
 
 const STORAGE_KEY = 'copywriting-chat-history'
 const MODELS_KEY = 'copywriting-chat-models'
+const FOLDERS_KEY = 'copywriting-chat-folders'
 
 export const useChatStore = defineStore('chat', () => {
   // ===== 会话管理 =====
@@ -18,7 +19,18 @@ export const useChatStore = defineStore('chat', () => {
   function loadSessions(): ChatSession[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY)
-      return data ? JSON.parse(data) : []
+      if (!data) return []
+      const sessions: ChatSession[] = JSON.parse(data)
+      // 迁移旧数据：补充 pinned / folderId 字段
+      let migrated = false
+      for (const s of sessions) {
+        if (s.pinned === undefined) { s.pinned = false; migrated = true }
+        if (s.folderId === undefined) { s.folderId = null; migrated = true }
+      }
+      if (migrated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+      }
+      return sessions
     } catch {
       return []
     }
@@ -61,7 +73,9 @@ export const useChatStore = defineStore('chat', () => {
       title: filePath ? `文档对话 - ${filePath.split(/[/\\]/).pop()}` : '新对话',
       messages: [],
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      pinned: false,
+      folderId: null
     }
     sessions.value.push(session)
     currentSessionId.value = session.id
@@ -83,6 +97,75 @@ export const useChatStore = defineStore('chat', () => {
     saveSessions()
   }
 
+  /** 切换会话置顶 */
+  function togglePinSession(sessionId: string) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (session) {
+      session.pinned = !session.pinned
+      saveSessions()
+    }
+  }
+
+  // ===== 文件夹管理 =====
+
+  const folders = ref<ChatFolder[]>(loadFolders())
+
+  function loadFolders(): ChatFolder[] {
+    try {
+      const data = localStorage.getItem(FOLDERS_KEY)
+      return data ? JSON.parse(data) : []
+    } catch { return [] }
+  }
+
+  function saveFolders() {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders.value))
+  }
+
+  /** 创建文件夹 */
+  function createFolder(name: string): ChatFolder {
+    const folder: ChatFolder = {
+      id: 'folder_' + Date.now(),
+      name: name.trim() || '未命名文件夹',
+      createdAt: new Date().toISOString()
+    }
+    folders.value.push(folder)
+    saveFolders()
+    return folder
+  }
+
+  /** 重命名文件夹 */
+  function renameFolder(folderId: string, name: string) {
+    const folder = folders.value.find(f => f.id === folderId)
+    if (folder) {
+      folder.name = name.trim() || '未命名文件夹'
+      saveFolders()
+    }
+  }
+
+  /** 删除文件夹（会话回到根目录） */
+  function deleteFolder(folderId: string) {
+    folders.value = folders.value.filter(f => f.id !== folderId)
+    for (const s of sessions.value) {
+      if (s.folderId === folderId) s.folderId = null
+    }
+    saveFolders()
+    saveSessions()
+  }
+
+  /** 移动对话到文件夹 */
+  function moveSessionToFolder(sessionId: string, folderId: string | null) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (session) {
+      session.folderId = folderId
+      saveSessions()
+    }
+  }
+
+  /** 获取文件夹下的对话数 */
+  function getFolderCount(folderId: string): number {
+    return sessions.value.filter(s => s.folderId === folderId).length
+  }
+
   // ===== 消息管理 =====
 
   /** 添加用户消息并返回消息对象 */
@@ -101,6 +184,12 @@ export const useChatStore = defineStore('chat', () => {
       isStreaming: false
     }
     session.messages.push(msg)
+
+    // 首条消息自动设为对话标题（截取前30字）
+    if (session.messages.filter(m => m.role === 'user').length === 1) {
+      const title = content.replace(/\n/g, ' ').trim().substring(0, 30)
+      session.title = title || '新对话'
+    }
 
     // 如果是追问，更新父消息的追问链
     if (followUpTo) {
@@ -315,19 +404,29 @@ export const useChatStore = defineStore('chat', () => {
 
   // ===== 核心：发送消息 =====
   let currentAbortController: AbortController | null = null
+  let currentWaitTimer: ReturnType<typeof setInterval> | null = null
 
   function cancelStream() {
+    console.error('[ChatStore] cancelStream 被调用')
+    // 第一步：清理等待计时器
+    if (currentWaitTimer) {
+      clearInterval(currentWaitTimer)
+      currentWaitTimer = null
+    }
+    // 第二步：abort 网络请求
     if (currentAbortController) {
       currentAbortController.abort()
       currentAbortController = null
     }
-    // 强制立即停止：直接标记所有流式消息为已完成，无需等待 abort 传播
+    // 第三步：强制立即停止所有流式消息，不依赖 abort 传播
     const session = currentSession.value
     if (session) {
       let changed = false
       for (const msg of session.messages) {
         if (msg.isStreaming) {
+          console.error('[ChatStore] 强制停止流式消息:', msg.id)
           msg.isStreaming = false
+          msg.reasoningContent = ''
           if (!msg.content) msg.content = '[已停止]'
           changed = true
         }
@@ -386,8 +485,9 @@ export const useChatStore = defineStore('chat', () => {
     // 构建发送给 API 的消息历史（限制长度防止上下文爆炸）
     const apiMessageHistory = buildApiMessageHistory(session.messages)
 
-    // 添加 AI 占位消息并缓存引用（避免每次回调都 find()）
+    // 添加 AI 占位消息并缓存其 ID（通过 store 方法更新，确保响应式触发）
     const assistantMsg = addAssistantPlaceholder(deepThinkingEnabled.value)
+    const assistantMsgId = assistantMsg.id
 
     // 发送流式请求
     let fullContent = ''
@@ -400,36 +500,40 @@ export const useChatStore = defineStore('chat', () => {
       if (rafId) return
       rafId = requestAnimationFrame(() => {
         rafId = 0
-        assistantMsg.content = fullContent
-        assistantMsg.reasoningContent = fullReasoning
+        const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+        if (!msg?.isStreaming) return
+        msg.content = fullContent
+        msg.reasoningContent = fullReasoning
       })
     }
 
-    // 深度思考等待计时器：长时间无数据时提示用户
-    let waitTimer: ReturnType<typeof setInterval> | null = null
+    // 等待计时器：长时间无数据时提示用户（所有模式均适用）
     let waitedSeconds = 0
-    if (deepThinkingEnabled.value) {
-      waitTimer = setInterval(() => {
-        waitedSeconds++
-        if (waitedSeconds <= 3) return // 前 3 秒不显示
-        assistantMsg.content = `深度思考分析中，已等待 ${waitedSeconds} 秒，模型正在内部推理...`
-      }, 1000)
-    }
+    currentWaitTimer = setInterval(() => {
+      waitedSeconds++
+      if (waitedSeconds <= 3) return
+      const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+      if (!msg?.isStreaming) return
+      const text = deepThinkingEnabled.value
+        ? `深度思考分析中，已等待 ${waitedSeconds} 秒，模型正在内部推理...`
+        : `等待服务器响应中，已等待 ${waitedSeconds} 秒...`
+      msg.content = text
+    }, 1000)
 
     function clearWaitTimer() {
-      if (waitTimer) {
-        clearInterval(waitTimer)
-        waitTimer = null
-        // 恢复占位内容
-        if (!fullContent && !fullReasoning) {
-          assistantMsg.content = ''
-        } else if (!fullContent) {
-          assistantMsg.content = ''
-        }
+      if (currentWaitTimer) {
+        clearInterval(currentWaitTimer)
+        currentWaitTimer = null
+      }
+      // 清除可能残留的等待提示
+      if (!fullContent && !fullReasoning) {
+        const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+        if (msg) msg.content = ''
       }
     }
 
     try {
+      console.error('[ChatStore] 开始调用 sendChatMessageStream, deepThinking=%s', deepThinkingEnabled.value)
       await sendChatMessageStream(
         model,
         apiMessageHistory,
@@ -439,21 +543,29 @@ export const useChatStore = defineStore('chat', () => {
           flushUpdate()
         },
         () => {
+          // 流自然结束：仅在未被停止时才更新状态
+          const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+          console.error('[ChatStore] 流结束, isStreaming=%s, contentLen=%d', msg?.isStreaming, fullContent.length)
           clearWaitTimer()
           if (rafId) cancelAnimationFrame(rafId)
-          assistantMsg.isStreaming = false
-          assistantMsg.content = fullContent
-          assistantMsg.reasoningContent = fullReasoning
-          assistantMsg.isFavorited = useChatFavoritesStore().isFavorited(assistantMsg.id)
+          if (!msg?.isStreaming) { currentAbortController = null; return }
+          msg.isStreaming = false
+          msg.content = fullContent
+          msg.reasoningContent = fullReasoning
+          msg.isFavorited = useChatFavoritesStore().isFavorited(msg.id)
           saveSessions()
           currentAbortController = null
         },
         (error: Error) => {
+          // 流错误：仅在未被停止时才更新状态
+          const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+          console.error('[ChatStore] 流错误:', error.message)
           clearWaitTimer()
           if (rafId) cancelAnimationFrame(rafId)
-          assistantMsg.isStreaming = false
+          if (!msg?.isStreaming) { currentAbortController = null; return }
+          msg.isStreaming = false
           if (!fullContent) {
-            assistantMsg.content = `[错误] ${error.message}`
+            msg.content = `[错误] ${error.message}`
           }
           saveSessions()
           currentAbortController = null
@@ -471,11 +583,14 @@ export const useChatStore = defineStore('chat', () => {
         }
       )
     } catch (e: any) {
+      const msg = currentSession.value?.messages.find(m => m.id === assistantMsgId)
+      console.error('[ChatStore] sendMessage 异常:', e.message || e)
       clearWaitTimer()
       if (rafId) cancelAnimationFrame(rafId)
-      assistantMsg.isStreaming = false
+      if (!msg?.isStreaming) return
+      msg.isStreaming = false
       if (!fullContent) {
-        assistantMsg.content = `[错误] ${e.message || '请求失败'}`
+        msg.content = `[错误] ${e.message || '请求失败'}`
       }
       saveSessions()
       currentAbortController = null
@@ -678,6 +793,15 @@ export const useChatStore = defineStore('chat', () => {
     switchSession,
     deleteSession,
     clearCurrentSession,
+    togglePinSession,
+
+    // 文件夹
+    folders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveSessionToFolder,
+    getFolderCount,
 
     // 消息
     addUserMessage,
