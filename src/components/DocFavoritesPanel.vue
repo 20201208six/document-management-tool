@@ -172,62 +172,130 @@ async function navigateToSnippet(snippet: DocSnippet) {
   if (existingTab) {
     fileStore.switchToTab(snippet.filePath)
     fileStore.activeTab = 'editor'
-  } else {
-    // 文件未打开，先导航到文件夹再打开
-    const pathParts = snippet.filePath.replace(/\\/g, '/').split('/')
-    pathParts.pop()
-    const folderPath = pathParts.join('\\')
-    await fileStore.setFolder(folderPath)
-    const fileEntry = fileStore.files.find(f => f.path === snippet.filePath)
-    if (fileEntry) {
-      await fileStore.selectFile(fileEntry)
-      fileStore.activeTab = 'editor'
-    } else {
-      ElMessage.warning('文件不存在或已被移动')
-      return
-    }
-  }
-
-  // 尝试在编辑器中选中收藏的文字
-  setTimeout(() => {
-    if (snippet.text) {
-      findAndSelectText(snippet.text)
-    }
-  }, 300)
-}
-
-/** 在编辑器中查找并选中文字 */
-function findAndSelectText(text: string) {
-  const container = document.querySelector('.rich-editor') as HTMLElement
-    || document.querySelector('.editor-textarea') as HTMLTextAreaElement
-  if (!container) return
-
-  if (container instanceof HTMLTextAreaElement) {
-    const t = container
-    const idx = t.value.indexOf(text)
-    if (idx !== -1) {
-      t.focus()
-      t.setSelectionRange(idx, idx + text.length)
-    }
+    // 等待 DOM 渲染后定位文字
+    await tryFindAndSelect(snippet.text)
     return
   }
 
-  // HTML 编辑器
+  // 文件未打开，先导航到文件夹再打开
+  const pathParts = snippet.filePath.replace(/\\/g, '/').split('/')
+  pathParts.pop()
+  const folderPath = pathParts.join('\\')
+  await fileStore.setFolder(folderPath)
+  const fileEntry = fileStore.files.find(f => f.path === snippet.filePath)
+  if (fileEntry) {
+    await fileStore.selectFile(fileEntry)
+    fileStore.activeTab = 'editor'
+    await tryFindAndSelect(snippet.text)
+  } else {
+    ElMessage.warning('文件不存在或已被移动')
+  }
+}
+
+/** 带重试的文字定位 */
+async function tryFindAndSelect(text: string, maxRetries = 10, interval = 200) {
+  for (let i = 0; i < maxRetries; i++) {
+    await new Promise(r => setTimeout(r, interval))
+    if (findAndSelectText(text)) return
+  }
+  ElMessage.info('未在文档中找到该收藏文字（内容可能已被修改）')
+}
+
+/** 在编辑器中查找并选中文字，返回是否成功 */
+function findAndSelectText(text: string): boolean {
+  // 先找 HTML 富文本编辑器
+  const richEditor = document.querySelector('.rich-editor') as HTMLElement
+  if (richEditor) {
+    return findInRichEditor(richEditor, text)
+  }
+  // 纯文本编辑器
+  const textarea = document.querySelector('.editor-textarea') as HTMLTextAreaElement
+  if (textarea) {
+    return findInTextarea(textarea, text)
+  }
+  return false
+}
+
+function findInTextarea(t: HTMLTextAreaElement, text: string): boolean {
+  const idx = t.value.indexOf(text)
+  if (idx === -1) return false
+  t.focus()
+  t.setSelectionRange(idx, idx + text.length)
+  t.scrollTop = t.scrollHeight * (idx / t.value.length)
+  // 高亮闪烁
+  flashElement(t)
+  return true
+}
+
+function findInRichEditor(container: HTMLElement, text: string): boolean {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let firstIdx = -1
+  let firstNode: Text | null = null
+  const plainText: string[] = []
+  const nodes: Text[] = []
+
+  // 第一遍：收集所有文本节点和纯文本
   let node: Text | null
   while ((node = walker.nextNode() as Text | null)) {
-    const idx = node.textContent?.indexOf(text) ?? -1
-    if (idx !== -1) {
-      const range = document.createRange()
-      range.setStart(node, idx)
-      range.setEnd(node, idx + text.length)
-      const sel = window.getSelection()
-      sel?.removeAllRanges()
-      sel?.addRange(range)
-      return
+    if (node.textContent) {
+      nodes.push(node)
+      plainText.push(node.textContent)
     }
   }
-  ElMessage.info('未在文档中找到该收藏文字')
+  const fullText = plainText.join('')
+
+  // 先在完整纯文本中查找
+  let pos = fullText.indexOf(text)
+  if (pos === -1) {
+    // 尝试忽略多余空白进行匹配
+    const normalized = fullText.replace(/\s+/g, ' ').trim()
+    const normText = text.replace(/\s+/g, ' ').trim()
+    pos = normalized.indexOf(normText)
+  }
+  if (pos === -1) {
+    // 尝试匹配前20个字符
+    const shortText = text.substring(0, Math.min(20, text.length)).replace(/\s+/g, ' ').trim()
+    if (shortText.length >= 5) {
+      pos = fullText.replace(/\s+/g, ' ').trim().indexOf(shortText)
+    }
+  }
+  if (pos === -1) return false
+
+  // 定位到对应文本节点
+  let offset = 0
+  let targetNode: Text | null = null
+  let targetOffset = 0
+  for (let i = 0; i < nodes.length; i++) {
+    const len = nodes[i].textContent!.length
+    if (offset + len > pos) {
+      targetNode = nodes[i]
+      targetOffset = pos - offset
+      break
+    }
+    offset += len
+  }
+
+  if (targetNode) {
+    const range = document.createRange()
+    const endPos = Math.min(targetOffset + text.length, targetNode.textContent!.length)
+    range.setStart(targetNode, targetOffset)
+    range.setEnd(targetNode, endPos)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    // 滚动到选区
+    const rect = range.getBoundingClientRect()
+    container.scrollTop += rect.top - container.getBoundingClientRect().top - 100
+    // 高亮闪烁
+    flashElement(container.querySelector('.msg-bubble') || container)
+  }
+  return true
+}
+
+/** 高亮闪烁 */
+function flashElement(el: Element | HTMLElement) {
+  el.classList.add('docfav-highlight')
+  setTimeout(() => el.classList.remove('docfav-highlight'), 2000)
 }
 </script>
 
@@ -379,5 +447,29 @@ function findAndSelectText(text: string) {
 
 .docfav-item:hover .docfav-item-del {
   visibility: visible;
+}
+</style>
+
+<style>
+/* 文字收藏跳转高亮 */
+.docfav-highlight {
+  animation: docfav-flash 0.5s ease-in-out 3;
+}
+
+@keyframes docfav-flash {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: #fff3cd; }
+}
+
+/* textarea 高亮 */
+textarea.docfav-highlight {
+  outline: 3px solid #ffc107;
+  outline-offset: -2px;
+}
+
+/* HTML 编辑器高亮 */
+.rich-editor.docfav-highlight {
+  box-shadow: 0 0 0 3px #ffc107;
+  border-radius: 4px;
 }
 </style>
