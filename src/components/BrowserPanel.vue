@@ -33,14 +33,13 @@
           <p class="welcome-hint">支持收藏链接、分类管理</p>
         </div>
         <template v-else>
-          <iframe
+          <webview
             v-show="!iframeBlocked"
-            ref="iframeRef"
+            ref="webviewRef"
             :src="currentUrl"
             class="browser-iframe"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            @load="onIframeLoad"
-          ></iframe>
+            @dom-ready="onIframeLoad"
+          ></webview>
           <div v-if="iframeBlocked" class="browser-blocked">
             <div class="blocked-icon">🔒</div>
             <p>该网站不允许嵌入显示（X-Frame-Options）</p>
@@ -123,6 +122,7 @@ const linkStore = useLinkStore()
 const urlInput = ref('')
 const currentUrl = ref('')
 const iframeRef = ref<HTMLIFrameElement | null>(null)
+const webviewRef = ref<any>(null)
 const showBookmarks = ref(false)
 const bmSearch = ref('')
 const collapsedCats = ref(new Set<string>())
@@ -186,8 +186,8 @@ function refreshIframe() {
   iframeBlocked.value = false
   if (iframeTimeout) clearTimeout(iframeTimeout)
   iframeTimeout = setTimeout(() => { iframeBlocked.value = true }, 5000)
-  if (iframeRef.value) {
-    iframeRef.value.src = iframeRef.value.src
+  if (webviewRef.value) {
+    webviewRef.value.reload()
   }
 }
 
