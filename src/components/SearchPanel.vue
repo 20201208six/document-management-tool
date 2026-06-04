@@ -92,8 +92,15 @@ function highlightMatch(text: string): string {
 
 async function openFile(result: any, kw: string, matchText: string) {
   try {
-    const entry = { name: result.fileName, path: result.path, isDirectory: false, isFile: true }
-    await fileStore.selectFile(entry)
+    // 如果文件已打开，直接切换标签页
+    const existing = fileStore.openTabs.find(t => t.path === result.path)
+    if (existing) {
+      fileStore.switchToTab(result.path)
+      fileStore.activeTab = 'search'
+    } else {
+      const entry = { name: result.fileName, path: result.path, isDirectory: false, isFile: true }
+      await fileStore.selectFile(entry)
+    }
     fileStore.navigateToSearchResult(kw, matchText)
   } catch (err) {
     console.error('打开文件失败:', err)

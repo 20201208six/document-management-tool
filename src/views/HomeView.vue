@@ -150,13 +150,14 @@
                   <el-button @click="execCmd('redo')" title="重做 Ctrl+Y">↪</el-button>
                 </el-button-group>
               </div>
-              <div v-if="fileStore.fileType === 'html'" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown"></div>
+              <div v-if="fileStore.fileType === 'html'" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown" @contextmenu.prevent="onEditorContextMenu"></div>
               <div v-else class="edit-area">
                 <textarea
                   ref="textareaRef"
                   v-model="editPlainText"
                   class="editor-textarea"
                   placeholder="在此编辑文案内容..."
+                  @contextmenu.prevent="onEditorContextMenu"
                 ></textarea>
               </div>
             </div>
@@ -164,7 +165,7 @@
         </div>
 
         <div v-if="fileStore.activeTab === 'favorites'" class="tab-content">
-          <FavoritesFull />
+          <DocFavoritesPanel />
         </div>
       </div>
     </div>
@@ -263,6 +264,12 @@
       <div class="menu-item" @click="handleContextAction('closeAll')">全部关闭</div>
     </div>
 
+    <!-- 编辑器选中文字右键菜单 -->
+    <div v-if="showSelectionMenu" class="selection-context-menu" :style="{ left: menuX + 'px', top: menuY + 'px' }">
+      <div class="menu-item" @click="bookmarkSelection">⭐ 收藏选中文字</div>
+      <div class="menu-item" @click="handleCopySelection">📋 复制</div>
+    </div>
+
     <!-- 智能对话面板 -->
     <ChatPanel />
   </div>
@@ -273,17 +280,19 @@ import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import FavoritesPanel from '@/components/FavoritesPanel.vue'
-import FavoritesFull from '@/components/FavoritesFull.vue'
+import DocFavoritesPanel from '@/components/DocFavoritesPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import { useFileStore } from '@/stores/file'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useDocFavoritesStore } from '@/stores/docFavorites'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore, type ReplaceRule } from '@/stores/settings'
 import cantoneseDict from '@/data/cantonese-dict.json'
 
 const fileStore = useFileStore()
 const favoritesStore = useFavoritesStore()
+const docFavStore = useDocFavoritesStore()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
@@ -387,6 +396,46 @@ const showContextMenu = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
 const menuTabPath = ref('')
+
+// 编辑器选中文字右键菜单
+const showSelectionMenu = ref(false)
+let pendingSelectedText = ''
+
+function onEditorContextMenu(e: MouseEvent) {
+  const sel = window.getSelection()
+  const text = sel?.toString().trim()
+  if (!text) {
+    closeSelectionMenu()
+    return
+  }
+  pendingSelectedText = text
+  menuX.value = e.clientX
+  menuY.value = e.clientY
+  showSelectionMenu.value = true
+  setTimeout(() => document.addEventListener('click', closeSelectionMenu), 0)
+}
+
+function closeSelectionMenu() {
+  showSelectionMenu.value = false
+  pendingSelectedText = ''
+  document.removeEventListener('click', closeSelectionMenu)
+}
+
+function bookmarkSelection() {
+  const fileName = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)?.name || '未知文件'
+  docFavStore.addSnippet(pendingSelectedText, fileStore.activeTabPath, fileName)
+  ElMessage.success(`已收藏：${pendingSelectedText.substring(0, 30)}${pendingSelectedText.length > 30 ? '...' : ''}`)
+  closeSelectionMenu()
+}
+
+function handleCopySelection() {
+  navigator.clipboard.writeText(pendingSelectedText).then(() => {
+    ElMessage.success('已复制到剪贴板')
+  }).catch(() => {
+    document.execCommand('copy')
+  })
+  closeSelectionMenu()
+}
 
 function dirtyCheck(path: string): Promise<string> {
   if (fileStore.isDirty(path)) {
@@ -1104,7 +1153,8 @@ async function executeCantoneseTranslate() {
 .tab-item:hover .tab-close { visibility: visible; }
 .tab-close:hover { color: #f56c6c; }
 
-.tab-context-menu {
+.tab-context-menu,
+.selection-context-menu {
   position: fixed;
   z-index: 9999;
   background: #fff;

@@ -43,6 +43,13 @@ const favoritesStore = useFavoritesStore()
 const fileStore = useFileStore()
 
 async function navigateToFile(item: FavoriteItem) {
+  // 如果文件已打开，直接切到对应标签页
+  const existingTab = fileStore.openTabs.find(t => t.path === item.path)
+  if (existingTab) {
+    fileStore.switchToTab(item.path)
+    fileStore.activeTab = 'editor'
+    return
+  }
   const pathParts = item.path.replace(/\\/g, '/').split('/')
   pathParts.pop()
   const folderPath = pathParts.join('\\')
