@@ -24,19 +24,18 @@
       </el-button>
     </div>
 
-    <!-- 访问历史时间轴 -->
-    <div v-if="visitHistory.length > 0" class="history-strip">
-      <div class="history-timeline">
-        <template v-for="(item, idx) in visitHistory" :key="idx">
-          <div v-if="idx === 0 || item.dateLabel !== visitHistory[idx-1]?.dateLabel" class="history-date-divider">
-            <span>{{ item.dateLabel }}</span>
-          </div>
-          <div class="history-item" @click="navigateTo(item.url)" :title="item.url">
-            <span class="history-time">{{ item.time }}</span>
-            <span class="history-title">{{ item.title || item.url }}</span>
-          </div>
-        </template>
-      </div>
+    <!-- 书签快捷栏 -->
+    <div v-if="linkStore.bookmarks.length > 0" class="bookmark-strip">
+      <span
+        v-for="bm in linkStore.bookmarks.slice(0, 15)"
+        :key="bm.id"
+        class="strip-item"
+        @click="navigateTo(bm.url)"
+        :title="bm.url"
+      >
+        {{ bm.name }}
+        <el-button size="small" text class="strip-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
+      </span>
     </div>
 
     <!-- 主区域 -->
@@ -70,47 +69,72 @@
 
       <!-- 收藏侧栏 -->
       <div v-if="showBookmarks" class="bookmark-sidebar">
-        <div class="bookmark-sidebar-header">
-          <span>📑 书签管理</span>
-          <el-button size="small" text @click="handleAddCategory">+ 分类</el-button>
+        <div class="bookmark-sidebar-tabs">
+          <span :class="{ active: bmTab === 'bookmarks' }" @click="bmTab = 'bookmarks'">📑 书签</span>
+          <span :class="{ active: bmTab === 'history' }" @click="bmTab = 'history'">🕐 历史</span>
         </div>
-        <el-input v-model="bmSearch" size="small" placeholder="搜索…" clearable class="bm-search" />
 
-        <div class="bookmark-list">
-          <!-- 分类 -->
-          <div v-for="cat in linkStore.categories" :key="cat.id" class="bm-category">
-            <div class="bm-cat-header" @click="toggleCat(cat.id)" :class="{ collapsed: collapsedCats.has(cat.id) }">
-              <el-icon :size="12"><ArrowRight /></el-icon>
-              <span class="bm-cat-name" @dblclick.stop="handleRenameCategory(cat)">{{ cat.name }}</span>
-              <span class="bm-cat-count">{{ catCount(cat.id) }}</span>
-              <el-button size="small" text type="danger" class="bm-cat-del" @click.stop="linkStore.removeCategory(cat.id)">×</el-button>
-            </div>
-            <div v-show="!collapsedCats.has(cat.id)" class="bm-cat-drop"
-              @dragover.prevent @drop.prevent="handleDropBM($event, cat.id)">
-              <div v-for="bm in catBookmarks(cat.id)" :key="bm.id" class="bm-item" draggable="true"
-                @dragstart="handleBMDrag($event, bm.id)" @click="navigateTo(bm.url)">
-                <span class="bm-name">{{ bm.name }}</span>
-                <span class="bm-time">{{ formatTime(bm.createdAt) }}</span>
-                <el-button size="small" text type="danger" class="bm-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
+        <!-- 书签视图 -->
+        <template v-if="bmTab === 'bookmarks'">
+          <div class="bookmark-sidebar-header">
+            <span>书签管理</span>
+            <el-button size="small" text @click="handleAddCategory">+ 分类</el-button>
+          </div>
+          <el-input v-model="bmSearch" size="small" placeholder="搜索…" clearable class="bm-search" />
+          <div class="bookmark-list">
+            <div v-for="cat in linkStore.categories" :key="cat.id" class="bm-category">
+              <div class="bm-cat-header" @click="toggleCat(cat.id)" :class="{ collapsed: collapsedCats.has(cat.id) }">
+                <el-icon :size="12"><ArrowRight /></el-icon>
+                <span class="bm-cat-name" @dblclick.stop="handleRenameCategory(cat)">{{ cat.name }}</span>
+                <span class="bm-cat-count">{{ catCount(cat.id) }}</span>
+                <el-button size="small" text type="danger" class="bm-cat-del" @click.stop="linkStore.removeCategory(cat.id)">×</el-button>
+              </div>
+              <div v-show="!collapsedCats.has(cat.id)" class="bm-cat-drop"
+                @dragover.prevent @drop.prevent="handleDropBM($event, cat.id)">
+                <div v-for="bm in catBookmarks(cat.id)" :key="bm.id" class="bm-item" draggable="true"
+                  @dragstart="handleBMDrag($event, bm.id)" @click="navigateTo(bm.url)">
+                  <span class="bm-name">{{ bm.name }}</span>
+                  <span class="bm-time">{{ formatTime(bm.createdAt) }}</span>
+                  <el-button size="small" text type="danger" class="bm-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
+                </div>
               </div>
             </div>
-          </div>
-
-          <!-- 未分类（按日期分组） -->
-          <div v-if="uncategorized.length > 0" class="bm-category">
-            <div v-for="group in uncategorizedGroups" :key="group.date" class="bm-date-group">
-              <div class="bm-date-header">{{ group.date }}</div>
-              <div v-for="bm in group.items" :key="bm.id" class="bm-item" draggable="true"
-                @dragstart="handleBMDrag($event, bm.id)" @click="navigateTo(bm.url)">
-                <span class="bm-name">{{ bm.name }}</span>
-                <span class="bm-time">{{ formatTime(bm.createdAt) }}</span>
-                <el-button size="small" text type="danger" class="bm-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
+            <div v-if="uncategorized.length > 0" class="bm-category">
+              <div v-for="group in uncategorizedGroups" :key="group.date" class="bm-date-group">
+                <div class="bm-date-header">{{ group.date }}</div>
+                <div v-for="bm in group.items" :key="bm.id" class="bm-item" draggable="true"
+                  @dragstart="handleBMDrag($event, bm.id)" @click="navigateTo(bm.url)">
+                  <span class="bm-name">{{ bm.name }}</span>
+                  <span class="bm-time">{{ formatTime(bm.createdAt) }}</span>
+                  <el-button size="small" text type="danger" class="bm-del" @click.stop="linkStore.removeBookmark(bm.id)">×</el-button>
+                </div>
               </div>
             </div>
+            <div v-if="linkStore.bookmarks.length === 0" class="bm-empty">暂无书签</div>
           </div>
+        </template>
 
-          <div v-if="linkStore.bookmarks.length === 0" class="bm-empty">暂无书签</div>
-        </div>
+        <!-- 历史视图 -->
+        <template v-if="bmTab === 'history'">
+          <div class="bookmark-sidebar-header">
+            <span>🕐 访问历史</span>
+            <el-button size="small" text type="danger" v-if="visitHistory.length > 0" @click="visitHistory = []">清空</el-button>
+          </div>
+          <div v-if="visitHistory.length === 0" class="bm-empty">暂无访问记录</div>
+          <div v-else class="bookmark-list">
+            <div class="history-timeline">
+              <template v-for="(item, idx) in visitHistory" :key="idx">
+                <div v-if="idx === 0 || item.dateLabel !== visitHistory[idx-1]?.dateLabel" class="history-date-divider">
+                  <span>{{ item.dateLabel }}</span>
+                </div>
+                <div class="history-item" @click="navigateTo(item.url)" :title="item.url">
+                  <span class="history-time">{{ item.time }}</span>
+                  <span class="history-title">{{ item.title || item.url }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -128,7 +152,7 @@ const urlInput = ref('')
 const currentUrl = ref('')
 const webviewRef = ref<any>(null)
 const showBookmarks = ref(false)
-// 访问历史（仅在粘贴分享文案时记录）
+const bmTab = ref<'bookmarks' | 'history'>('bookmarks')
 interface VisitEntry { url: string; title: string; time: string; dateLabel: string }
 const visitHistory = ref<VisitEntry[]>([])
 const bmSearch = ref('')
@@ -321,32 +345,118 @@ function handleDropBM(_e: DragEvent, catId: string) {
 .browser-url-bar { display: flex; align-items: center; gap: 6px; flex: 1; }
 .browser-url-bar .el-input { flex: 1; }
 
-/* 访问历史时间轴 */
-.history-strip {
-  max-height: 160px;
-  overflow-y: auto;
-  padding: 4px 14px;
+/* 书签快捷栏 */
+.bookmark-strip {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px;
   background: #fafbfc;
   border-bottom: 1px solid #ebeef5;
+  overflow-x: auto;
   flex-shrink: 0;
 }
 
+.strip-item {
+  font-size: 11px;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s;
+}
+
+.strip-item:hover { background: #d9ecff; }
+
+.strip-del {
+  visibility: hidden;
+  margin-left: 2px;
+  font-size: 12px;
+}
+
+.strip-item:hover .strip-del { visibility: visible; }
+
+/* 主区域 */
+.browser-main { display: flex; flex: 1; min-height: 0; }
+.browser-content { flex: 1; position: relative; min-width: 0; }
+.browser-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #909399; gap: 8px; }
+.welcome-icon { font-size: 48px; }
+.welcome-hint { font-size: 12px; color: #c0c4cc; }
+.browser-iframe { width: 100%; height: 100%; border: none; }
+.browser-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: #909399; }
+.blocked-icon { font-size: 40px; }
+
+/* 收藏侧栏 */
+.bookmark-sidebar { width: 280px; flex-shrink: 0; border-left: 1px solid #e0e3e8; display: flex; flex-direction: column; background: #fafafa; }
+
+.bookmark-sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.bookmark-sidebar-tabs span {
+  flex: 1;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 13px;
+  cursor: pointer;
+  color: #909399;
+  transition: color 0.15s, border-color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.bookmark-sidebar-tabs span.active {
+  color: #409eff;
+  border-bottom-color: #409eff;
+}
+.bookmark-sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-weight: 600; font-size: 13px; border-bottom: 1px solid #ebeef5; }
+.bm-search { padding: 8px 12px; }
+.bookmark-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.bm-category { margin-bottom: 2px; }
+.bm-cat-header { display: flex; align-items: center; gap: 4px; padding: 5px 12px; font-size: 11px; color: #909399; cursor: pointer; user-select: none; }
+.bm-cat-header:hover { background: #f0f2f5; }
+.bm-cat-header .el-icon:first-child { transition: transform 0.2s; }
+.bm-cat-header.collapsed .el-icon:first-child { transform: rotate(-90deg); }
+.bm-cat-name { flex: 1; font-size: 11px; color: #606266; }
+.bm-cat-count { font-size: 10px; color: #c0c4cc; background: #eee; padding: 0 5px; border-radius: 8px; }
+.bm-cat-del { visibility: hidden; padding: 0; }
+.bm-cat-header:hover .bm-cat-del { visibility: visible; }
+
+.bm-item { display: flex; align-items: center; gap: 6px; padding: 5px 18px; cursor: pointer; transition: background 0.1s; }
+.bm-item:hover { background: #ecf5ff; }
+.bm-name { font-size: 12px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.bm-time { flex: 1; font-size: 10px; color: #c0c4cc; white-space: nowrap; }
+.bm-url { flex: 1; font-size: 10px; color: #c0c4cc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-del { visibility: hidden; padding: 0; }
+.bm-item:hover .bm-del { visibility: visible; }
+
+.bm-date-group { margin-bottom: 4px; }
+.bm-date-header { font-size: 10px; color: #c0c4cc; padding: 2px 18px; font-weight: 600; }
+
+.bm-empty { text-align: center; padding: 20px; color: #c0c4cc; font-size: 12px; }
+
+/* 历史时间轴（侧栏内） */
 .history-timeline {
   border-left: 2px solid #e0e3e8;
   padding-left: 14px;
+  margin: 8px 0 8px 12px;
 }
 
 .history-date-divider {
   font-size: 10px;
   color: #c0c4cc;
   font-weight: 600;
-  margin: 6px 0 4px -20px;
+  margin: 8px 0 4px -20px;
   padding-left: 6px;
 }
 
 .history-date-divider span {
-  background: #fafbfc;
-  padding: 0 6px;
+  background: #fafafa;
+  padding: 0 4px;
 }
 
 .history-item {
@@ -374,45 +484,8 @@ function handleDropBM(_e: DragEvent, catId: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #606266;
+  flex: 1;
 }
 
 .history-item:hover .history-title { color: #409eff; }
-
-/* 主区域 */
-.browser-main { display: flex; flex: 1; min-height: 0; }
-.browser-content { flex: 1; position: relative; min-width: 0; }
-.browser-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #909399; gap: 8px; }
-.welcome-icon { font-size: 48px; }
-.welcome-hint { font-size: 12px; color: #c0c4cc; }
-.browser-iframe { width: 100%; height: 100%; border: none; }
-.browser-blocked { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: #909399; }
-.blocked-icon { font-size: 40px; }
-
-/* 收藏侧栏 */
-.bookmark-sidebar { width: 280px; flex-shrink: 0; border-left: 1px solid #e0e3e8; display: flex; flex-direction: column; background: #fafafa; }
-.bookmark-sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-weight: 600; font-size: 13px; border-bottom: 1px solid #ebeef5; }
-.bm-search { padding: 8px 12px; }
-.bookmark-list { flex: 1; overflow-y: auto; padding: 4px 0; }
-.bm-category { margin-bottom: 2px; }
-.bm-cat-header { display: flex; align-items: center; gap: 4px; padding: 5px 12px; font-size: 11px; color: #909399; cursor: pointer; user-select: none; }
-.bm-cat-header:hover { background: #f0f2f5; }
-.bm-cat-header .el-icon:first-child { transition: transform 0.2s; }
-.bm-cat-header.collapsed .el-icon:first-child { transform: rotate(-90deg); }
-.bm-cat-name { flex: 1; font-size: 11px; color: #606266; }
-.bm-cat-count { font-size: 10px; color: #c0c4cc; background: #eee; padding: 0 5px; border-radius: 8px; }
-.bm-cat-del { visibility: hidden; padding: 0; }
-.bm-cat-header:hover .bm-cat-del { visibility: visible; }
-
-.bm-item { display: flex; align-items: center; gap: 6px; padding: 5px 18px; cursor: pointer; transition: background 0.1s; }
-.bm-item:hover { background: #ecf5ff; }
-.bm-name { font-size: 12px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
-.bm-time { flex: 1; font-size: 10px; color: #c0c4cc; white-space: nowrap; }
-.bm-url { flex: 1; font-size: 10px; color: #c0c4cc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bm-del { visibility: hidden; padding: 0; }
-.bm-item:hover .bm-del { visibility: visible; }
-
-.bm-date-group { margin-bottom: 4px; }
-.bm-date-header { font-size: 10px; color: #c0c4cc; padding: 2px 18px; font-weight: 600; }
-
-.bm-empty { text-align: center; padding: 20px; color: #c0c4cc; font-size: 12px; }
 </style>
