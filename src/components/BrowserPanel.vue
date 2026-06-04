@@ -32,14 +32,24 @@
           <p>在上方输入网址开始浏览</p>
           <p class="welcome-hint">支持收藏链接、分类管理</p>
         </div>
-        <iframe
-          v-else
-          ref="iframeRef"
-          :src="currentUrl"
-          class="browser-iframe"
-          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-          @load="onIframeLoad"
-        ></iframe>
+        <template v-else>
+          <iframe
+            v-show="!iframeBlocked"
+            ref="iframeRef"
+            :src="currentUrl"
+            class="browser-iframe"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            @load="onIframeLoad"
+          ></iframe>
+          <div v-if="iframeBlocked" class="browser-blocked">
+            <div class="blocked-icon">🔒</div>
+            <p>该网站不允许嵌入显示（X-Frame-Options）</p>
+            <p class="blocked-url">{{ currentUrl }}</p>
+            <el-button type="primary" @click="openExternal(currentUrl)">
+              在外部浏览器打开
+            </el-button>
+          </div>
+        </template>
       </div>
 
       <!-- 收藏侧栏 -->
@@ -116,6 +126,8 @@ const iframeRef = ref<HTMLIFrameElement | null>(null)
 const showBookmarks = ref(false)
 const bmSearch = ref('')
 const collapsedCats = ref(new Set<string>())
+const iframeBlocked = ref(false)
+let iframeTimeout: ReturnType<typeof setTimeout> | null = null
 
 // 导航历史
 const history = ref<string[]>([])
@@ -132,6 +144,12 @@ function navigateTo(url: string) {
   }
   urlInput.value = fixed
   currentUrl.value = fixed
+  iframeBlocked.value = false
+  // 5秒后若未加载成功，判定为被阻止
+  if (iframeTimeout) clearTimeout(iframeTimeout)
+  iframeTimeout = setTimeout(() => {
+    iframeBlocked.value = true
+  }, 5000)
   // 更新历史
   if (historyIdx.value < history.value.length - 1) {
     history.value = history.value.slice(0, historyIdx.value + 1)
@@ -146,6 +164,9 @@ function goBack() {
     const url = history.value[historyIdx.value]
     currentUrl.value = url
     urlInput.value = url
+    iframeBlocked.value = false
+    if (iframeTimeout) clearTimeout(iframeTimeout)
+    iframeTimeout = setTimeout(() => { iframeBlocked.value = true }, 5000)
   }
 }
 
@@ -155,17 +176,35 @@ function goForward() {
     const url = history.value[historyIdx.value]
     currentUrl.value = url
     urlInput.value = url
+    iframeBlocked.value = false
+    if (iframeTimeout) clearTimeout(iframeTimeout)
+    iframeTimeout = setTimeout(() => { iframeBlocked.value = true }, 5000)
   }
 }
 
 function refreshIframe() {
+  iframeBlocked.value = false
+  if (iframeTimeout) clearTimeout(iframeTimeout)
+  iframeTimeout = setTimeout(() => { iframeBlocked.value = true }, 5000)
   if (iframeRef.value) {
     iframeRef.value.src = iframeRef.value.src
   }
 }
 
 function onIframeLoad() {
-  // iframe 加载完成
+  if (iframeTimeout) {
+    clearTimeout(iframeTimeout)
+    iframeTimeout = null
+  }
+  iframeBlocked.value = false
+}
+
+function openExternal(url: string) {
+  try {
+    window.electronAPI.openExternal(url)
+  } catch {
+    window.open(url, '_blank')
+  }
 }
 
 async function handleBookmark() {
@@ -305,6 +344,26 @@ function handleDropBM(_e: DragEvent, catId: string) {
   width: 100%;
   height: 100%;
   border: none;
+}
+
+.browser-blocked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: #909399;
+}
+
+.blocked-icon { font-size: 40px; }
+
+.blocked-url {
+  font-size: 12px;
+  color: #c0c4cc;
+  word-break: break-all;
+  max-width: 400px;
+  text-align: center;
 }
 
 /* 收藏侧栏 */
