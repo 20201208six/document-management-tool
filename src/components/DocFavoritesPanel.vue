@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { useDocFavoritesStore } from '@/stores/docFavorites'
@@ -167,17 +167,18 @@ function handleRenameFolder(folder: DocFolder) {
 
 /** 打开收藏对应的文件并尝试选中文字 */
 async function navigateToSnippet(snippet: DocSnippet) {
-  // 如果文件已打开，直接切到标签页
   const existingTab = fileStore.openTabs.find(t => t.path === snippet.filePath)
   if (existingTab) {
     fileStore.switchToTab(snippet.filePath)
     fileStore.activeTab = 'editor'
-    // 等待 DOM 渲染后定位文字
+    // 当切换到相同文档时，v-if 会重载编辑器但 watch 不触发
+    // 需要手动恢复内容，等待 DOM 重建后再定位文字
+    await nextTick()
+    restoreEditorIfBlank()
     await tryFindAndSelect(snippet.text)
     return
   }
 
-  // 文件未打开，先导航到文件夹再打开
   const pathParts = snippet.filePath.replace(/\\/g, '/').split('/')
   pathParts.pop()
   const folderPath = pathParts.join('\\')
@@ -189,6 +190,25 @@ async function navigateToSnippet(snippet: DocSnippet) {
     await tryFindAndSelect(snippet.text)
   } else {
     ElMessage.warning('文件不存在或已被移动')
+  }
+}
+
+/** 如果编辑器内容为空，从 tab 中恢复 */
+function restoreEditorIfBlank() {
+  const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
+  if (!tab) return
+  if (tab.type === 'html') {
+    const el = document.querySelector('.rich-editor') as HTMLElement
+    if (el && (!el.textContent || el.textContent.trim() === '')) {
+      el.innerHTML = tab.content
+    }
+  } else {
+    const ta = document.querySelector('.editor-textarea') as HTMLTextAreaElement
+    if (ta && !ta.value) {
+      ta.value = tab.content
+      // 触发 v-model 更新
+      ta.dispatchEvent(new Event('input', { bubbles: true }))
+    }
   }
 }
 
@@ -222,19 +242,19 @@ function findInTextarea(t: HTMLTextAreaElement, text: string): boolean {
   t.focus()
   t.setSelectionRange(idx, idx + text.length)
   t.scrollTop = t.scrollHeight * (idx / t.value.length)
-  // 高亮闪烁
-  flashElement(t)
   return true
 }
 
 function findInRichEditor(container: HTMLElement, text: string): boolean {
+  // 先清除之前的高亮标签
+  container.querySelectorAll('.docfav-hl').forEach(el => {
+    el.replaceWith(...el.childNodes)
+  })
+
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  let firstIdx = -1
-  let firstNode: Text | null = null
   const plainText: string[] = []
   const nodes: Text[] = []
 
-  // 第一遍：收集所有文本节点和纯文本
   let node: Text | null
   while ((node = walker.nextNode() as Text | null)) {
     if (node.textContent) {
@@ -244,16 +264,13 @@ function findInRichEditor(container: HTMLElement, text: string): boolean {
   }
   const fullText = plainText.join('')
 
-  // 先在完整纯文本中查找
   let pos = fullText.indexOf(text)
   if (pos === -1) {
-    // 尝试忽略多余空白进行匹配
     const normalized = fullText.replace(/\s+/g, ' ').trim()
     const normText = text.replace(/\s+/g, ' ').trim()
     pos = normalized.indexOf(normText)
   }
   if (pos === -1) {
-    // 尝试匹配前20个字符
     const shortText = text.substring(0, Math.min(20, text.length)).replace(/\s+/g, ' ').trim()
     if (shortText.length >= 5) {
       pos = fullText.replace(/\s+/g, ' ').trim().indexOf(shortText)
@@ -261,7 +278,6 @@ function findInRichEditor(container: HTMLElement, text: string): boolean {
   }
   if (pos === -1) return false
 
-  // 定位到对应文本节点
   let offset = 0
   let targetNode: Text | null = null
   let targetOffset = 0
@@ -280,22 +296,21 @@ function findInRichEditor(container: HTMLElement, text: string): boolean {
     const endPos = Math.min(targetOffset + text.length, targetNode.textContent!.length)
     range.setStart(targetNode, targetOffset)
     range.setEnd(targetNode, endPos)
-    const sel = window.getSelection()
-    sel?.removeAllRanges()
-    sel?.addRange(range)
-    // 滚动到选区
-    const rect = range.getBoundingClientRect()
-    container.scrollTop += rect.top - container.getBoundingClientRect().top - 100
-    // 高亮闪烁
-    flashElement(container.querySelector('.msg-bubble') || container)
+
+    // 用 <span class="docfav-hl"> 包裹选中文字，只高亮该范围
+    const hl = document.createElement('span')
+    hl.className = 'docfav-hl'
+    range.surroundContents(hl)
+
+    // 滚动到高亮位置
+    hl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+    // 2 秒后移除高亮标签，保留纯文本
+    setTimeout(() => {
+      hl.replaceWith(...hl.childNodes)
+    }, 2500)
   }
   return true
-}
-
-/** 高亮闪烁 */
-function flashElement(el: Element | HTMLElement) {
-  el.classList.add('docfav-highlight')
-  setTimeout(() => el.classList.remove('docfav-highlight'), 2000)
 }
 </script>
 
@@ -451,25 +466,15 @@ function flashElement(el: Element | HTMLElement) {
 </style>
 
 <style>
-/* 文字收藏跳转高亮 */
-.docfav-highlight {
+/* 文字收藏跳转高亮：只闪烁被包裹的文字 */
+.docfav-hl {
   animation: docfav-flash 0.5s ease-in-out 3;
+  border-radius: 3px;
+  padding: 1px 0;
 }
 
 @keyframes docfav-flash {
   0%, 100% { background-color: transparent; }
   50% { background-color: #fff3cd; }
-}
-
-/* textarea 高亮 */
-textarea.docfav-highlight {
-  outline: 3px solid #ffc107;
-  outline-offset: -2px;
-}
-
-/* HTML 编辑器高亮 */
-.rich-editor.docfav-highlight {
-  box-shadow: 0 0 0 3px #ffc107;
-  border-radius: 4px;
 }
 </style>
