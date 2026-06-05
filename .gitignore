@@ -23,3 +23,5 @@ Thumbs.db
 
 # Electron-builder output
 release/
+build-out/
+dist-release/
