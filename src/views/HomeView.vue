@@ -1,5 +1,23 @@
 <template>
   <div class="home-view">
+    <!-- 模式切换栏 -->
+    <div class="mode-bar">
+      <div class="mode-buttons">
+        <button
+          v-for="cfg in modeConfigs"
+          :key="cfg.key"
+          class="mode-btn"
+          :class="{ active: modeStore.currentMode === cfg.key }"
+          @click="modeStore.switchMode(cfg.key)"
+        >
+          <span class="mode-dot"></span>
+          {{ cfg.label }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 基础模式 -->
+    <template v-if="modeStore.currentMode === 'basic'">
     <div class="sidebar">
       <FolderBrowser />
       <FavoritesPanel />
@@ -279,6 +297,13 @@
 
     <!-- 智能对话面板 -->
     <ChatPanel />
+  </template>
+
+    <!-- 独特模式 -->
+    <UniqueModeView v-if="modeStore.currentMode === 'unique'" />
+
+    <!-- 创作者模式 -->
+    <CreatorModeView v-if="modeStore.currentMode === 'creator'" />
   </div>
 </template>
 
@@ -291,14 +316,20 @@ import DocFavoritesPanel from '@/components/DocFavoritesPanel.vue'
 import BrowserPanel from '@/components/BrowserPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import UniqueModeView from '@/views/UniqueModeView.vue'
+import CreatorModeView from '@/views/CreatorModeView.vue'
 import { useFileStore } from '@/stores/file'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useDocFavoritesStore } from '@/stores/docFavorites'
 import { useChatStore } from '@/stores/chat'
 import { useSettingsStore, type ReplaceRule } from '@/stores/settings'
+import { useModeStore } from '@/stores/mode'
+import { MODE_CONFIGS } from '@/types/mode'
 import cantoneseDict from '@/data/cantonese-dict.json'
 
 const fileStore = useFileStore()
+const modeStore = useModeStore()
+const modeConfigs = MODE_CONFIGS
 const favoritesStore = useFavoritesStore()
 const docFavStore = useDocFavoritesStore()
 const chatStore = useChatStore()
@@ -1008,6 +1039,97 @@ async function executeCantoneseTranslate() {
   width: 100%;
   height: 100vh;
   background: #f5f6fa;
+  position: relative;
+}
+
+/* 模式切换栏 */
+.mode-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 3px;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: #909399;
+  cursor: pointer;
+  border-radius: 21px;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.mode-btn:hover {
+  color: #409eff;
+  background: #ecf5ff;
+}
+
+.mode-btn.active {
+  color: #fff;
+  background: #409eff;
+  box-shadow: 0 2px 8px rgba(64,158,255,0.3);
+}
+
+.mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.mode-btn.active .mode-dot {
+  opacity: 1;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255,255,255,0.6);
+}
+
+/* 模式占位页面 */
+.mode-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f6fa;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #909399;
+}
+
+.placeholder-content h2 {
+  margin: 16px 0 8px;
+  font-size: 22px;
+  color: #303133;
+}
+
+.placeholder-content p {
+  font-size: 14px;
+  margin: 0;
+}
+
+.placeholder-hint {
+  margin-top: 20px !important;
+  font-size: 12px !important;
+  color: #c0c4cc !important;
 }
 
 .sidebar {
