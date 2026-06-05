@@ -75,23 +75,46 @@
       </div>
     </div>
 
+    <!-- 面包屑导航 -->
+    <div class="browse-breadcrumb" v-if="fileStore.currentFolder && fileStore.currentFolder !== getRootPath()">
+      <el-button size="small" text @click="fileStore.navigateUp()" title="返回上级">
+        <el-icon><Back /></el-icon>
+      </el-button>
+      <el-button size="small" text @click="fileStore.resetBrowsePath()" title="回到根目录">
+        🏠 {{ getRootLabel() }}
+      </el-button>
+      <span class="breadcrumb-sep">/</span>
+      <span class="breadcrumb-current">{{ getCurrentDirName() }}</span>
+    </div>
+
     <div class="file-list" v-if="fileStore.files.length > 0 && searchResults.length === 0">
-      <div
-        v-for="entry in fileStore.files"
-        :key="entry.path"
-        class="file-entry"
-        :class="{ selected: fileStore.selectedFile?.path === entry.path }"
-        @click="handleFileClick(entry)"
-      >
-        <el-icon class="file-icon"><component :is="getFileIcon(entry)" /></el-icon>
-        <div class="file-info">
-          <span class="file-name">{{ entry.name }}</span>
-          <span class="file-folder" v-if="(entry as any).folderLabel && (entry as any).folderLabel">{{ (entry as any).folderLabel }}</span>
+      <template v-for="entry in sortedEntries" :key="entry.path">
+        <!-- 文件夹 -->
+        <div v-if="entry.isDirectory"
+          class="file-entry folder-entry"
+          @click="handleFolderClick(entry)"
+        >
+          <el-icon class="file-icon folder-icon"><Folder /></el-icon>
+          <div class="file-info">
+            <span class="file-name">{{ entry.name }}</span>
+          </div>
         </div>
-        <div class="file-actions" @click.stop>
-          <el-button size="small" text @click="openFileLocation(entry)"><el-icon><FolderOpened /></el-icon></el-button>
+        <!-- 文件 -->
+        <div v-else
+          class="file-entry"
+          :class="{ selected: fileStore.selectedFile?.path === entry.path }"
+          @click="handleFileClick(entry)"
+        >
+          <el-icon class="file-icon"><component :is="getFileIcon(entry)" /></el-icon>
+          <div class="file-info">
+            <span class="file-name">{{ entry.name }}</span>
+            <span class="file-folder" v-if="(entry as any).folderLabel && (entry as any).folderLabel">{{ (entry as any).folderLabel }}</span>
+          </div>
+          <div class="file-actions" @click.stop>
+            <el-button size="small" text @click="openFileLocation(entry)"><el-icon><FolderOpened /></el-icon></el-button>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <el-dialog v-model="showPathDialog" :title="editingPathId ? '编辑路径' : '添加固定路径'" width="460px" :append-to-body="true">
@@ -138,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useFileStore } from '@/stores/file'
 
@@ -151,6 +174,33 @@ const showCreateDialog = ref(false)
 const editingPathId = ref('')
 const pathForm = ref({ label: '', path: '', group: '' })
 const newFileForm = ref({ name: '', type: 'docx' })
+
+/** 排序：文件夹在前，文件在后 */
+const sortedEntries = computed(() => {
+  const arr = [...fileStore.files]
+  arr.sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1
+    if (!a.isDirectory && b.isDirectory) return 1
+    return a.name.localeCompare(b.name)
+  })
+  return arr
+})
+
+function getRootPath(): string {
+  const active = fileStore.folderPaths.find(fp => fp.id === fileStore.activePathId)
+  return active?.path || ''
+}
+
+function getRootLabel(): string {
+  const active = fileStore.folderPaths.find(fp => fp.id === fileStore.activePathId)
+  return active?.label || '根目录'
+}
+
+function getCurrentDirName(): string {
+  const p = fileStore.currentFolder
+  if (!p) return ''
+  return p.replace(/\\/g, '/').split('/').pop() || p
+}
 
 async function handleSelectFolder() {
   const selected = await window.electronAPI.selectFolder()
@@ -194,6 +244,10 @@ function savePath() {
 
 function handleFileClick(entry: any) {
   fileStore.selectFile(entry)
+}
+
+function handleFolderClick(entry: any) {
+  fileStore.navigateIntoDir(entry.path)
 }
 
 function getFileIcon(entry: any) {
@@ -378,6 +432,40 @@ async function handleCreateFile() {
 .sr-name { color: #409eff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .sr-folder { color: #909399; font-size: 11px; }
 .sr-count { color: #909399; font-size: 11px; white-space: nowrap; }
+
+/* 面包屑导航 */
+.browse-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #f0f5ff;
+  border-bottom: 1px solid #d9ecff;
+}
+
+.breadcrumb-sep {
+  color: #c0c4cc;
+  margin: 0 2px;
+}
+
+.breadcrumb-current {
+  color: #303133;
+  font-weight: 500;
+}
+
+/* 文件夹条目样式 */
+.folder-entry {
+  background: #fafbfc;
+}
+
+.folder-entry:hover {
+  background: #ecf5ff;
+}
+
+.folder-icon {
+  color: #e6a23c !important;
+}
 
 .file-list {
   flex: 1;

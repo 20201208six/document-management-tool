@@ -50,6 +50,7 @@ export const useFileStore = defineStore('file', () => {
   const activeTabPath = ref('')
   const folderPaths = ref<FolderPath[]>(loadFixedPaths())
   const activePathId = ref(folderPaths.value[0]?.id || '')
+  const browseStack = ref<string[]>([]) // 子目录导航栈
 
   const selectedFile = computed<FileEntry | null>(() => {
     const tab = openTabs.value.find(t => t.path === activeTabPath.value)
@@ -146,8 +147,7 @@ export const useFileStore = defineStore('file', () => {
 
   async function openFileInTab(entry: FileEntry & { type?: string; content?: string }) {
     if (entry.isDirectory) {
-      currentFolder.value = entry.path
-      await refreshFiles()
+      await navigateIntoDir(entry.path)
       return
     }
     const existing = openTabs.value.find(t => t.path === entry.path)
@@ -217,20 +217,50 @@ export const useFileStore = defineStore('file', () => {
   }
 
   async function refreshFiles() {
-    const active = folderPaths.value.find(f => f.id === activePathId.value)
-    if (!active || !active.isValid) {
+    // 如果在子目录浏览中，读取 currentFolder 路径
+    const dirPath = currentFolder.value || (() => {
+      const active = folderPaths.value.find(f => f.id === activePathId.value)
+      return active?.isValid ? active.path : ''
+    })()
+    if (!dirPath) {
       files.value = []
       return
     }
     try {
-      const entries = await window.electronAPI.readDirectory(active.path)
-      entries.forEach(e => { (e as any).folderLabel = active.label })
+      const entries = await window.electronAPI.readDirectory(dirPath)
+      const active = folderPaths.value.find(f => f.id === activePathId.value)
+      entries.forEach(e => { (e as any).folderLabel = active?.label || '' })
       files.value = entries
-      currentFolder.value = active.path
     } catch {
-      active.isValid = false
+      const active = folderPaths.value.find(f => f.id === activePathId.value)
+      if (active) active.isValid = false
       files.value = []
     }
+  }
+
+  /** 进入子文件夹 */
+  async function navigateIntoDir(dirPath: string) {
+    browseStack.value.push(currentFolder.value)
+    currentFolder.value = dirPath
+    await refreshFiles()
+  }
+
+  /** 返回上级文件夹 */
+  async function navigateUp() {
+    const prev = browseStack.value.pop()
+    if (prev !== undefined) {
+      currentFolder.value = prev
+    } else {
+      currentFolder.value = ''
+    }
+    await refreshFiles()
+  }
+
+  /** 重置到固定路径根目录 */
+  async function resetBrowsePath() {
+    browseStack.value = []
+    currentFolder.value = ''
+    await refreshFiles()
   }
 
   async function searchAllPaths(keyword: string) {
@@ -323,6 +353,7 @@ export const useFileStore = defineStore('file', () => {
     closeAllTabs,
     folderPaths,
     activePathId,
+    browseStack,
     addFolderPath,
     addTempPath,
     removeFolderPath,
@@ -331,6 +362,9 @@ export const useFileStore = defineStore('file', () => {
     searchAllPaths,
     setFolder,
     refreshFiles,
+    navigateIntoDir,
+    navigateUp,
+    resetBrowsePath,
     selectFile,
     navigateToSearchResult,
     deleteSelectedFile,
