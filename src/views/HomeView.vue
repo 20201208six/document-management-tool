@@ -186,6 +186,7 @@
             <el-option label="Word 文档 (.docx)" value="docx" />
             <el-option label="Excel 表格 (.xlsx)" value="xlsx" />
             <el-option label="文本文件 (.txt)" value="txt" />
+            <el-option label="字幕文件 (.srt)" value="srt" />
           </el-select>
         </el-form-item>
       </el-form>

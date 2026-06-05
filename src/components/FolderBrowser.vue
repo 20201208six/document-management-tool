@@ -125,6 +125,7 @@
             <el-option label="Word 文档 (.docx)" value="docx" />
             <el-option label="Excel 表格 (.xlsx)" value="xlsx" />
             <el-option label="文本文件 (.txt)" value="txt" />
+            <el-option label="字幕文件 (.srt)" value="srt" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -199,6 +200,7 @@ function getFileIcon(entry: any) {
   const ext = entry.name.split('.').pop()?.toLowerCase()
   if (ext === 'docx' || ext === 'doc') return 'Document'
   if (ext === 'xlsx' || ext === 'xls') return 'Grid'
+  if (ext === 'srt') return 'VideoCamera'
   if (ext === 'json') return 'DataBoard'
   return 'Memo'
 }

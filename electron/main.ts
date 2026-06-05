@@ -79,12 +79,15 @@ ipcMain.handle('select-folder', async () => {
 ipcMain.handle('read-directory', async (_event, dirPath: string) => {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true })
-    return entries.map(entry => ({
-      name: entry.name,
-      path: path.join(dirPath, entry.name),
-      isDirectory: entry.isDirectory(),
-      isFile: entry.isFile()
-    }))
+    const supportedExts = ['.txt', '.docx', '.doc', '.xlsx', '.xls', '.srt']
+    return entries
+      .filter(entry => entry.isDirectory() || supportedExts.includes(path.extname(entry.name).toLowerCase()))
+      .map(entry => ({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile()
+      }))
   } catch {
     return []
   }
@@ -93,7 +96,7 @@ ipcMain.handle('read-directory', async (_event, dirPath: string) => {
 ipcMain.handle('read-file-content', async (_event, filePath: string) => {
   try {
     const ext = path.extname(filePath).toLowerCase()
-    if (ext === '.txt') {
+    if (ext === '.txt' || ext === '.srt') {
       return { type: 'text', content: fs.readFileSync(filePath, 'utf-8') }
     }
     if (ext === '.docx' || ext === '.doc') {
@@ -222,7 +225,7 @@ ipcMain.handle('create-file', async (_event, folderPath: string, fileName: strin
     if (fs.existsSync(fullPath)) {
       return { success: false, error: '文件已存在' }
     }
-    if (fileType === 'txt' || fileType === 'json') {
+    if (fileType === 'txt' || fileType === 'json' || fileType === 'srt') {
       fs.writeFileSync(fullPath, '')
     } else if (fileType === 'docx') {
       const doc = new docx.Document({ sections: [{ children: [new docx.Paragraph({ children: [] })] }] })
@@ -251,7 +254,7 @@ ipcMain.handle('delete-file', async (_event, filePath: string) => {
 
 ipcMain.handle('search-in-files', async (_event, folderPath: string, keyword: string) => {
   const results: any[] = []
-  const extensions = ['.docx', '.doc', '.xlsx', '.txt']
+  const extensions = ['.docx', '.doc', '.xlsx', '.txt', '.srt']
 
   async function searchRecursive(dir: string) {
     try {
@@ -265,7 +268,7 @@ ipcMain.handle('search-in-files', async (_event, folderPath: string, keyword: st
           if (!extensions.includes(ext)) continue
           try {
             let content = ''
-            if (ext === '.txt') {
+            if (ext === '.txt' || ext === '.srt') {
               content = fs.readFileSync(fullPath, 'utf-8')
             } else if (ext === '.docx' || ext === '.doc') {
               const buffer = fs.readFileSync(fullPath)
@@ -332,7 +335,7 @@ ipcMain.handle('select-file', async () => {
 ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
   try {
     const ext = path.extname(filePath).toLowerCase()
-    if (ext === '.txt' || ext === '.json' || ext === '.csv' || ext === '.md' || ext === '.html' || ext === '.xml') {
+    if (ext === '.txt' || ext === '.json' || ext === '.csv' || ext === '.md' || ext === '.html' || ext === '.xml' || ext === '.srt') {
       return { success: true, content: fs.readFileSync(filePath, 'utf-8') }
     }
     if (ext === '.docx' || ext === '.doc') {
