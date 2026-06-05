@@ -44,6 +44,7 @@ export const useFileStore = defineStore('file', () => {
   const activeTab = ref('editor')
   const highlightKeyword = ref('')
   const highlightMatchText = ref('')
+  const highlightMatchIndex = ref(-1)
   const searchJumpId = ref(0)
   const openTabs = ref<Tab[]>([])
   const activeTabPath = ref('')
@@ -251,9 +252,10 @@ export const useFileStore = defineStore('file', () => {
     await openFileInTab(entry)
   }
 
-  function navigateToSearchResult(keyword: string, matchText: string) {
+  function navigateToSearchResult(keyword: string, matchText: string, matchIndex: number = -1) {
     highlightKeyword.value = keyword
     highlightMatchText.value = matchText
+    highlightMatchIndex.value = matchIndex
     searchJumpId.value++
     activeTab.value = 'editor'
   }
@@ -306,6 +308,7 @@ export const useFileStore = defineStore('file', () => {
     activeTab,
     highlightKeyword,
     highlightMatchText,
+    highlightMatchIndex,
     searchJumpId,
     openTabs,
     activeTabPath,

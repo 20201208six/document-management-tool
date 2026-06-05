@@ -103,7 +103,6 @@
                 v-model="editorSearchKeyword"
                 placeholder="在文件中搜索..."
                 size="small"
-                @input="onEditorSearchInput"
                 @keydown="onEditorSearchKeydown"
               >
                 <template #prefix>
@@ -308,6 +307,7 @@ const editorContent = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const richEditorRef = ref<HTMLElement | null>(null)
 const editPlainText = ref('')
+const editorTextContent = ref('')
 
 function htmlToPlain(html: string): string {
   const div = document.createElement('div')
@@ -318,7 +318,12 @@ function htmlToPlain(html: string): string {
 function syncPlainToStore() {
   if (!fileStore.activeTabPath) return
   if (fileStore.fileType === 'html' && richEditorRef.value) {
-    fileStore.updateTabContent(fileStore.activeTabPath, richEditorRef.value.innerHTML)
+    // 复制 DOM 并移除高亮标记，获取纯净内容
+    const clone = richEditorRef.value.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('mark.srch-hl').forEach(el => {
+      el.replaceWith(...el.childNodes)
+    })
+    fileStore.updateTabContent(fileStore.activeTabPath, clone.innerHTML)
   } else if (fileStore.activeTabPath) {
     fileStore.updateTabContent(fileStore.activeTabPath, editPlainText.value)
   }
@@ -535,6 +540,7 @@ function escapeHtml(str: string): string {
 watch(() => fileStore.fileContent, (val) => {
   editorContent.value = val || ''
   editPlainText.value = fileStore.fileType === 'html' ? htmlToPlain(val || '') : (val || '')
+  editorTextContent.value = editPlainText.value
   nextTick(() => setRichContent(val || ''))
 })
 
@@ -560,16 +566,43 @@ function syncScroll() {}
 function clearHighlight() {
   fileStore.highlightKeyword = ''
   fileStore.highlightMatchText = ''
+  // 恢复 HTML 编辑器的原始内容（移除高亮标记）
+  if (fileStore.fileType === 'html' && richEditorRef.value) {
+    const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
+    if (tab) {
+      richEditorRef.value.innerHTML = tab.content
+      editorTextContent.value = richEditorRef.value.textContent || ''
+    }
+  }
   closeEditorSearch()
+}
+
+/** 对 HTML 编辑器内容进行关键词高亮 */
+function highlightEditorContent(kw: string) {
+  if (!richEditorRef.value || !kw) return
+  const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
+  if (!tab) return
+  // 从原始内容出发进行高亮（避免重复标记）
+  let html = tab.content
+  const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // 只在文本节点中替换，避免破坏 HTML 标签
+  html = html.replace(
+    new RegExp(`(${escapedKw})(?![^<]*>)`, 'gi'),
+    '<mark class="srch-hl">$1</mark>'
+  )
+  richEditorRef.value.innerHTML = html
+  // 同步文本内容（高亮不改变文本）
+  editorTextContent.value = richEditorRef.value.textContent || ''
 }
 
 const showEditorSearch = ref(false)
 const editorSearchKeyword = ref('')
 const editorSearchInputRef = ref<any>(null)
 const currentEditorMatch = ref(0)
+let lastSearchedKeyword = ''
 
 const editorMatches = computed(() => {
-  const text = fileStore.fileType === 'html' ? (richEditorRef.value?.textContent || '') : editPlainText.value
+  const text = editorTextContent.value
   const kw = editorSearchKeyword.value
   if (!kw || !text) return [] as { pos: number; line: number }[]
   const positions: { pos: number; line: number }[] = []
@@ -602,12 +635,25 @@ function closeEditorSearch() {
   showEditorSearch.value = false
   editorSearchKeyword.value = ''
   currentEditorMatch.value = 0
+  lastSearchedKeyword = ''
+  // 恢复 HTML 编辑器的原始内容（移除高亮标记）
+  if (fileStore.fileType === 'html' && richEditorRef.value) {
+    const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
+    if (tab) {
+      richEditorRef.value.innerHTML = tab.content
+      editorTextContent.value = richEditorRef.value.textContent || ''
+    }
+  }
 }
 
 function onEditorSearchInput() {
   currentEditorMatch.value = 0
+  // 对 HTML 编辑器进行高亮渲染
+  if (fileStore.fileType === 'html' && richEditorRef.value) {
+    highlightEditorContent(editorSearchKeyword.value)
+  }
   if (editorMatches.value.length > 0) {
-    scrollToEditorMatch(0)
+    scrollToEditorMatch(0, false)
   }
 }
 
@@ -615,16 +661,16 @@ function navigateEditorMatch(direction: number) {
   if (editorMatches.value.length === 0) return
   const total = editorMatches.value.length
   currentEditorMatch.value = ((currentEditorMatch.value + direction) % total + total) % total
-  scrollToEditorMatch(currentEditorMatch.value)
+  scrollToEditorMatch(currentEditorMatch.value, false)
 }
 
-function scrollToEditorMatch(index: number) {
+function scrollToEditorMatch(index: number, focusEditor = true) {
   if (fileStore.fileType === 'html') {
     const el = richEditorRef.value
     if (!el || index >= editorMatches.value.length) return
     const m = editorMatches.value[index]
     const kw = editorSearchKeyword.value
-    findAndSelectText(el, kw, m.pos)
+    findAndSelectText(el, kw, m.pos, focusEditor)
     return
   }
   const ta = textareaRef.value
@@ -632,11 +678,13 @@ function scrollToEditorMatch(index: number) {
   const m = editorMatches.value[index]
   const kw = editorSearchKeyword.value
   ta.scrollTop = m.line * 24
-  ta.focus()
   ta.setSelectionRange(m.pos, m.pos + kw.length)
+  if (focusEditor) {
+    ta.focus()
+  }
 }
 
-function findAndSelectText(root: Node, kw: string, targetPos: number) {
+function findAndSelectText(root: Node, kw: string, targetPos: number, focusEditor = true) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
   let curPos = 0
   let node: Text | null
@@ -653,7 +701,9 @@ function findAndSelectText(root: Node, kw: string, targetPos: number) {
         sel?.addRange(range)
         const el = node.parentElement
         el?.scrollIntoView({ block: 'center' })
-        ;(root as HTMLElement).focus()
+        if (focusEditor) {
+          ;(root as HTMLElement).focus()
+        }
         return
       }
       idx += kw.length
@@ -665,7 +715,14 @@ function findAndSelectText(root: Node, kw: string, targetPos: number) {
 function onEditorSearchKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') {
     e.preventDefault()
-    navigateEditorMatch(e.shiftKey ? -1 : 1)
+    const kw = editorSearchKeyword.value
+    // 关键词变化或首次搜索时，重新执行搜索
+    if (kw && kw !== lastSearchedKeyword) {
+      lastSearchedKeyword = kw
+      onEditorSearchInput()
+    } else if (kw) {
+      navigateEditorMatch(e.shiftKey ? -1 : 1)
+    }
   } else if (e.key === 'Escape') {
     e.preventDefault()
     closeEditorSearch()
@@ -685,6 +742,10 @@ function onGlobalKeydown(e: KeyboardEvent) {
       openEditorSearch()
     }
   }
+  if (e.key === 'Escape' && showEditorSearch.value) {
+    e.preventDefault()
+    closeEditorSearch()
+  }
 }
 
 onMounted(() => {
@@ -698,7 +759,7 @@ onUnmounted(() => {
 function findEditorMatchIndex(matchText: string): number {
   const matches = editorMatches.value
   if (!matchText || matches.length === 0) return 0
-  const text = fileStore.fileType === 'html' ? (richEditorRef.value?.textContent || '') : editPlainText.value
+  const text = editorTextContent.value
   const lines = text.split('\n')
   const trimmedMatch = matchText.trim()
   const lineIdx = lines.findIndex(l => l.includes(trimmedMatch))
@@ -711,17 +772,44 @@ watch(() => fileStore.searchJumpId, () => {
   const kw = fileStore.highlightKeyword
   if (!kw) return
   showEditorSearch.value = true
-  editorSearchKeyword.value = kw
+  // 先清空再设置，确保触发响应式更新
+  editorSearchKeyword.value = ''
   nextTick(() => {
-    // 延迟确保编辑器 DOM 完全渲染（HTML 富文本需要 innerHTML 生效）
-    setTimeout(() => {
-      if (editorMatches.value.length > 0) {
-        currentEditorMatch.value = findEditorMatchIndex(fileStore.highlightMatchText)
-        scrollToEditorMatch(currentEditorMatch.value)
-      }
-    }, 100)
+    editorSearchKeyword.value = kw
+    lastSearchedKeyword = kw
+    // 对 HTML 编辑器进行高亮渲染
+    if (fileStore.fileType === 'html' && richEditorRef.value) {
+      highlightEditorContent(kw)
+    }
+    // 轮询等待编辑器内容就绪后再跳转
+    waitForContentAndScroll(kw)
   })
 })
+
+/** 轮询等待 content 就绪后执行跳转 */
+function waitForContentAndScroll(kw: string) {
+  let attempts = 0
+  const maxAttempts = 50 // 最多等 5 秒
+  const tryScroll = () => {
+    attempts++
+    if (editorTextContent.value && editorMatches.value.length > 0) {
+      // 优先使用传递的匹配索引进行精确定位
+      const targetIdx = fileStore.highlightMatchIndex
+      if (targetIdx >= 0 && targetIdx < editorMatches.value.length) {
+        currentEditorMatch.value = targetIdx
+      } else {
+        currentEditorMatch.value = findEditorMatchIndex(fileStore.highlightMatchText)
+      }
+      scrollToEditorMatch(currentEditorMatch.value)
+      return
+    }
+    if (attempts < maxAttempts) {
+      setTimeout(tryScroll, 100)
+    }
+  }
+  // 初始稍长延迟，等 Vue 响应式更新 + nextTick 完成
+  setTimeout(tryScroll, 150)
+}
 
 function toggleFavorite() {
   const file = fileStore.selectedFile

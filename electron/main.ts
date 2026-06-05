@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import mammoth from 'mammoth'
@@ -36,13 +36,28 @@ function createWindow() {
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  // F12 切换开发者工具
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'F12' && input.type === 'keyDown') {
+      if (mainWindow!.webContents.isDevToolsOpened()) {
+        mainWindow!.webContents.closeDevTools()
+      } else {
+        mainWindow!.webContents.openDevTools()
+      }
+    }
+  })
 }
 
 app.whenReady().then(() => {
+  // 设置全局 User-Agent，避免被抖音等网站检测为内嵌浏览器
+  const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  session.defaultSession.setUserAgent(chromeUA)
+  app.userAgentFallback = chromeUA
+
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

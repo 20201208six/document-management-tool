@@ -45,7 +45,7 @@
             v-for="(match, idx) in result.matches"
             :key="idx"
             class="match-line"
-            @click="openFile(result, keyword, match)"
+            @click="openFile(result, keyword, match, idx)"
             v-html="highlightMatch(match)"
           ></div>
         </div>
@@ -90,18 +90,17 @@ function highlightMatch(text: string): string {
   )
 }
 
-async function openFile(result: any, kw: string, matchText: string) {
+async function openFile(result: any, kw: string, matchText: string, matchIndex: number = -1) {
   try {
     // 如果文件已打开，直接切换标签页
     const existing = fileStore.openTabs.find(t => t.path === result.path)
     if (existing) {
       fileStore.switchToTab(result.path)
-      fileStore.activeTab = 'search'
     } else {
       const entry = { name: result.fileName, path: result.path, isDirectory: false, isFile: true }
       await fileStore.selectFile(entry)
     }
-    fileStore.navigateToSearchResult(kw, matchText)
+    fileStore.navigateToSearchResult(kw, matchText, matchIndex)
   } catch (err) {
     console.error('打开文件失败:', err)
   }

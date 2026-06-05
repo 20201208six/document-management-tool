@@ -5,7 +5,7 @@ directories:
   buildResources: resources
 win:
   target:
-    - target: nsis
+    - target: portable
       arch: [x64]
   icon: resources/icon.ico
 nsis:
