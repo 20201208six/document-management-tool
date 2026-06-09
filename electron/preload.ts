@@ -14,5 +14,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openWithDefaultApp: (filePath: string) => ipcRenderer.invoke('open-with-default-app', filePath),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   selectFile: () => ipcRenderer.invoke('select-file'),
-  readFileAsText: (filePath: string) => ipcRenderer.invoke('read-file-as-text', filePath)
+  selectVideoFile: () => ipcRenderer.invoke('select-video-files'),
+  readFileAsText: (filePath: string) => ipcRenderer.invoke('read-file-as-text', filePath),
+  // 文件系统
+  getUsername: () => ipcRenderer.invoke('get-username'),
+  createDirectory: (dirPath: string) => ipcRenderer.invoke('create-directory', dirPath),
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke('write-file', filePath, content),
+  // ASR
+  runAsr: (videoPath: string) => ipcRenderer.invoke('run-asr', videoPath),
+  // 字幕缓存
+  loadSubtitleCache: (videoPath: string) => ipcRenderer.invoke('load-subtitle-cache', videoPath),
+  saveSubtitleCache: (videoPath: string, content: string) => ipcRenderer.invoke('save-subtitle-cache', videoPath, content)
 })

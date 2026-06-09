@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
+import { spawn } from 'child_process'
 import mammoth from 'mammoth'
 import XLSX from 'xlsx'
 import * as docx from 'docx'
@@ -30,7 +32,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webviewTag: true
+      webviewTag: true,
+      webSecurity: false  // 允许 <video> 使用 file:// 协议播放本地视频
     }
   })
 
@@ -53,6 +56,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+
   // 设置全局 User-Agent，避免被抖音等网站检测为内嵌浏览器
   const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
   session.defaultSession.setUserAgent(chromeUA)
@@ -332,6 +336,21 @@ ipcMain.handle('select-file', async () => {
   return result.filePaths[0]
 })
 
+ipcMain.handle('select-video-files', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: '视频文件', extensions: ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'webm', 'm4v', '3gp'] },
+      { name: '所有文件', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) return []
+  return result.filePaths.map(fp => ({
+    path: fp,
+    name: path.basename(fp)
+  }))
+})
+
 ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
   try {
     const ext = path.extname(filePath).toLowerCase()
@@ -369,5 +388,252 @@ ipcMain.handle('save-xlsx-file', async (_event, filePath: string, content: strin
   } catch (err: any) {
     console.error('保存 xlsx 失败:', err)
     return { success: false, error: err.message || '保存失败' }
+  }
+})
+
+// ===== 新增：文件系统 API =====
+
+/** 获取当前 Windows 用户名 */
+ipcMain.handle('get-username', async () => {
+  try {
+    return os.userInfo().username
+  } catch {
+    return process.env.USERNAME || 'Administrator'
+  }
+})
+
+/** 创建目录（递归） */
+ipcMain.handle('create-directory', async (_event, dirPath: string) => {
+  try {
+    fs.mkdirSync(dirPath, { recursive: true })
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+/** 写入文件 */
+ipcMain.handle('write-file', async (_event, filePath: string, content: string) => {
+  try {
+    const dir = path.dirname(filePath)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ===== 字幕缓存 =====
+
+/** 读取已缓存的字幕 JSON */
+ipcMain.handle('load-subtitle-cache', async (_event, videoPath: string) => {
+  try {
+    const cachePath = videoPath.replace(/\.\w+$/, '.subtitles.json')
+    if (fs.existsSync(cachePath)) {
+      const data = fs.readFileSync(cachePath, 'utf-8')
+      return { success: true, content: data }
+    }
+    return { success: false, error: '缓存文件不存在' }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+/** 保存字幕 JSON 到视频相邻位置 */
+ipcMain.handle('save-subtitle-cache', async (_event, videoPath: string, content: string) => {
+  try {
+    const cachePath = videoPath.replace(/\.\w+$/, '.subtitles.json')
+    fs.writeFileSync(cachePath, content, 'utf-8')
+    return { success: true, path: cachePath }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ===== 新增：豆包 ASR API 处理 =====
+
+const ASR_APP_ID = '4064117990'
+const ASR_ACCESS_TOKEN = 'uW7Wx6cWjcun0rUWFA_NJgFSPpadmSAt'
+const ASR_SUBMIT_URL = 'https://openspeech.bytedance.com/api/v1/vc/submit'
+const ASR_QUERY_URL = 'https://openspeech.bytedance.com/api/v1/vc/query'
+
+/** 查找 ffmpeg 路径（优先使用项目内的完整版） */
+function findFfmpeg(): string {
+  // 1. 优先：项目目录内的完整版 ffmpeg
+  const localPaths = [
+    path.join(__dirname, '..', 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
+    path.join(process.cwd(), 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
+    path.join(__dirname, '..', 'ffmpeg.exe'),
+    path.join(__dirname, '..', 'resources', 'ffmpeg.exe'),
+    path.join(process.cwd(), 'ffmpeg.exe'),
+    path.join(process.cwd(), 'resources', 'ffmpeg.exe'),
+  ]
+  for (const p of localPaths) {
+    if (fs.existsSync(p)) { console.log('[FFmpeg] 项目内找到:', p); return p }
+  }
+
+  // 2. 其次：搜索 Program Files
+  try {
+    const found = searchRecursive('C:\\Program Files', 'ffmpeg.exe', 3)
+    if (found && !found.includes('QQBrowser') && !found.includes('Tencent')) {
+      console.log('[FFmpeg] Program Files 中找到:', found)
+      return found
+    }
+  } catch {}
+
+  // 3. 最差：系统 PATH
+  console.log('[FFmpeg] 使用系统 PATH 中的 ffmpeg')
+  return 'ffmpeg.exe'
+}
+
+/** 递归搜索文件 */
+function searchRecursive(dir: string, fileName: string, maxDepth: number, depth = 0): string | null {
+  if (depth > maxDepth || !fs.existsSync(dir)) return null
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) {
+        return fullPath
+      }
+      if (entry.isDirectory() && depth < maxDepth) {
+        const result = searchRecursive(fullPath, fileName, maxDepth, depth + 1)
+        if (result) return result
+      }
+    }
+  } catch {}
+  return null
+}
+
+/** 从视频提取音轨为 WAV（16kHz 单声道） */
+function extractAudio(videoPath: string, outputWavPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = findFfmpeg()
+    const args = [
+      '-y',
+      '-i', videoPath,
+      '-vn',
+      '-acodec', 'pcm_s16le',
+      '-ar', '16000',
+      '-ac', '1',
+      outputWavPath
+    ]
+    // 使用 spawn 避免命令行编码问题
+    const child = spawn(ffmpeg, args, {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let stderr = ''
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`ffmpeg 提取音轨失败: ${stderr.slice(-500)}`))
+    })
+    child.on('error', (err) => reject(new Error(`ffmpeg 启动失败: ${err.message}`)))
+  })
+}
+
+/** 提交音频到豆包 ASR */
+async function submitAsr(audioPath: string): Promise<string> {
+  const audioBuffer = fs.readFileSync(audioPath)
+  const params = new URLSearchParams({
+    appid: ASR_APP_ID,
+    language: 'zh-CN',
+    use_itn: 'True',
+    caption_type: 'speech',
+    max_lines: '2',
+    words_per_line: '18'
+  })
+
+  const response = await fetch(`${ASR_SUBMIT_URL}?${params}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'audio/wav',
+      'Authorization': `Bearer; ${ASR_ACCESS_TOKEN}`
+    },
+    body: audioBuffer
+  })
+
+  if (!response.ok) {
+    throw new Error(`ASR 提交失败 (${response.status}): ${await response.text()}`)
+  }
+
+  const data = await response.json() as any
+  if (data.code !== 0 && data.code !== '0') {
+    throw new Error(`ASR 提交错误: ${data.message} (code: ${data.code})`)
+  }
+
+  return data.id as string
+}
+
+/** 轮询查询 ASR 结果 */
+async function queryAsr(jobId: string): Promise<any> {
+  const params = new URLSearchParams({ appid: ASR_APP_ID, id: jobId, blocking: '1' })
+
+  const response = await fetch(`${ASR_QUERY_URL}?${params}`, {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer; ${ASR_ACCESS_TOKEN}` }
+  })
+
+  if (!response.ok) {
+    throw new Error(`ASR 查询失败 (${response.status})`)
+  }
+
+  const data = await response.json() as any
+  if (data.code !== 0 && data.code !== '0') {
+    throw new Error(`ASR 查询错误: ${data.message} (code: ${data.code})`)
+  }
+
+  return data
+}
+
+/** 执行 ASR：视频 → 音轨 → 豆包 API → 字幕 JSON */
+ipcMain.handle('run-asr', async (_event, videoPath: string) => {
+  const tmpDir = path.join(os.tmpdir(), 'copywriting-asr')
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+
+  // 确保路径是有效的绝对路径
+  let resolvedPath = videoPath
+  if (!path.isAbsolute(videoPath)) {
+    // 尝试在常见目录中查找
+    const candidates = [
+      videoPath,
+      path.join(process.cwd(), videoPath),
+      path.join(os.homedir(), 'Downloads', videoPath),
+      path.join(os.homedir(), 'Desktop', videoPath),
+      path.join(os.homedir(), 'Videos', videoPath),
+      path.join(os.homedir(), 'Documents', videoPath),
+    ]
+    resolvedPath = candidates.find(p => fs.existsSync(p)) || videoPath
+    console.log('[ASR] 路径解析:', videoPath, '→', resolvedPath)
+  }
+
+  const wavPath = path.join(tmpDir, `asr_${Date.now()}.wav`)
+  try {
+    // 1. 提取音轨
+    console.log('[ASR] 提取音轨:', resolvedPath)
+    await extractAudio(resolvedPath, wavPath)
+
+    // 2. 提交 ASR
+    console.log('[ASR] 提交音频...')
+    const jobId = await submitAsr(wavPath)
+
+    // 3. 轮询结果（最多等 3 分钟）
+    console.log('[ASR] 等待识别结果, jobId:', jobId)
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      try {
+        const result = await queryAsr(jobId)
+        console.log('[ASR] 识别完成')
+        return JSON.stringify(result)
+      } catch (e) {
+        console.log('[ASR] 第', i + 1, '次轮询, 继续等待...')
+      }
+    }
+    throw new Error('ASR 处理超时（3分钟）')
+  } finally {
+    // 清理临时文件
+    try { if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath) } catch {}
   }
 })

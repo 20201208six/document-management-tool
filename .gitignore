@@ -25,3 +25,6 @@ Thumbs.db
 release/
 build-out/
 dist-release/
+
+# ffmpeg binaries (too large)
+resources/ffmpeg*/
