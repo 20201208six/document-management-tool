@@ -78,8 +78,35 @@
           <div class="script-text" v-html="renderScript(generatedScript)"></div>
 
           <div class="match-info">
-            <span>匹配片段: {{ matchedSubs.length }} 个</span>
+            <span>匹配片段: {{ selectedSubs.length }} / {{ matchedSubs.length }} 个</span>
             <span>预估总时长: {{ store.formatTime(totalMatchDuration) }}</span>
+          </div>
+
+          <!-- 微调：可删减片段 -->
+          <div v-if="matchedSubs.length > 0" class="tune-section">
+            <div class="tune-header">
+              <span>步骤 5：微调片段</span>
+              <el-button v-if="removedIndices.size > 0" size="small" text type="primary" @click="removedIndices.clear()">
+                恢复全部
+              </el-button>
+            </div>
+            <div class="tune-list">
+              <div
+                v-for="(sub, idx) in matchedSubs"
+                :key="idx"
+                class="tune-item"
+                :class="{ removed: removedIndices.has(idx) }"
+                @click="toggleRemove(idx)"
+              >
+                <span class="tune-idx">{{ idx + 1 }}.</span>
+                <span class="tune-video">{{ sub.videoName }}</span>
+                <span class="tune-time">{{ store.formatTimeMs(sub.startTime) }} - {{ store.formatTimeMs(sub.endTime) }}</span>
+                <span class="tune-text">{{ sub.text }}</span>
+                <el-button size="small" circle text type="danger" @click.stop="toggleRemove(idx)" :title="removedIndices.has(idx) ? '恢复' : '移除'">
+                  <el-icon><Close v-if="removedIndices.has(idx)" /><Minus v-else /></el-icon>
+                </el-button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -107,6 +134,18 @@ const isGenerating = ref(false)
 const statusText = ref('')
 const generatedScript = ref('')
 const matchedSubs = ref<SubtitleEntry[]>([])
+const removedIndices = ref(new Set<number>())
+
+const selectedSubs = computed(() =>
+  matchedSubs.value.filter((_, i) => !removedIndices.value.has(i))
+)
+
+function toggleRemove(idx: number) {
+  const s = new Set(removedIndices.value)
+  if (s.has(idx)) s.delete(idx)
+  else s.add(idx)
+  removedIndices.value = s
+}
 
 // 挂载时自动扫描存储目录，获取可用字幕条数
 onMounted(() => {
@@ -114,7 +153,7 @@ onMounted(() => {
 })
 
 const totalMatchDuration = computed(() =>
-  matchedSubs.value.reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000
+  selectedSubs.value.reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000
 )
 
 const DEEPSEEK_API_KEY = 'sk-6b9e34d999f54f64878d97deef7ac9ad'
@@ -253,8 +292,8 @@ function matchScriptToSubs(script: string, subs: SubtitleEntry[]): SubtitleEntry
 
 /** 直接根据匹配的字幕数据导出剪映草稿，不经过总轨道 */
 async function handleApply() {
-  if (matchedSubs.value.length === 0) {
-    ElMessage.warning('没有匹配的片段')
+  if (selectedSubs.value.length === 0) {
+    ElMessage.warning('没有选中的片段，请先微调保留至少一个片段')
     return
   }
 
@@ -271,14 +310,14 @@ async function handleApply() {
     return
   }
 
-  // 用第一个匹配字幕的视频分辨率作为画布尺寸
-  const firstSub = matchedSubs.value[0]
+  // 用第一个选中字幕的视频分辨率作为画布尺寸
+  const firstSub = selectedSubs.value[0]
   const firstVideo = store.importedVideos.find(v => v.id === firstSub.videoId)
   const canvasW = firstVideo?.width || 1080
   const canvasH = firstVideo?.height || 1920
 
   // 按视频分组，构建导出用的片段列表（视频文件 + 起止时间）
-  const clipItems = matchedSubs.value.map(s => ({
+  const clipItems = selectedSubs.value.map(s => ({
     sourceFile: s.videoPath,
     sourceFileName: s.videoName,
     startMs: s.startTime,
@@ -286,7 +325,7 @@ async function handleApply() {
   }))
 
   // 每条字幕导出为独立的文本片段
-  const subtitleItems = matchedSubs.value.map((s, i) => ({
+  const subtitleItems = selectedSubs.value.map((s, i) => ({
     text: s.text,
     startMs: 0,   // 每个片段内部从 0 开始
     endMs: s.endTime - s.startTime
@@ -430,5 +469,78 @@ function renderScript(text: string): string {
   gap: 8px;
   padding: 32px;
   color: #c0c4cc;
+}
+
+/* 微调片段 */
+.tune-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.tune-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.tune-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.tune-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tune-item:hover { background: #f5f7fa; }
+.tune-item.removed {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+.tune-idx {
+  color: #909399;
+  min-width: 18px;
+  flex-shrink: 0;
+}
+
+.tune-video {
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  flex-shrink: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tune-time {
+  color: #909399;
+  font-size: 11px;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
+.tune-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #606266;
 }
 </style>
