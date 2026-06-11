@@ -10,6 +10,9 @@
         <el-button size="small" @click="handleAsr" :disabled="!store.activeVideo || store.activeVideo.asrStatus === 'processing'" :loading="isAsrProcessing">
           <el-icon><Microphone /></el-icon> ASR 转字幕
         </el-button>
+        <el-button size="small" @click="showSubtitleMgr = true">
+          <el-icon><Management /></el-icon> 字幕管理
+        </el-button>
         <el-divider direction="vertical" />
         <el-input v-model="searchInput" size="small" placeholder="搜索字幕/片段..." style="width:180px" clearable @input="onSearch" @clear="store.setSearchQuery('')">
           <template #prefix><el-icon><Search /></el-icon></template>
@@ -135,39 +138,57 @@
       <div class="right-panel" :style="{ width: rightPanelWidth + 'px' }">
         <el-tabs v-model="rightTab" class="right-tabs">
           <el-tab-pane label="字幕" name="subtitles">
-            <div class="subtitle-list">
+            <div class="subtitle-list" @mousemove="onSubDragMove" @mouseup="onSubDragEnd" @mouseenter="subListHovered = true" @mouseleave="subListHovered = false; onSubDragEnd()">
+              <!-- 批量操作栏 -->
+              <div class="sub-batch-bar" :style="{ visibility: selectedSubIndices.size > 0 ? 'visible' : 'hidden' }">
+                <span>已选 {{ selectedSubIndices.size }} 条</span>
+                <el-button size="small" type="primary" @click="batchClip">一键加入片段</el-button>
+                <el-button size="small" @click="selectedSubIndices.clear()">取消选择</el-button>
+              </div>
               <div v-if="displaySubtitles.length === 0" class="panel-empty-sm">
                 <span>{{ store.searchQuery ? '无匹配结果' : '请先对视频执行 ASR 转字幕' }}</span>
               </div>
               <div
-                v-for="item in displaySubtitles"
+                v-for="(item, idx) in displaySubtitles"
                 :key="item.segment.id"
                 class="subtitle-item"
-                @click="seekToSub(item.segment.startTime / 1000)"
+                :class="{ selected: selectedSubIndices.has(idx) }"
+                @mousedown.prevent="onSubMouseDown(idx, $event)"
+                @click="onSubClick(idx, $event)"
               >
                 <span class="sub-time">{{ store.formatTimeMs(item.segment.startTime) }}</span>
                 <span class="sub-text">{{ item.segment.text }}</span>
                 <el-button size="small" text @click.stop="quickClip(item)">+片段</el-button>
+                <el-button size="small" text type="danger" @click.stop="deleteSubtitle(item.videoId, item.segment.id)">删除</el-button>
               </div>
             </div>
           </el-tab-pane>
           <el-tab-pane label="片段" name="clips">
-            <div class="clip-list">
+            <div class="clip-list" @mousemove="onClipDragMove" @mouseup="onClipDragEnd" @mouseenter="clipListHovered = true" @mouseleave="clipListHovered = false; onClipDragEnd()">
+              <!-- 批量操作栏 -->
+              <div class="sub-batch-bar" :style="{ visibility: selectedClipIndices.size > 0 ? 'visible' : 'hidden' }">
+                <span>已选 {{ selectedClipIndices.size }} 条</span>
+                <el-button size="small" type="danger" @click="batchDeleteClips">批量删除</el-button>
+                <el-button size="small" @click="selectedClipIndices.clear()">取消选择</el-button>
+              </div>
               <div v-if="displayClips.length === 0" class="panel-empty-sm">
                 <span>暂无保存的片段</span>
               </div>
               <div
-                v-for="clip in displayClips"
+                v-for="(clip, idx) in displayClips"
                 :key="clip.id"
                 class="clip-item-sm"
+                :class="{ selected: selectedClipIndices.has(idx) }"
                 draggable="true"
                 @dragstart="onClipDrag(clip.id)"
+                @mousedown.prevent="onClipMouseDown(idx, $event)"
+                @click="onClipClick(idx, $event)"
               >
                 <span class="clip-time">{{ store.formatTime(clip.startTime) }} - {{ store.formatTime(clip.endTime) }}</span>
                 <span class="clip-dur">{{ clip.duration.toFixed(1) }}s</span>
-                <el-button size="small" circle title="预览" @click="previewClip(clip)"><el-icon><VideoPlay /></el-icon></el-button>
-                <el-button size="small" circle title="加入轨道" @click="store.addToTimeline(clip.id)"><el-icon><Plus /></el-icon></el-button>
-                <el-button size="small" circle title="删除" @click="store.removeClip(clip.id)"><el-icon><Delete /></el-icon></el-button>
+                <el-button size="small" circle title="预览" @click.stop="previewClip(clip)" @mousedown.stop><el-icon><VideoPlay /></el-icon></el-button>
+                <el-button size="small" circle title="加入轨道" @click.stop="store.addToTimeline(clip.id)" @mousedown.stop><el-icon><Plus /></el-icon></el-button>
+                <el-button size="small" circle title="删除" @click.stop="batchDeleteOneClip(clip.id)" @mousedown.stop><el-icon><Delete /></el-icon></el-button>
               </div>
             </div>
           </el-tab-pane>
@@ -231,9 +252,6 @@
     <!-- 剪映路径设置弹窗 -->
     <el-dialog v-model="showPathDialog" title="设置" width="480px">
       <el-form label-width="100px">
-        <el-form-item label="数据存储目录">
-          <el-input v-model="storageInput" placeholder="ASR 字幕等数据存放路径" />
-        </el-form-item>
         <el-form-item label="剪映草稿目录">
           <el-input v-model="pathInput" placeholder="例如: D:\ruanjianxiazai\jianying\JianyingPro Drafts" />
         </el-form-item>
@@ -277,12 +295,58 @@
         </template>
       </template>
     </el-dialog>
+
+    <!-- 字幕管理弹窗 -->
+    <el-dialog v-model="showSubtitleMgr" title="字幕管理" width="620px" :append-to-body="true" @opened="onSubMgrOpened">
+      <!-- 数据存储目录 -->
+      <div style="margin-bottom:12px;display:flex;gap:6px;align-items:center">
+        <span style="font-size:12px;color:#606266;white-space:nowrap">字幕存储目录:</span>
+        <el-input v-model="storageInput" size="small" placeholder="ASR 字幕等数据存放路径" style="flex:1" />
+        <el-button size="small" @click="saveStoragePath">保存</el-button>
+        <el-button size="small" @click="scanStorageSubtitles" :loading="scanningStorage">扫描目录</el-button>
+      </div>
+      <div v-if="allSubtitleEntries.length === 0" style="text-align:center;color:#909399;padding:20px;">
+        暂无已转换的字幕，请先对视频执行 ASR 转字幕
+      </div>
+      <template v-else>
+        <div style="margin-bottom: 8px; color: #606266; font-size: 13px;">
+          共 {{ allSubtitleEntries.length }} 个视频，共 {{ store.subtitleCacheCount }} 条可用字幕条
+        </div>
+        <div class="sub-mgr-list" v-for="vid in allSubtitleEntries" :key="vid.id">
+          <div class="sub-mgr-header" @click="toggleSubMgrExpand(vid.id)">
+            <el-icon class="sub-mgr-expand" :class="{ rotated: subMgrExpanded.has(vid.id) }"><ArrowRight /></el-icon>
+            <span class="sub-mgr-name">{{ vid.name }}</span>
+            <span class="sub-mgr-count">{{ vid.subtitles.length }} 条</span>
+            <!-- 磁盘缓存：未链接 -->
+            <template v-if="vid.fromDisk && !vid.isImported && !vid.videoPath">
+              <span style="color:#e6a23c;font-size:11px">⚠ 未链接视频</span>
+              <el-button size="small" @click.stop="linkVideoToSubtitle(vid.diskFile)">链接视频</el-button>
+            </template>
+            <!-- 磁盘缓存：已链接（纯磁盘条目） -->
+            <span v-else-if="vid.fromDisk && !vid.isImported && vid.videoPath" style="color:#67c23a;font-size:11px">已链接</span>
+            <!-- 已导入视频：有磁盘缓存（已链接） -->
+            <span v-else-if="vid.isImported && vid.fromDisk" style="color:#67c23a;font-size:11px">已链接</span>
+            <el-button size="small" text @click.stop="openSubFileLocation(vid.videoPath!)" v-if="vid.videoPath">打开视频位置</el-button>
+          </div>
+          <div v-show="subMgrExpanded.has(vid.id)" class="sub-mgr-body">
+            <div v-for="sub in vid.subtitles" :key="sub.id" class="sub-mgr-item">
+              <span class="sub-mgr-time">{{ store.formatTimeMs(sub.startTime) }}</span>
+              <span class="sub-mgr-text">{{ sub.text }}</span>
+              <el-button size="small" text type="danger" @click="deleteSubtitle(vid.id, sub.id)">删除</el-button>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="showSubtitleMgr = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCreatorModeStore, type VideoClip } from '@/stores/creatorMode'
 import { exportJianyingProject, buildProject, openJianying } from '@/services/jianying'
 import type { SubtitleSegment } from '@/services/asr'
@@ -414,46 +478,38 @@ function handleFileImport(e: Event) {
   input.value = ''
 }
 
-/** 尝试加载字幕缓存：先查存储目录，再查视频旁边 */
+/** 加载字幕缓存：只从存储目录加载 */
 async function loadCachedSubtitles(videoId: string, videoPath: string) {
   const electronAPI = (window as any).electronAPI
-  if (!electronAPI?.readFileAsText) return
+  if (!electronAPI?.readFileAsText || !store.storagePath) return
 
   const videoName = videoPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || 'unknown'
+  const cachePath = `${store.storagePath.replace(/\\/g, '/')}/${videoName}.subtitles.json`
 
-  // 构建候选路径列表
-  const candidates: string[] = []
-  if (store.storagePath) {
-    candidates.push(`${store.storagePath.replace(/\\/g, '/')}/${videoName}.subtitles.json`)
-  }
-  // 视频旁边（可靠兜底）
-  candidates.push(videoPath.replace(/\.\w+$/, '.subtitles.json'))
+  try {
+    const result = await electronAPI.readFileAsText(cachePath)
+    if (!result.success) return
 
-  for (const cachePath of candidates) {
-    try {
-      const result = await electronAPI.readFileAsText(cachePath)
-      if (!result.success) continue
-
-      const subtitles = JSON.parse(result.content)
-      if (Array.isArray(subtitles) && subtitles.length > 0) {
-        store.setVideoSubtitles(videoId, subtitles)
-        store.setAsrStatus(videoId, 'done')
-        ElMessage.success(`已加载缓存字幕 (${subtitles.length} 条)`)
-        console.log(`[缓存] 已加载 ${subtitles.length} 条字幕: ${cachePath}`)
-        return
-      }
-    } catch {
-      // 继续下一个候选
+    const parsed = JSON.parse(result.content)
+    const subtitles = parsed.subtitles || parsed
+    if (Array.isArray(subtitles) && subtitles.length > 0) {
+      store.setVideoSubtitles(videoId, subtitles)
+      store.setAsrStatus(videoId, 'done')
+      ElMessage.success(`已加载缓存字幕 (${subtitles.length} 条)`)
+      console.log(`[缓存] 已加载 ${subtitles.length} 条字幕: ${cachePath}`)
     }
+  } catch {
+    // 缓存文件不存在或解析失败
   }
 }
 
-/** 保存字幕缓存：同时保存到存储目录和视频旁边 */
+/** 保存字幕缓存：只保存到存储目录 */
 async function saveSubtitlesCache(videoPath: string, subtitles: any[]) {
   const electronAPI = (window as any).electronAPI
-  if (!electronAPI?.createDirectory || !electronAPI?.writeFile) return
+  if (!electronAPI?.createDirectory || !electronAPI?.writeFile || !store.storagePath) return
 
   const videoName = videoPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || 'unknown'
+  const video = store.importedVideos.find(v => v.path === videoPath)
   const cacheData = subtitles.map(s => ({
     id: s.id,
     text: s.text,
@@ -461,27 +517,23 @@ async function saveSubtitlesCache(videoPath: string, subtitles: any[]) {
     endTime: s.endTime,
     words: s.words || []
   }))
-  const json = JSON.stringify(cacheData, null, 2)
-
-  // 保存到视频旁边（可靠兜底）
-  const adjacentPath = videoPath.replace(/\.\w+$/, '.subtitles.json')
-  try {
-    await electronAPI.writeFile(adjacentPath, json)
-    console.log(`[缓存] 已保存: ${adjacentPath}`)
-  } catch (e) {
-    console.error('[缓存] 视频旁保存失败:', e)
-  }
-
-  // 保存到存储目录
-  if (store.storagePath) {
-    try {
-      await electronAPI.createDirectory(store.storagePath)
-      const cachePath = `${store.storagePath.replace(/\\/g, '/')}/${videoName}.subtitles.json`
-      await electronAPI.writeFile(cachePath, json)
-      console.log(`[缓存] 已保存: ${cachePath}`)
-    } catch (e) {
-      console.error('[缓存] 存储目录保存失败:', e)
+  const wrapper = {
+    subtitles: cacheData,
+    _meta: {
+      videoPath: videoPath,
+      videoName: video?.name || videoName,
+      videoDuration: video?.duration || 0
     }
+  }
+  const json = JSON.stringify(wrapper, null, 2)
+
+  try {
+    await electronAPI.createDirectory(store.storagePath)
+    const cachePath = `${store.storagePath.replace(/\\/g, '/')}/${videoName}.subtitles.json`
+    await electronAPI.writeFile(cachePath, json)
+    console.log(`[缓存] 已保存: ${cachePath}`)
+  } catch (e) {
+    console.error('[缓存] 存储目录保存失败:', e)
   }
 }
 
@@ -651,9 +703,201 @@ function quickClip(item: { segment: SubtitleSegment }) {
   ElMessage.success(`已添加片段: ${item.segment.text.substring(0, 20)}...`)
 }
 
+function batchClip() {
+  const items = [...selectedSubIndices.value]
+    .sort((a, b) => a - b)
+    .map(i => displaySubtitles.value[i])
+    .filter(Boolean)
+  if (items.length === 0) return
+
+  for (const item of items) {
+    const start = item.segment.startTime / 1000
+    const end = item.segment.endTime / 1000
+    store.addClip(start, end, item.segment.text)
+  }
+  ElMessage.success(`已批量添加 ${items.length} 个片段`)
+  selectedSubIndices.value.clear()
+}
+
 // ===== 搜索 =====
 const searchInput = ref('')
 const storageInput = ref(store.storagePath)
+
+// ===== 字幕多选 =====
+const selectedSubIndices = ref(new Set<number>())
+const dragSelecting = ref(false)
+const dragStartIdx = ref(-1)
+const lastClickIdx = ref(-1)
+const subListHovered = ref(false)
+
+// ===== 片段多选 =====
+const selectedClipIndices = ref(new Set<number>())
+const clipDragSelecting = ref(false)
+const clipDragStartIdx = ref(-1)
+const clipLastClickIdx = ref(-1)
+const clipListHovered = ref(false)
+
+onMounted(() => {
+  document.addEventListener('keydown', onGlobalKeydown)
+  // 初始化可用字幕条计数
+  store.scanSubtitleCacheCount()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onGlobalKeydown)
+})
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+    e.preventDefault()
+    if (subListHovered.value && rightTab.value === 'subtitles') {
+      const sel = new Set<number>()
+      for (let i = 0; i < displaySubtitles.value.length; i++) sel.add(i)
+      selectedSubIndices.value = sel
+    } else if (clipListHovered.value && rightTab.value === 'clips') {
+      const sel = new Set<number>()
+      for (let i = 0; i < displayClips.value.length; i++) sel.add(i)
+      selectedClipIndices.value = sel
+    }
+  }
+}
+
+function onSubMouseDown(idx: number, e: MouseEvent) {
+  // Ctrl 不阻止默认（留给 click 处理），其他情况开始拖拽预判
+  if (e.ctrlKey || e.metaKey) return
+  dragSelecting.value = true
+  dragStartIdx.value = idx
+}
+
+function onSubDragMove(e: MouseEvent) {
+  if (!dragSelecting.value) return
+  const container = (e.currentTarget as HTMLElement)
+  const items = container.querySelectorAll('.subtitle-item')
+  let endIdx = dragStartIdx.value
+  items.forEach((el, i) => {
+    const rect = el.getBoundingClientRect()
+    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      endIdx = i
+    }
+  })
+  // 框选范围
+  const min = Math.min(dragStartIdx.value, endIdx)
+  const max = Math.max(dragStartIdx.value, endIdx)
+  const sel = new Set<number>()
+  for (let i = min; i <= max; i++) sel.add(i)
+  selectedSubIndices.value = sel
+}
+
+function onSubDragEnd() {
+  dragSelecting.value = false
+}
+
+function onSubClick(idx: number, e: MouseEvent) {
+  const item = displaySubtitles.value[idx]
+  if (!item) return
+
+  if (e.shiftKey && lastClickIdx.value >= 0) {
+    // Shift 范围选择
+    const min = Math.min(lastClickIdx.value, idx)
+    const max = Math.max(lastClickIdx.value, idx)
+    const sel = new Set<number>()
+    for (let i = min; i <= max; i++) sel.add(i)
+    selectedSubIndices.value = sel
+  } else if (e.ctrlKey || e.metaKey) {
+    // Ctrl 切换选择
+    const sel = new Set(selectedSubIndices.value)
+    if (sel.has(idx)) sel.delete(idx)
+    else sel.add(idx)
+    selectedSubIndices.value = sel
+    lastClickIdx.value = idx
+  } else if (dragSelecting.value) {
+    // 拖拽结束（mouseup 会触发 click，此时 selectedSubIndices 已在 onSubDragMove 中设置）
+    // 保持框选结果不变
+  } else {
+    // 普通点击：清除选择，跳转播放
+    if (!selectedSubIndices.value.has(idx)) {
+      selectedSubIndices.value.clear()
+    }
+    seekToSub(item.segment.startTime / 1000)
+  }
+  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !dragSelecting.value) {
+    lastClickIdx.value = idx
+  }
+}
+
+// ===== 片段多选处理 =====
+function onClipMouseDown(idx: number, e: MouseEvent) {
+  if (e.ctrlKey || e.metaKey) return
+  clipDragSelecting.value = true
+  clipDragStartIdx.value = idx
+}
+
+function onClipDragMove(e: MouseEvent) {
+  if (!clipDragSelecting.value) return
+  const container = (e.currentTarget as HTMLElement)
+  const items = container.querySelectorAll('.clip-item-sm')
+  let endIdx = clipDragStartIdx.value
+  items.forEach((el, i) => {
+    const rect = el.getBoundingClientRect()
+    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      endIdx = i
+    }
+  })
+  const min = Math.min(clipDragStartIdx.value, endIdx)
+  const max = Math.max(clipDragStartIdx.value, endIdx)
+  const sel = new Set<number>()
+  for (let i = min; i <= max; i++) sel.add(i)
+  selectedClipIndices.value = sel
+}
+
+function onClipDragEnd() {
+  clipDragSelecting.value = false
+}
+
+function onClipClick(idx: number, e: MouseEvent) {
+  const clip = displayClips.value[idx]
+  if (!clip) return
+
+  if (e.shiftKey && clipLastClickIdx.value >= 0) {
+    const min = Math.min(clipLastClickIdx.value, idx)
+    const max = Math.max(clipLastClickIdx.value, idx)
+    const sel = new Set<number>()
+    for (let i = min; i <= max; i++) sel.add(i)
+    selectedClipIndices.value = sel
+  } else if (e.ctrlKey || e.metaKey) {
+    const sel = new Set(selectedClipIndices.value)
+    if (sel.has(idx)) sel.delete(idx)
+    else sel.add(idx)
+    selectedClipIndices.value = sel
+    clipLastClickIdx.value = idx
+  } else if (clipDragSelecting.value) {
+    // 拖拽结束，保持框选结果
+  } else {
+    if (!selectedClipIndices.value.has(idx)) {
+      selectedClipIndices.value.clear()
+    }
+  }
+  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !clipDragSelecting.value) {
+    clipLastClickIdx.value = idx
+  }
+}
+
+function batchDeleteClips() {
+  const ids = [...selectedClipIndices.value]
+    .sort((a, b) => b - a) // 从后往前删避免索引错位
+    .map(i => displayClips.value[i]?.id)
+    .filter(Boolean)
+  for (const id of ids) {
+    store.removeClip(id)
+  }
+  ElMessage.success(`已删除 ${ids.length} 个片段`)
+  selectedClipIndices.value.clear()
+}
+
+function batchDeleteOneClip(clipId: string) {
+  store.removeClip(clipId)
+  selectedClipIndices.value.clear()
+}
 
 function onSearch(val: string) {
   store.setSearchQuery(val)
@@ -856,7 +1100,6 @@ const showPathDialog = ref(false)
 const pathInput = ref(store.jianyingDraftPath)
 
 function savePath() {
-  store.setStoragePath(storageInput.value)
   store.setJianyingDraftPath(pathInput.value)
   showPathDialog.value = false
   ElMessage.success('设置已保存')
@@ -870,6 +1113,315 @@ function asrLabel(status: string): string {
 
 // ===== 导出 =====
 const showExportDialog = ref(false)
+
+// ===== 字幕管理 =====
+const showSubtitleMgr = ref(false)
+const subMgrExpanded = ref(new Set<string>())
+const scanningStorage = ref(false)
+const storageSubtitleFiles = ref<Array<{ fileName: string; filePath: string; subtitles: SubtitleSegment[]; videoPath?: string }>>([])
+
+const SUB_LINK_KEY = 'creator-subtitle-links'
+
+/** 加载持久化的链接映射 */
+function loadSubtitleLinks(): Map<string, string> {
+  try {
+    const raw = localStorage.getItem(SUB_LINK_KEY)
+    if (raw) return new Map(JSON.parse(raw))
+  } catch {}
+  return new Map()
+}
+
+/** 保存持久化的链接映射 */
+function saveSubtitleLinks(links: Map<string, string>) {
+  localStorage.setItem(SUB_LINK_KEY, JSON.stringify([...links]))
+}
+
+const VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm', '.m4v', '.3gp']
+
+function onSubMgrOpened() {
+  storageInput.value = store.storagePath
+  scanStorageSubtitles()
+}
+
+/** 递归列出目录中所有文件（含子目录） */
+async function listDirectoryRecursive(dirPath: string): Promise<Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }>> {
+  const api = (window as any).electronAPI
+  if (!api?.listDirectory) return []
+  const results: Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }> = []
+  try {
+    const entries = await api.listDirectory(dirPath)
+    for (const entry of entries) {
+      results.push(entry)
+      if (entry.isDirectory) {
+        const sub = await listDirectoryRecursive(entry.path)
+        results.push(...sub)
+      }
+    }
+  } catch {}
+  return results
+}
+
+async function scanStorageSubtitles() {
+  const api = (window as any).electronAPI
+  if (!api?.listDirectory || !storageInput.value) return
+  scanningStorage.value = true
+  const results: typeof storageSubtitleFiles.value = []
+  try {
+    const dirPath = storageInput.value
+    // 递归扫描目录，包括子文件夹
+    const allFiles = await listDirectoryRecursive(dirPath)
+
+    // 收集所有视频文件用于自动匹配
+    const videoFiles = new Set<string>()
+    for (const f of allFiles) {
+      const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase()
+      if (VIDEO_EXTS.includes(ext)) {
+        const baseName = f.name.substring(0, f.name.lastIndexOf('.'))
+        videoFiles.add(baseName)
+      }
+    }
+
+    const jsonFiles = allFiles.filter((f: any) => f.isFile && f.name.endsWith('.subtitles.json'))
+    const savedLinks = loadSubtitleLinks()
+    for (const jf of jsonFiles) {
+      try {
+        const result = await api.readFileAsText(jf.path)
+        if (result.success) {
+          const parsed = JSON.parse(result.content)
+          // 兼容新旧格式
+          const subs = parsed.subtitles || parsed
+          const meta = parsed._meta
+          if (Array.isArray(subs) && subs.length > 0) {
+            const videoName = jf.name.replace('.subtitles.json', '')
+            // 链接优先级：1.缓存文件内_meta  2.持久化链接映射  3.同目录同名匹配
+            let videoPath: string | undefined
+            if (meta?.videoPath) {
+              videoPath = meta.videoPath
+            } else if (savedLinks.has(jf.path)) {
+              videoPath = savedLinks.get(jf.path)
+            } else if (videoFiles.has(videoName)) {
+              const found = allFiles.find((f: any) =>
+                f.name.startsWith(videoName + '.') &&
+                VIDEO_EXTS.includes(f.name.substring(f.name.lastIndexOf('.')).toLowerCase())
+              )
+              if (found) videoPath = found.path
+            }
+            results.push({ fileName: videoName, filePath: jf.path, subtitles: subs, videoPath })
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  storageSubtitleFiles.value = results
+  store.subtitleCacheCount = results.length
+  scanningStorage.value = false
+}
+
+function getSubtitleDuration(subtitles: SubtitleSegment[]): number {
+  if (subtitles.length === 0) return 0
+  return subtitles[subtitles.length - 1].endTime / 1000
+}
+
+async function detectVideoDuration(videoPath: string): Promise<number> {
+  return new Promise((resolve) => {
+    const temp = document.createElement('video')
+    temp.style.display = 'none'
+    document.body.appendChild(temp)
+    temp.preload = 'metadata'
+    temp.src = `file:///${videoPath.replace(/\\/g, '/')}`
+    temp.onloadedmetadata = () => {
+      const d = temp.duration
+      document.body.removeChild(temp)
+      resolve(isNaN(d) ? 0 : d)
+    }
+    temp.onerror = () => {
+      document.body.removeChild(temp)
+      resolve(0)
+    }
+    setTimeout(() => {
+      if (document.body.contains(temp)) { document.body.removeChild(temp); resolve(0) }
+    }, 5000)
+  })
+}
+
+async function linkVideoToSubtitle(diskFilePath: string) {
+  const api = (window as any).electronAPI
+  if (!api?.selectVideoFile) return
+
+  // 找到源数据
+  const sf = storageSubtitleFiles.value.find(s => s.filePath === diskFilePath)
+  if (!sf) return
+
+  const files = await api.selectVideoFile()
+  if (!files || files.length === 0) return
+
+  const selectedPath = files[0].path
+  const selectedName = files[0].name
+
+  // 防呆1：文件扩展名校验
+  const ext = selectedName.substring(selectedName.lastIndexOf('.')).toLowerCase()
+  if (!VIDEO_EXTS.includes(ext)) {
+    ElMessage.error(`${selectedName} 不是视频文件，请重新选择`)
+    return
+  }
+
+  // 防呆2：避免同一个视频链接到多个字幕
+  const duplicate = storageSubtitleFiles.value.find(
+    s => s.filePath !== diskFilePath && s.videoPath === selectedPath
+  )
+  if (duplicate) {
+    ElMessage.error(`此视频已链接到字幕「${duplicate.fileName}」，一个视频只能对应一份字幕，请重新链接`)
+    return
+  }
+
+  // 防呆3：名称不匹配
+  const existing = store.importedVideos.find(v => v.path === selectedPath)
+  if (existing && existing.name !== sf.fileName) {
+    ElMessage.error(`视频名称与字幕名称不匹配：\n视频: ${existing.name}\n字幕: ${sf.fileName}\n请重新选择正确的视频文件`)
+    return
+  }
+
+  // 防呆4：时长对比（误差不超过 1%）
+  const subDuration = getSubtitleDuration(sf.subtitles)
+  const videoDuration = await detectVideoDuration(selectedPath)
+  if (subDuration > 0 && videoDuration > 0) {
+    const diff = Math.abs(subDuration - videoDuration)
+    const ratio = diff / Math.max(subDuration, videoDuration)
+    if (ratio > 0.01) {
+      ElMessage.error(
+        `视频时长与字幕不匹配：\n视频时长: ${store.formatTime(videoDuration)}\n字幕时长: ${store.formatTime(subDuration)}\n差异: ${(ratio * 100).toFixed(1)}%，超过 1% 容差，请重新链接`
+      )
+      return
+    }
+  } else if (subDuration > 0 && videoDuration === 0) {
+    ElMessage.error('无法读取视频时长，文件可能损坏，请重新选择')
+    return
+  }
+
+  // 修改源数据并持久化链接
+  sf.videoPath = selectedPath
+  const links = loadSubtitleLinks()
+  links.set(diskFilePath, selectedPath)
+  saveSubtitleLinks(links)
+  importLinkedVideo(sf)
+  ElMessage.success(`已链接: ${selectedName}`)
+}
+
+function importLinkedVideo(sf: { fileName: string; filePath: string; subtitles: SubtitleSegment[]; videoPath?: string }) {
+  if (!sf.videoPath) return
+  const existing = store.importedVideos.find(v => v.path === sf.videoPath)
+  if (existing) {
+    existing.subtitles = sf.subtitles
+    existing.asrStatus = 'done'
+    store.setActiveVideo(existing.id)
+  } else {
+    const url = `file:///${sf.videoPath!.replace(/\\/g, '/')}`
+    const video = store.addVideo({ name: sf.fileName } as any as File, url, sf.videoPath!, 'manual')
+    if (video) {
+      video.subtitles = sf.subtitles
+      video.asrStatus = 'done'
+      store.setActiveVideo(video.id)
+    }
+  }
+}
+
+function saveStoragePath() {
+  store.setStoragePath(storageInput.value)
+  ElMessage.success('字幕存储目录已保存')
+  scanStorageSubtitles()
+}
+
+function removeStorageSubFile(filePath: string) {
+  const api = (window as any).electronAPI
+  if (api?.deleteFile) {
+    api.deleteFile(filePath)
+    storageSubtitleFiles.value = storageSubtitleFiles.value.filter(s => s.filePath !== filePath)
+    // 清理持久化链接
+    const links = loadSubtitleLinks()
+    if (links.delete(filePath)) saveSubtitleLinks(links)
+    ElMessage.success('已删除缓存文件')
+  }
+}
+
+function openSubFileLocation(filePath: string) {
+  const api = (window as any).electronAPI
+  if (api?.openFileLocation) {
+    api.openFileLocation(filePath)
+  }
+}
+
+// 合并导入的视频 + 磁盘缓存
+const allSubtitleEntries = computed(() => {
+  const entries: Array<{
+    id: string; name: string; subtitles: SubtitleSegment[]
+    fromDisk?: boolean; diskFile?: string; videoPath?: string; isImported?: boolean
+  }> = []
+
+  // 来自 importedVideos
+  for (const v of store.importedVideos) {
+    if (v.asrStatus === 'done' && v.subtitles.length > 0) {
+      // 查找对应的磁盘缓存文件（用于显示链接状态）
+      // sf.fileName 不含扩展名，v.name 含扩展名，需统一比较
+      const videoBaseName = v.name.replace(/\.\w+$/, '')
+      const diskCache = storageSubtitleFiles.value.find(sf =>
+        sf.fileName === videoBaseName ||
+        (sf.videoPath && v.path && sf.videoPath.replace(/\\/g, '/') === v.path.replace(/\\/g, '/'))
+      )
+      entries.push({
+        id: v.id,
+        name: v.name,
+        subtitles: [...v.subtitles],
+        fromDisk: !!diskCache,
+        diskFile: diskCache?.filePath,
+        videoPath: diskCache?.videoPath || v.path,
+        isImported: true
+      })
+    }
+  }
+
+  // 来自磁盘缓存的（不在 importedVideos 中的）
+  for (const sf of storageSubtitleFiles.value) {
+    if (!store.importedVideos.some(v => {
+      const videoBaseName = v.name.replace(/\.\w+$/, '')
+      return videoBaseName === sf.fileName ||
+        v.path.includes(sf.fileName) ||
+        (sf.videoPath && v.path && sf.videoPath.replace(/\\/g, '/') === v.path.replace(/\\/g, '/'))
+    })) {
+      entries.push({
+        id: 'disk_' + sf.fileName,
+        name: sf.fileName,
+        subtitles: sf.subtitles,
+        fromDisk: true,
+        diskFile: sf.filePath,
+        videoPath: sf.videoPath,
+        isImported: false
+      })
+    }
+  }
+
+  return entries
+})
+
+function toggleSubMgrExpand(videoId: string) {
+  const s = subMgrExpanded.value
+  if (s.has(videoId)) s.delete(videoId)
+  else s.add(videoId)
+}
+
+function deleteSubtitle(videoId: string, subId: string) {
+  const video = store.importedVideos.find(v => v.id === videoId)
+  if (!video) return
+  video.subtitles = video.subtitles.filter(s => s.id !== subId)
+  ElMessage.success('已删除字幕')
+}
+
+function clearVideoSubtitles(videoId: string) {
+  const video = store.importedVideos.find(v => v.id === videoId)
+  if (!video) return
+  video.subtitles = []
+  video.asrStatus = 'idle'
+  ElMessage.success('已清除全部字幕')
+}
 const exportStep = ref<'input' | 'progress'>('input')
 const exportName = ref('')
 const exportStatus = ref<'generating' | 'done' | 'error'>('generating')
@@ -901,12 +1453,14 @@ async function startExport() {
       const srcVideo = store.importedVideos.find(v => v.path === clip.sourceFile)
       if (srcVideo) {
         for (const sub of srcVideo.subtitles) {
-          // 字幕时间必须在片段的起止范围内
-          if (sub.startTime >= clip.startTime && sub.endTime <= clip.endTime) {
+          // 字幕时间（毫秒）需转为秒后与片段时间比较
+          const subStartSec = sub.startTime / 1000
+          const subEndSec = sub.endTime / 1000
+          if (subStartSec >= clip.startTime && subEndSec <= clip.endTime) {
             allSubs.push({
               text: sub.text,
-              startMs: Math.round((sub.startTime - clip.startTime) * 1000),
-              endMs: Math.round((sub.endTime - clip.startTime) * 1000)
+              startMs: Math.round((subStartSec - clip.startTime) * 1000),
+              endMs: Math.round((subEndSec - clip.startTime) * 1000)
             })
           }
         }
@@ -1311,6 +1865,20 @@ watch(() => store.activeVideoId, () => {
   font-size: 12px;
 }
 .subtitle-item:hover, .clip-item-sm:hover { background: #f5f7fa; }
+.subtitle-item.selected { background: #ecf5ff; outline: 1px solid #c6e2ff; outline-offset: -1px; }
+.clip-item-sm.selected { background: #fef0f0; outline: 1px solid #fbc4c4; outline-offset: -1px; }
+
+.sub-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #ecf5ff;
+  border-bottom: 1px solid #c6e2ff;
+  font-size: 12px;
+  height: 36px;
+  box-sizing: border-box;
+}
 
 .sub-time { font-family: monospace; color: #409eff; min-width: 55px; font-size: 11px; }
 .sub-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #606266; }
@@ -1414,4 +1982,63 @@ watch(() => store.activeVideoId, () => {
   padding: 20px;
 }
 .export-status p { font-size: 14px; color: #606266; }
+
+/* 字幕管理弹窗 */
+.sub-mgr-list {
+  margin-bottom: 4px;
+}
+
+.sub-mgr-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.sub-mgr-header:hover { background: #ecf5ff; }
+
+.sub-mgr-expand {
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+.sub-mgr-expand.rotated { transform: rotate(90deg); }
+
+.sub-mgr-name { font-weight: 500; color: #303133; }
+.sub-mgr-count { color: #409eff; font-size: 12px; margin-left: auto; margin-right: 8px; }
+
+.sub-mgr-body {
+  padding: 4px 0 4px 20px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.sub-mgr-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+.sub-mgr-item:hover { background: #f5f7fa; }
+
+.sub-mgr-time {
+  font-family: monospace;
+  color: #409eff;
+  min-width: 55px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.sub-mgr-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #606266;
+}
 </style>

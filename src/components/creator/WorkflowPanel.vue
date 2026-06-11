@@ -28,15 +28,9 @@
             </el-tag>
           </div>
           <div class="status-row">
-            <span>字幕片段</span>
-            <el-tag :type="totalSubCount > 0 ? 'success' : 'info'" size="small">
-              {{ totalSubCount }} 条
-            </el-tag>
-          </div>
-          <div class="status-row">
-            <span>可用片段</span>
-            <el-tag :type="store.clips.length > 0 ? 'success' : 'info'" size="small">
-              {{ store.clips.length }} 个
+            <span>可用字幕条</span>
+            <el-tag :type="store.subtitleCacheCount > 0 ? 'success' : 'info'" size="small">
+              {{ store.subtitleCacheCount }} 条
             </el-tag>
           </div>
         </div>
@@ -54,7 +48,7 @@
         type="primary"
         size="default"
         :loading="isGenerating"
-        :disabled="!userTopic.trim() || totalSubCount === 0"
+        :disabled="!userTopic.trim() || store.subtitleCacheCount === 0"
         @click="handleGenerate"
         style="width:100%"
       >
@@ -84,7 +78,7 @@
           <div class="script-text" v-html="renderScript(generatedScript)"></div>
 
           <div class="match-info">
-            <span>匹配片段: {{ matchedClips.length }} 个</span>
+            <span>匹配片段: {{ matchedSubs.length }} 个</span>
             <span>预估总时长: {{ store.formatTime(totalMatchDuration) }}</span>
           </div>
         </div>
@@ -100,10 +94,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useCreatorModeStore, type VideoClip } from '@/stores/creatorMode'
-import { exportJianyingProject, buildProject, openJianying } from '@/services/jianying'
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useCreatorModeStore } from '@/stores/creatorMode'
+import { exportJianyingProject, buildProject } from '@/services/jianying'
 
 const store = useCreatorModeStore()
 
@@ -112,20 +106,30 @@ const modelChoice = ref<'deepseek' | 'doubao'>('deepseek')
 const isGenerating = ref(false)
 const statusText = ref('')
 const generatedScript = ref('')
-const matchedClips = ref<VideoClip[]>([])
+const matchedSubs = ref<SubtitleEntry[]>([])
 
-const totalSubCount = computed(() => {
-  let count = 0
-  for (const v of store.importedVideos) count += v.subtitles.length
-  return count
+// 挂载时自动扫描存储目录，获取可用字幕条数
+onMounted(() => {
+  store.scanSubtitleCacheCount()
 })
 
 const totalMatchDuration = computed(() =>
-  matchedClips.value.reduce((sum, c) => sum + c.duration, 0)
+  matchedSubs.value.reduce((sum, s) => sum + (s.endTime - s.startTime), 0) / 1000
 )
 
 const DEEPSEEK_API_KEY = 'sk-6b9e34d999f54f64878d97deef7ac9ad'
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
+
+/** 字幕结构化数据，用于 AI 输入和片段匹配 */
+interface SubtitleEntry {
+  videoId: string
+  videoName: string
+  videoPath: string
+  startTime: number   // ms
+  endTime: number     // ms
+  text: string
+  formatted: string   // "[videoName timestamp] text"
+}
 
 /**
  * 核心：根据字幕内容 + 用户方向 调用 DeepSeek 生成文案
@@ -133,15 +137,24 @@ const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 async function handleGenerate() {
   if (!userTopic.value.trim()) return
 
-  const allSubs: string[] = []
+  const allSubs: SubtitleEntry[] = []
   for (const video of store.importedVideos) {
     for (const sub of video.subtitles) {
-      allSubs.push(`[${video.name} ${store.formatTimeMs(sub.startTime)}] ${sub.text}`)
+      const formatted = `[${video.name} ${store.formatTimeMs(sub.startTime)}] ${sub.text}`
+      allSubs.push({
+        videoId: video.id,
+        videoName: video.name,
+        videoPath: video.path,
+        startTime: sub.startTime,
+        endTime: sub.endTime,
+        text: sub.text,
+        formatted
+      })
     }
   }
 
   if (allSubs.length === 0) {
-    ElMessage.warning('没有可用的字幕数据，请先执行 ASR 转字幕')
+    ElMessage.warning('没有可用的字幕条，请先在「工作状态」中对视频执行 ASR 转字幕')
     return
   }
 
@@ -150,13 +163,14 @@ async function handleGenerate() {
 
   try {
     statusText.value = '正在调用 DeepSeek 生成文案...'
-    const script = await callDeepSeek(userTopic.value, allSubs)
+    // AI 侧仍传纯文本
+    const script = await callDeepSeek(userTopic.value, allSubs.map(s => s.formatted))
     generatedScript.value = script
 
     statusText.value = '正在匹配视频片段...'
-    matchedClips.value = matchScriptToClips(script, allSubs)
+    matchedSubs.value = matchScriptToSubs(script, allSubs)
 
-    ElMessage.success(`已生成文案，匹配 ${matchedClips.value.length} 个片段`)
+    ElMessage.success(`已生成文案，匹配 ${matchedSubs.value.length} 个片段`)
   } catch (e: any) {
     ElMessage.error('生成失败: ' + (e.message || '未知错误'))
   }
@@ -210,42 +224,88 @@ async function callDeepSeek(topic: string, subtitles: string[]): Promise<string>
   return data.choices?.[0]?.message?.content || '未能生成文案，请重试'
 }
 
-/** 将生成的文案匹配到实际片段 */
-function matchScriptToClips(script: string, subtitles: string[]): VideoClip[] {
-  const result: VideoClip[] = []
+/** 将生成的文案匹配到实际字幕，按脚本出现顺序排列（不创建片段，不碰轨道） */
+function matchScriptToSubs(script: string, subs: SubtitleEntry[]): SubtitleEntry[] {
+  const matched: SubtitleEntry[] = []
 
-  // 简单的关键词匹配：对每条字幕文本进行匹配
-  for (const sub of subtitles) {
-    const text = sub.replace(/\[.*?\] /, '')
-    // 检查文案中是否包含该字幕的关键词
-    const words = text.split('').slice(0, 6).join('')
-    if (script.includes(words)) {
-      // 查找对应片段
-      const matchingClip = store.clips.find(c =>
-        c.label.includes(text.substring(0, 4))
-      )
-      if (matchingClip && !result.find(c => c.id === matchingClip.id)) {
-        result.push(matchingClip)
+  for (const sub of subs) {
+    const text = sub.text
+    let found = false
+    const minLen = Math.max(4, Math.floor(text.length * 0.3))
+    for (let len = text.length; len >= minLen; len--) {
+      if (script.includes(text.substring(0, len))) {
+        found = true
+        break
       }
     }
+    if (found) matched.push(sub)
   }
 
-  return result
+  // 按脚本中的出现顺序排列
+  matched.sort((a, b) => {
+    const aIdx = script.indexOf(a.text.substring(0, Math.max(4, Math.floor(a.text.length * 0.3))))
+    const bIdx = script.indexOf(b.text.substring(0, Math.max(4, Math.floor(b.text.length * 0.3))))
+    return aIdx - bIdx
+  })
+
+  return matched
 }
 
-/** 应用匹配结果到总轨道 */
-function handleApply() {
-  if (matchedClips.value.length === 0) {
+/** 直接根据匹配的字幕数据导出剪映草稿，不经过总轨道 */
+async function handleApply() {
+  if (matchedSubs.value.length === 0) {
     ElMessage.warning('没有匹配的片段')
     return
   }
 
-  // 清空当前轨道，填入匹配片段
-  store.timeline.clips.length = 0
-  for (const clip of matchedClips.value) {
-    store.addToTimeline(clip.id)
+  // 输入项目名称
+  let projectName = ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入剪映工程名称', '导出剪映工程', {
+      confirmButtonText: '导出',
+      inputValue: `剪映工程_${new Date().toLocaleDateString()}`,
+      inputPlaceholder: '工程名称'
+    })
+    projectName = value || ''
+  } catch {
+    return
   }
-  ElMessage.success(`已将 ${matchedClips.value.length} 个片段加入总轨道，点击顶部「导出到剪映」完成`)
+
+  // 用第一个匹配字幕的视频分辨率作为画布尺寸
+  const firstSub = matchedSubs.value[0]
+  const firstVideo = store.importedVideos.find(v => v.id === firstSub.videoId)
+  const canvasW = firstVideo?.width || 1080
+  const canvasH = firstVideo?.height || 1920
+
+  // 按视频分组，构建导出用的片段列表（视频文件 + 起止时间）
+  const clipItems = matchedSubs.value.map(s => ({
+    sourceFile: s.videoPath,
+    sourceFileName: s.videoName,
+    startMs: s.startTime,
+    endMs: s.endTime
+  }))
+
+  // 每条字幕导出为独立的文本片段
+  const subtitleItems = matchedSubs.value.map((s, i) => ({
+    text: s.text,
+    startMs: 0,   // 每个片段内部从 0 开始
+    endMs: s.endTime - s.startTime
+  }))
+
+  try {
+    const project = buildProject(clipItems, subtitleItems, projectName, canvasW, canvasH)
+    const result = await exportJianyingProject(project, store.jianyingDraftPath, (msg) => {
+      statusText.value = msg
+    })
+
+    if (result.success) {
+      ElMessage.success(`已导出到剪映草稿: ${result.projectPath}`)
+    } else {
+      ElMessage.error('导出失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('导出失败: ' + (e.message || '未知错误'))
+  }
 }
 
 function renderScript(text: string): string {

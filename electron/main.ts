@@ -390,6 +390,22 @@ ipcMain.handle('read-video-directory', async (_event, dirPath: string) => {
   }
 })
 
+ipcMain.handle('list-directory', async (_event, dirPath: string) => {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    return entries
+      .filter(entry => entry.isFile() || entry.isDirectory())
+      .map(entry => ({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile()
+      }))
+  } catch {
+    return []
+  }
+})
+
 ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
   try {
     const ext = path.extname(filePath).toLowerCase()

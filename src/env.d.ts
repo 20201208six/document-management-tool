@@ -15,6 +15,7 @@ export interface IElectronAPI {
   selectVideoFile: () => Promise<Array<{ path: string; name: string }> | null>
   scanFolderVideos: (dirPath: string) => Promise<Array<{ path: string; name: string }>>
   readVideoDirectory: (dirPath: string) => Promise<Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }>>
+  listDirectory: (dirPath: string) => Promise<Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }>>
   readFileAsText: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
   // 文件系统
   getUsername: () => Promise<string>

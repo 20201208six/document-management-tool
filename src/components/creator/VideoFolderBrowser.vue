@@ -18,6 +18,11 @@
           <el-icon><Refresh /></el-icon>
         </el-button>
       </el-tooltip>
+      <el-tooltip content="同步全部视频状态">
+        <el-button size="small" circle @click="refreshAllStatus" :loading="syncingAll">
+          <el-icon><RefreshRight /></el-icon>
+        </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 路径列表 -->
@@ -71,6 +76,7 @@
         <div v-if="entry.isDirectory"
           class="file-entry folder-entry"
           @click="handleFolderClick(entry)"
+          @contextmenu.prevent="onFolderContextMenu($event, entry)"
         >
           <el-icon class="file-icon folder-icon"><Folder /></el-icon>
           <div class="file-info">
@@ -115,12 +121,24 @@
         <el-button type="primary" @click="savePath">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 文件夹右键菜单 -->
+    <div
+      v-if="ctxMenu.visible"
+      class="ctx-menu"
+      :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+      @mouseleave="ctxMenu.visible = false"
+    >
+      <div class="ctx-menu-item" @click="batchAsrFolder">
+        <el-icon><Microphone /></el-icon> 一键ASR转字幕
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, reactive } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 
 const store = useCreatorModeStore()
@@ -128,6 +146,159 @@ const store = useCreatorModeStore()
 const showPathDialog = ref(false)
 const editingPathId = ref('')
 const pathForm = ref({ label: '', path: '', group: '' })
+const syncingAll = ref(false)
+
+// 右键菜单
+const ctxMenu = reactive({ visible: false, x: 0, y: 0, folderPath: '' })
+
+function onFolderContextMenu(e: MouseEvent, entry: { path: string }) {
+  ctxMenu.visible = true
+  ctxMenu.x = e.clientX
+  ctxMenu.y = e.clientY
+  ctxMenu.folderPath = entry.path
+}
+
+/** 一键批量 ASR：扫描文件夹中所有视频并转字幕 */
+async function batchAsrFolder() {
+  ctxMenu.visible = false
+  const api = (window as any).electronAPI
+  if (!api?.scanFolderVideos || !api?.runAsr) {
+    ElMessage.warning('批量ASR仅在桌面端可用')
+    return
+  }
+
+  const folderPath = ctxMenu.folderPath
+  try {
+    const videoFiles: Array<{ path: string; name: string }> = await api.scanFolderVideos(folderPath)
+    if (videoFiles.length === 0) {
+      ElMessage.info('该文件夹中没有视频文件')
+      return
+    }
+
+    await ElMessageBox.confirm(
+      `即将对「${folderPath.split(/[/\\]/).pop()}」中的 ${videoFiles.length} 个视频进行ASR转字幕，是否继续？`,
+      '一键ASR',
+      { confirmButtonText: '开始', cancelButtonText: '取消', type: 'info' }
+    )
+
+    let done = 0
+    let skipped = 0
+    let failed = 0
+
+    for (const vf of videoFiles) {
+      // 导入视频
+      const url = `file:///${vf.path.replace(/\\/g, '/')}`
+      let video = store.importedVideos.find(v => v.path === vf.path)
+      if (!video) {
+        video = store.addVideo({ name: vf.name } as any as File, url, vf.path)
+      }
+      if (!video) { skipped++; continue }
+
+      // 已有字幕则跳过
+      if (video.asrStatus === 'done' && video.subtitles.length > 0) {
+        skipped++
+        continue
+      }
+
+      try {
+        store.setAsrStatus(video.id, 'processing')
+        const resultJson = await api.runAsr(video.path)
+        const result = JSON.parse(resultJson)
+        const subtitles = result.utterances?.map((u: any) => ({
+          id: 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          text: u.text,
+          startTime: u.start_time,
+          endTime: u.end_time,
+          words: u.words || []
+        })) || []
+        store.setVideoSubtitles(video.id, subtitles)
+
+        // 保存字幕缓存到存储目录
+        if (api.createDirectory && api.writeFile && store.storagePath) {
+          const videoName = vf.name.replace(/\.\w+$/, '')
+          const wrapper = {
+            subtitles, _meta: { videoPath: video.path, videoName: video.name, videoDuration: video.duration || 0 }
+          }
+          await api.createDirectory(store.storagePath)
+          await api.writeFile(
+            `${store.storagePath.replace(/\\/g, '/')}/${videoName}.subtitles.json`,
+            JSON.stringify(wrapper, null, 2)
+          )
+        }
+        done++
+      } catch {
+        store.setAsrStatus(video.id, 'error', '批量ASR失败')
+        failed++
+      }
+    }
+
+    // 刷新缓存计数
+    store.scanSubtitleCacheCount()
+    ElMessage.success(`批量ASR完成: ${done} 成功, ${skipped} 跳过, ${failed} 失败`)
+  } catch {
+    // 用户取消或扫描失败
+  }
+}
+
+/** 同步全部视频状态：恢复字幕缓存 + 检测元数据 */
+async function refreshAllStatus() {
+  syncingAll.value = true
+  const entries = sortedEntries.value.filter(e => !e.isDirectory)
+  let restored = 0
+  let detected = 0
+
+  for (const entry of entries) {
+    // 如果尚未导入，先导入
+    let video = store.importedVideos.find(v => v.path === entry.path)
+    if (!video) {
+      const url = `file:///${entry.path.replace(/\\/g, '/')}`
+      video = store.addVideo({ name: entry.name } as any as File, url, entry.path)
+      if (video) {
+        await store.restoreCachedSubtitles(video.id, entry.path)
+        restored++
+      }
+    } else if (video.asrStatus !== 'done') {
+      await store.restoreCachedSubtitles(video.id, entry.path)
+      restored++
+    }
+    // 检测视频比例（如果尚未检测）
+    if (video && video.duration === 0) {
+      await detectVideoMeta(video.id, video.url)
+      detected++
+    }
+  }
+
+  syncingAll.value = false
+  ElMessage.success(`同步完成: ${restored} 条字幕恢复, ${detected} 个元数据更新`)
+}
+
+/** 异步检测视频元数据 */
+function detectVideoMeta(videoId: string, url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const temp = document.createElement('video')
+    temp.style.display = 'none'
+    document.body.appendChild(temp)
+    temp.preload = 'metadata'
+    temp.src = url
+    temp.onloadedmetadata = () => {
+      const w = temp.videoWidth
+      const h = temp.videoHeight
+      if (w && h) store.setVideoMeta(videoId, temp.duration, w, h)
+      document.body.removeChild(temp)
+      resolve()
+    }
+    temp.onerror = () => {
+      document.body.removeChild(temp)
+      resolve()
+    }
+    setTimeout(() => {
+      if (document.body.contains(temp)) {
+        document.body.removeChild(temp)
+        resolve()
+      }
+    }, 5000)
+  })
+}
 
 /** 根层级条目：固定根文件夹 + 孤立视频 */
 const currentEntries = computed(() => {
@@ -460,5 +631,36 @@ function handleVideoDelete(entry: { path: string; name: string }) {
 .file-folder {
   font-size: 10px;
   color: #909399;
+  display: block;
+  min-height: 14px;
+  line-height: 14px;
+}
+
+/* 右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  padding: 4px 0;
+  min-width: 160px;
+}
+
+.ctx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #303133;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ctx-menu-item:hover {
+  background: #ecf5ff;
+  color: #409eff;
 }
 </style>

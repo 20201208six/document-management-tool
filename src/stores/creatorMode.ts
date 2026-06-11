@@ -68,6 +68,7 @@ const STORAGE_PATH_KEY = 'creator-storage-path'
 const JIANYING_PATH_KEY = 'creator-jianying-path'
 const SEARCH_KEY = 'creator-search-history'
 const VIDEO_ROOTS_KEY = 'creator-video-roots'
+const VIDEOS_KEY = 'creator-videos'
 
 export const useCreatorModeStore = defineStore('creatorMode', () => {
   // ===== 子模式 =====
@@ -78,8 +79,48 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   }
 
   // ===== 视频源管理（批量导入） =====
-  const importedVideos = ref<ImportedVideo[]>([])
+  const importedVideos = ref<ImportedVideo[]>(loadVideos())
   const activeVideoId = ref<string | null>(null)
+
+  function loadVideos(): ImportedVideo[] {
+    try {
+      const raw = localStorage.getItem(VIDEOS_KEY)
+      if (raw) {
+        const arr = JSON.parse(raw)
+        return arr.map((v: any) => ({
+          ...v,
+          file: { name: v.name } as File,
+          url: v.path ? `file:///${v.path.replace(/\\/g, '/')}` : v.url,
+          subtitles: Array.isArray(v.subtitles) ? v.subtitles : [],
+          asrStatus: v.asrStatus || 'idle',
+          source: v.source || 'manual',
+          duration: v.duration || 0,
+          width: v.width || 0,
+          height: v.height || 0,
+          ratio: v.ratio || '16:9'
+        }))
+      }
+    } catch {}
+    return []
+  }
+
+  function saveVideos() {
+    const data = importedVideos.value.map(v => ({
+      id: v.id,
+      name: v.name,
+      path: v.path,
+      url: v.url,
+      duration: v.duration,
+      width: v.width,
+      height: v.height,
+      ratio: v.ratio,
+      subtitles: v.subtitles,
+      asrStatus: v.asrStatus,
+      asrError: v.asrError,
+      source: v.source
+    }))
+    localStorage.setItem(VIDEOS_KEY, JSON.stringify(data))
+  }
 
   const activeVideo = computed(() =>
     importedVideos.value.find(v => v.id === activeVideoId.value) || null
@@ -155,31 +196,24 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (error) video.asrError = error
   }
 
-  /** 尝试恢复已缓存的字幕（用于重新导入视频时恢复 ASR 状态） */
+  /** 尝试恢复已缓存的字幕（只从存储目录加载） */
   async function restoreCachedSubtitles(videoId: string, videoPath: string) {
     const electronAPI = (window as any).electronAPI
-    if (!electronAPI?.readFileAsText) return
+    if (!electronAPI?.readFileAsText || !storagePath.value) return
 
     const videoName = videoPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || 'unknown'
-    const candidates: string[] = []
-    if (storagePath.value) {
-      candidates.push(`${storagePath.value.replace(/\\/g, '/')}/${videoName}.subtitles.json`)
-    }
-    candidates.push(videoPath.replace(/\.\w+$/, '.subtitles.json'))
+    const cachePath = `${storagePath.value.replace(/\\/g, '/')}/${videoName}.subtitles.json`
 
-    for (const cachePath of candidates) {
-      try {
-        const result = await electronAPI.readFileAsText(cachePath)
-        if (result.success) {
-          const subtitles = JSON.parse(result.content)
-          if (Array.isArray(subtitles) && subtitles.length > 0) {
-            setVideoSubtitles(videoId, subtitles)
-            console.log(`[缓存] 已恢复 ${subtitles.length} 条字幕: ${videoId}`)
-            return
-          }
+    try {
+      const result = await electronAPI.readFileAsText(cachePath)
+      if (result.success) {
+        const subtitles = JSON.parse(result.content)
+        if (Array.isArray(subtitles) && subtitles.length > 0) {
+          setVideoSubtitles(videoId, subtitles)
+          console.log(`[缓存] 已恢复 ${subtitles.length} 条字幕: ${videoId}`)
         }
-      } catch { /* 文件不存在或解析失败，继续尝试下一个 */ }
-    }
+      }
+    } catch { /* 文件不存在或解析失败 */ }
   }
 
   // ===== 视频播放状态 =====
@@ -196,7 +230,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   const jianyingDraftPath = ref(loadJianyingPath())
 
   function loadStoragePath(): string {
-    try { return localStorage.getItem(STORAGE_PATH_KEY) || '' } catch { return '' }
+    try { return localStorage.getItem(STORAGE_PATH_KEY) || 'C:\\Users\\Administrator\\Documents\\jianyinwenjian' } catch { return 'C:\\Users\\Administrator\\Documents\\jianyinwenjian' }
   }
 
   function loadJianyingPath(): string {
@@ -211,6 +245,38 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   function setJianyingDraftPath(path: string) {
     jianyingDraftPath.value = path
     localStorage.setItem(JIANYING_PATH_KEY, path)
+  }
+
+  // ===== 字幕缓存文件计数 =====
+  const subtitleCacheCount = ref(0)
+
+  /** 扫描存储目录中的字幕缓存文件数（递归） */
+  async function scanSubtitleCacheCount() {
+    const electronAPI = (window as any).electronAPI
+    if (!electronAPI?.listDirectory || !storagePath.value) return
+
+    async function listRecursive(dirPath: string): Promise<string[]> {
+      const results: string[] = []
+      try {
+        const entries = await electronAPI.listDirectory(dirPath)
+        for (const entry of entries) {
+          if (entry.isFile && entry.name.endsWith('.subtitles.json')) {
+            results.push(entry.path)
+          } else if (entry.isDirectory) {
+            const sub = await listRecursive(entry.path)
+            results.push(...sub)
+          }
+        }
+      } catch {}
+      return results
+    }
+
+    try {
+      const files = await listRecursive(storagePath.value)
+      subtitleCacheCount.value = files.length
+    } catch {
+      subtitleCacheCount.value = 0
+    }
   }
 
   // ===== 片段管理 =====
@@ -620,7 +686,9 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         refreshVideoDir()
       }
     }
-  })
+  }, { immediate: true })
+
+  let _videosReady = false
 
   // 视频列表变化时自动刷新「导入的视频」文件夹
   watch(importedVideos, () => {
@@ -628,6 +696,15 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       videoDirEntries.value = getOrphanVideoEntries()
     }
   }, { deep: true })
+
+  // 视频列表变化时自动持久化（跳过初始化首次触发）
+  watch(importedVideos, () => {
+    if (!_videosReady) return
+    saveVideos()
+  }, { deep: true })
+
+  // 标记初始化完成，后续变更才触发持久化
+  _videosReady = true
 
   return {
     // 子模式
@@ -648,6 +725,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     // 存储
     storagePath, setStoragePath,
     jianyingDraftPath, setJianyingDraftPath,
+    subtitleCacheCount, scanSubtitleCacheCount,
 
     // 片段
     clips, addClip, removeClip, updateClipTime,

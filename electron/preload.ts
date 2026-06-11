@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectVideoFile: () => ipcRenderer.invoke('select-video-files'),
   scanFolderVideos: (dirPath: string) => ipcRenderer.invoke('scan-folder-videos', dirPath),
   readVideoDirectory: (dirPath: string) => ipcRenderer.invoke('read-video-directory', dirPath),
+  listDirectory: (dirPath: string) => ipcRenderer.invoke('list-directory', dirPath),
   readFileAsText: (filePath: string) => ipcRenderer.invoke('read-file-as-text', filePath),
   // 文件系统
   getUsername: () => ipcRenderer.invoke('get-username'),
