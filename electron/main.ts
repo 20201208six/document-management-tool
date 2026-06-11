@@ -351,6 +351,45 @@ ipcMain.handle('select-video-files', async () => {
   }))
 })
 
+const VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm', '.m4v', '.3gp', '.mts', '.m2ts', '.ts', '.vob', '.ogv', '.ogg']
+
+/** 递归扫描目录中的视频文件 */
+function scanVideoFiles(dirPath: string, results: Array<{ path: string; name: string }> = []): Array<{ path: string; name: string }> {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        scanVideoFiles(fullPath, results)
+      } else if (entry.isFile() && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())) {
+        results.push({ path: fullPath, name: entry.name })
+      }
+    }
+  } catch { /* 跳过无权限目录 */ }
+  return results
+}
+
+ipcMain.handle('scan-folder-videos', async (_event, dirPath: string) => {
+  return scanVideoFiles(dirPath)
+})
+
+/** 读取单层目录：返回子文件夹 + 视频文件（用于文件夹导航） */
+ipcMain.handle('read-video-directory', async (_event, dirPath: string) => {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    return entries
+      .filter(entry => entry.isDirectory() || VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase()))
+      .map(entry => ({
+        name: entry.name,
+        path: path.join(dirPath, entry.name),
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile()
+      }))
+  } catch {
+    return []
+  }
+})
+
 ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
   try {
     const ext = path.extname(filePath).toLowerCase()

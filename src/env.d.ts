@@ -12,7 +12,19 @@ export interface IElectronAPI {
   openWithDefaultApp: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
   selectFile: () => Promise<string | null>
+  selectVideoFile: () => Promise<Array<{ path: string; name: string }> | null>
+  scanFolderVideos: (dirPath: string) => Promise<Array<{ path: string; name: string }>>
+  readVideoDirectory: (dirPath: string) => Promise<Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }>>
   readFileAsText: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+  // 文件系统
+  getUsername: () => Promise<string>
+  createDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
+  writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
+  // ASR
+  runAsr: (videoPath: string) => Promise<string>
+  // 字幕缓存
+  loadSubtitleCache: (videoPath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+  saveSubtitleCache: (videoPath: string, content: string) => Promise<{ success: boolean; path?: string; error?: string }>
 }
 
 export interface FileEntry {

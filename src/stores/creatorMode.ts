@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import type { SubtitleSegment } from '@/services/asr'
 
 // ===== 类型定义 =====
@@ -29,6 +29,7 @@ export interface ImportedVideo {
   subtitles: SubtitleSegment[]
   asrStatus: 'idle' | 'processing' | 'done' | 'error'
   asrError?: string
+  source: 'manual' | 'folder'  // 导入来源：手动选择文件 / 文件夹浏览点击
 }
 
 /** 时间轨道 */
@@ -66,6 +67,7 @@ const WORKFLOW_KEY = 'creator-workflow'
 const STORAGE_PATH_KEY = 'creator-storage-path'
 const JIANYING_PATH_KEY = 'creator-jianying-path'
 const SEARCH_KEY = 'creator-search-history'
+const VIDEO_ROOTS_KEY = 'creator-video-roots'
 
 export const useCreatorModeStore = defineStore('creatorMode', () => {
   // ===== 子模式 =====
@@ -83,7 +85,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     importedVideos.value.find(v => v.id === activeVideoId.value) || null
   )
 
-  function addVideo(file: File, url: string, path: string) {
+  function addVideo(file: File, url: string, path: string, source: 'manual' | 'folder' = 'folder') {
     // 去重：判断路径是否已存在
     if (importedVideos.value.some(v => v.path === path)) return null
     const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
@@ -98,7 +100,8 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       height: 0,
       ratio: '16:9',
       subtitles: [],
-      asrStatus: 'idle'
+      asrStatus: 'idle',
+      source
     }
     importedVideos.value.push(video)
     if (!activeVideoId.value) activeVideoId.value = id
@@ -150,6 +153,33 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (!video) return
     video.asrStatus = status
     if (error) video.asrError = error
+  }
+
+  /** 尝试恢复已缓存的字幕（用于重新导入视频时恢复 ASR 状态） */
+  async function restoreCachedSubtitles(videoId: string, videoPath: string) {
+    const electronAPI = (window as any).electronAPI
+    if (!electronAPI?.readFileAsText) return
+
+    const videoName = videoPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || 'unknown'
+    const candidates: string[] = []
+    if (storagePath.value) {
+      candidates.push(`${storagePath.value.replace(/\\/g, '/')}/${videoName}.subtitles.json`)
+    }
+    candidates.push(videoPath.replace(/\.\w+$/, '.subtitles.json'))
+
+    for (const cachePath of candidates) {
+      try {
+        const result = await electronAPI.readFileAsText(cachePath)
+        if (result.success) {
+          const subtitles = JSON.parse(result.content)
+          if (Array.isArray(subtitles) && subtitles.length > 0) {
+            setVideoSubtitles(videoId, subtitles)
+            console.log(`[缓存] 已恢复 ${subtitles.length} 条字幕: ${videoId}`)
+            return
+          }
+        }
+      } catch { /* 文件不存在或解析失败，继续尝试下一个 */ }
+    }
   }
 
   // ===== 视频播放状态 =====
@@ -407,6 +437,198 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   function setCanvasOffset(x: number, y: number) { canvasOffset.x = x; canvasOffset.y = y }
   function setCanvasScale(s: number) { canvasScale.value = Math.max(0.3, Math.min(3, s)) }
 
+  // ===== 视频文件夹导航（对齐基础模式 FolderPath 结构） =====
+  interface VideoFolderPath {
+    id: string
+    path: string
+    label: string
+    group: string
+    isValid: boolean
+  }
+
+  const ORPHAN_FOLDER_ID = '_orphan_videos_'
+  const ORPHAN_FOLDER_LABEL = '导入的视频'
+  let videoIdCounter = 0
+  const videoRootPaths = ref<VideoFolderPath[]>(loadVideoRoots())
+  const activeVideoRootId = ref<string>(ORPHAN_FOLDER_ID)
+  const videoBrowseStack = ref<string[]>([])
+  const videoCurrentFolder = ref<string>('')
+  const videoDirEntries = ref<Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }>>([])
+  const videoDirLoading = ref(false)
+
+  function loadVideoRoots(): VideoFolderPath[] {
+    const roots: VideoFolderPath[] = [
+      { id: ORPHAN_FOLDER_ID, path: '', label: ORPHAN_FOLDER_LABEL, group: '默认', isValid: true }
+    ]
+    try {
+      const d = localStorage.getItem(VIDEO_ROOTS_KEY)
+      if (d) {
+        const arr: VideoFolderPath[] = JSON.parse(d)
+        videoIdCounter = arr.reduce((max, fp) => Math.max(max, parseInt(fp.id) || 0), 0)
+        roots.push(...arr)
+      }
+    } catch {}
+    return roots
+  }
+  function saveVideoRoots() {
+    localStorage.setItem(VIDEO_ROOTS_KEY, JSON.stringify(
+      videoRootPaths.value.filter(fp => fp.id !== ORPHAN_FOLDER_ID && fp.group !== '临时')
+    ))
+  }
+
+  /** 通过系统对话框选择文件夹并设为活动根目录 */
+  function setVideoFolder(folderPath: string) {
+    const label = folderPath.split(/[/\\]/).pop() || folderPath
+    addVideoTempPath(folderPath, label)
+  }
+
+  function addVideoTempPath(folderPath: string, label: string) {
+    if (!folderPath) return
+    const existing = videoRootPaths.value.find(fp => fp.path.toLowerCase() === folderPath.toLowerCase())
+    if (existing) {
+      activeVideoRootId.value = existing.id
+      return
+    }
+    const id = 'temp_' + Date.now()
+    videoRootPaths.value.push({ id, path: folderPath, label, group: '临时', isValid: true })
+    activeVideoRootId.value = id
+  }
+
+  function addVideoRootPath(fp: { id?: string; path: string; label: string; group?: string; isValid?: boolean }) {
+    const p = fp.path.toLowerCase()
+    if (!p) return false
+    if (videoRootPaths.value.some(v => v.path.toLowerCase() === p)) return false
+    const id = fp.id || String(++videoIdCounter)
+    videoRootPaths.value.push({
+      id,
+      path: fp.path,
+      label: fp.label || fp.path.split(/[/\\]/).pop() || fp.path,
+      group: fp.group || '',
+      isValid: fp.isValid !== false
+    })
+    saveVideoRoots()
+    if (!activeVideoRootId.value) activeVideoRootId.value = id
+    return true
+  }
+
+  function updateVideoRootPath(id: string, data: { path: string; label: string; group: string }) {
+    const fp = videoRootPaths.value.find(v => v.id === id)
+    if (!fp) return
+    fp.path = data.path
+    fp.label = data.label || data.path.split(/[/\\]/).pop() || data.path
+    fp.group = data.group
+    fp.isValid = true
+    saveVideoRoots()
+  }
+
+  function removeVideoRootPath(id: string) {
+    if (id === ORPHAN_FOLDER_ID) return  // 禁止删除默认文件夹
+    videoRootPaths.value = videoRootPaths.value.filter(v => v.id !== id)
+    if (activeVideoRootId.value === id) {
+      activeVideoRootId.value = ORPHAN_FOLDER_ID
+    }
+    saveVideoRoots()
+  }
+
+  const activeVideoRootPath = computed(() =>
+    videoRootPaths.value.find(v => v.id === activeVideoRootId.value) || null
+  )
+
+  async function refreshVideoDir(dirPath?: string) {
+    // 默认「导入的视频」文件夹：显示不在任何真实根文件夹中的视频
+    if (activeVideoRootId.value === ORPHAN_FOLDER_ID && !dirPath && !videoCurrentFolder.value) {
+      videoDirEntries.value = getOrphanVideoEntries()
+      videoDirLoading.value = false
+      return
+    }
+
+    const target = dirPath || videoCurrentFolder.value || activeVideoRootPath.value?.path || ''
+    videoDirLoading.value = true
+    try {
+      const api = (window as any).electronAPI
+      if (!api?.readVideoDirectory || !target) { videoDirEntries.value = []; return }
+      videoDirEntries.value = await api.readVideoDirectory(target)
+      videoDirEntries.value.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      const root = videoRootPaths.value.find(v => v.id === activeVideoRootId.value)
+      if (root) root.isValid = true
+    } catch {
+      videoDirEntries.value = []
+      const root = videoRootPaths.value.find(v => v.id === activeVideoRootId.value)
+      if (root) root.isValid = false
+    } finally {
+      videoDirLoading.value = false
+    }
+  }
+
+  /** 获取手动导入的视频（通过「选择视频文件」导入的） */
+  function getOrphanVideoEntries(): Array<{ name: string; path: string; isDirectory: boolean; isFile: boolean }> {
+    return importedVideos.value
+      .filter(v => v.source === 'manual')
+      .map(v => ({
+        name: v.name,
+        path: v.path,
+        isDirectory: false,
+        isFile: true
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  async function navigateIntoVideoDir(subPath: string) {
+    videoBrowseStack.value.push(videoCurrentFolder.value)
+    videoCurrentFolder.value = subPath
+    await refreshVideoDir(subPath)
+  }
+
+  async function navigateUpVideoDir() {
+    if (videoBrowseStack.value.length > 0) {
+      videoCurrentFolder.value = videoBrowseStack.value.pop()!
+      await refreshVideoDir(videoCurrentFolder.value)
+    } else {
+      videoCurrentFolder.value = ''
+      await refreshVideoDir()
+    }
+  }
+
+  async function navigateHomeVideo() {
+    videoBrowseStack.value = []
+    videoCurrentFolder.value = ''
+    await refreshVideoDir()
+  }
+
+  /** 根层级目录条目：所有固定根文件夹 */
+  const rootEntries = computed(() => {
+    return videoRootPaths.value.map(fp => ({
+      name: fp.label,
+      path: fp.path,
+      isDirectory: true,
+      isFile: false
+    }))
+  })
+
+  // activeVideoRootId 变化时自动刷新
+  watch(activeVideoRootId, (newId) => {
+    if (newId) {
+      videoBrowseStack.value = []
+      videoCurrentFolder.value = ''
+      if (newId === ORPHAN_FOLDER_ID) {
+        videoDirEntries.value = getOrphanVideoEntries()
+        videoDirLoading.value = false
+      } else {
+        refreshVideoDir()
+      }
+    }
+  })
+
+  // 视频列表变化时自动刷新「导入的视频」文件夹
+  watch(importedVideos, () => {
+    if (activeVideoRootId.value === ORPHAN_FOLDER_ID && !videoBrowseStack.value.length && !videoCurrentFolder.value) {
+      videoDirEntries.value = getOrphanVideoEntries()
+    }
+  }, { deep: true })
+
   return {
     // 子模式
     subMode, switchSubMode,
@@ -414,7 +636,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     // 视频源管理
     importedVideos, activeVideoId, activeVideo,
     addVideo, removeVideo, setActiveVideo, setVideoMeta,
-    setVideoSubtitles, setAsrStatus,
+    setVideoSubtitles, setAsrStatus, restoreCachedSubtitles,
 
     // 播放状态
     currentTime, videoDuration, isPlaying,
@@ -446,6 +668,14 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     addNode, removeNode, updateNodePosition,
     addEdge, removeEdge, selectNode,
     canvasOffset, canvasScale,
-    setCanvasOffset, setCanvasScale
+    setCanvasOffset, setCanvasScale,
+
+    // 视频文件夹导航
+    videoRootPaths, activeVideoRootId, activeVideoRootPath,
+    setVideoFolder, addVideoRootPath, addVideoTempPath,
+    updateVideoRootPath, removeVideoRootPath,
+    videoBrowseStack, videoCurrentFolder,
+    videoDirEntries, videoDirLoading, rootEntries,
+    refreshVideoDir, navigateIntoVideoDir, navigateUpVideoDir, navigateHomeVideo
   }
 })

@@ -3,10 +3,10 @@
     <!-- 顶部工具栏 -->
     <div class="clipper-toolbar">
       <div class="toolbar-left">
-        <el-button size="small" @click="triggerImport">
-          <el-icon><Upload /></el-icon> 批量导入视频
+        <el-button size="small" @click="triggerFileImport">
+          <el-icon><Upload /></el-icon> 选择视频文件
         </el-button>
-        <input ref="videoInputRef" type="file" accept="video/*" multiple style="display:none" @change="handleImport" />
+        <input ref="videoInputRef" type="file" accept="video/*" multiple style="display:none" @change="handleFileImport" />
         <el-button size="small" @click="handleAsr" :disabled="!store.activeVideo || store.activeVideo.asrStatus === 'processing'" :loading="isAsrProcessing">
           <el-icon><Microphone /></el-icon> ASR 转字幕
         </el-button>
@@ -28,37 +28,13 @@
 
     <!-- 主内容区 -->
     <div class="clipper-body">
-      <!-- 左侧：视频列表 -->
-      <div class="video-list-panel">
-        <div class="panel-header">视频列表 ({{ store.importedVideos.length }})</div>
-        <div v-if="store.importedVideos.length === 0" class="panel-empty">
-          <span>点击「批量导入视频」开始</span>
-        </div>
-        <div v-else class="video-list">
-          <div
-            v-for="video in store.importedVideos"
-            :key="video.id"
-            class="video-item"
-            :class="{ active: store.activeVideoId === video.id }"
-            @click="store.setActiveVideo(video.id)"
-          >
-            <div class="video-thumb">
-              <video :src="video.url" muted preload="metadata"></video>
-              <span class="video-ratio">{{ video.ratio }}</span>
-            </div>
-            <div class="video-info">
-              <span class="video-name" :title="video.name">{{ video.name }}</span>
-              <span class="video-meta">{{ store.formatTime(video.duration) }}</span>
-              <span class="asr-badge" :class="'asr-' + video.asrStatus">
-                {{ asrLabel(video.asrStatus) }}
-              </span>
-            </div>
-            <el-button class="video-remove" size="small" circle @click.stop="store.removeVideo(video.id)">
-              <el-icon><Close /></el-icon>
-            </el-button>
-          </div>
-        </div>
+      <!-- 左侧：视频文件夹面板 -->
+      <div class="sidebar-panel" :style="{ width: sidebarWidth + 'px' }">
+        <VideoFolderBrowser />
       </div>
+
+      <!-- 拖拽调整大小把手 -->
+        <div class="resize-handle" @mousedown="startResizeLeft"></div>
 
       <!-- 中间：视频预览区 -->
       <div class="preview-panel">
@@ -152,8 +128,11 @@
         </div>
       </div>
 
+      <!-- 拖拽把手（右侧面板） -->
+      <div class="resize-handle right-handle" @mousedown="startResizeRight"></div>
+
       <!-- 右侧：字幕/片段列表 -->
-      <div class="right-panel">
+      <div class="right-panel" :style="{ width: rightPanelWidth + 'px' }">
         <el-tabs v-model="rightTab" class="right-tabs">
           <el-tab-pane label="字幕" name="subtitles">
             <div class="subtitle-list">
@@ -196,8 +175,11 @@
       </div>
     </div>
 
+    <!-- 拖拽把手（底部轨道） -->
+    <div class="resize-handle-h" @mousedown="startResizeBottom"></div>
+
     <!-- 底部：总轨道 -->
-    <div class="timeline-bar">
+    <div class="timeline-bar" :style="{ height: timelineHeight + 'px' }">
       <div class="timeline-header">
         <span>总轨道</span>
         <span class="timeline-total">总时长: {{ store.formatTime(store.timelineTotalDuration) }}</span>
@@ -304,30 +286,82 @@ import { ElMessage } from 'element-plus'
 import { useCreatorModeStore, type VideoClip } from '@/stores/creatorMode'
 import { exportJianyingProject, buildProject, openJianying } from '@/services/jianying'
 import type { SubtitleSegment } from '@/services/asr'
+import VideoFolderBrowser from '@/components/creator/VideoFolderBrowser.vue'
 
 const store = useCreatorModeStore()
+
+// ===== 侧边栏拖拽调整大小 =====
+const sidebarWidth = ref(240)
+const rightPanelWidth = ref(260)
+const timelineHeight = ref(160)
+const isResizingLeft = ref(false)
+const isResizingRight = ref(false)
+const isResizingBottom = ref(false)
+
+function startResizeLeft(e: MouseEvent) {
+  isResizingLeft.value = true
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+
+function startResizeRight(e: MouseEvent) {
+  isResizingRight.value = true
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+
+function startResizeBottom(e: MouseEvent) {
+  isResizingBottom.value = true
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+
+function onResize(e: MouseEvent) {
+  if (isResizingLeft.value) {
+    sidebarWidth.value = Math.min(480, Math.max(180, e.clientX))
+  } else if (isResizingRight.value) {
+    rightPanelWidth.value = Math.min(480, Math.max(180, window.innerWidth - e.clientX))
+  } else if (isResizingBottom.value) {
+    timelineHeight.value = Math.min(400, Math.max(80, window.innerHeight - e.clientY))
+  }
+}
+
+function stopResize() {
+  isResizingLeft.value = false
+  isResizingRight.value = false
+  isResizingBottom.value = false
+  document.removeEventListener('mousemove', onResize)
+  document.removeEventListener('mouseup', stopResize)
+}
 
 // ===== 视频导入 =====
 const videoInputRef = ref<HTMLInputElement | null>(null)
 const videoRef = ref<HTMLVideoElement | null>(null)
 
-function triggerImport() {
+/** 批量导入视频到 store */
+function importVideoBatch(videoFiles: Array<{ path: string; name: string }>): number {
+  let count = 0
+  for (const vf of videoFiles) {
+    const url = `file:///${vf.path.replace(/\\/g, '/')}`
+    const video = store.addVideo({ name: vf.name } as any as File, url, vf.path, 'manual')
+    if (!video) continue
+    count++
+    loadCachedSubtitles(video.id, vf.path)
+    detectVideoRatio(video.id, url)
+  }
+  return count
+}
+
+/** 从文件选择：多选视频文件 */
+function triggerFileImport() {
   const api = (window as any).electronAPI
   if (api?.selectVideoFile) {
     api.selectVideoFile().then((videoFiles: Array<{ path: string; name: string }> | null) => {
       if (!videoFiles || videoFiles.length === 0) return
-      let count = 0
-      for (const vf of videoFiles) {
-        // 使用 file:// 协议直接播放本地视频
-        const url = `file:///${vf.path.replace(/\\/g, '/')}`
-        const video = store.addVideo({ name: vf.name } as any as File, url, vf.path)
-        if (!video) continue  // 重复跳过
-        count++
-        // 尝试加载缓存的字幕文件
-        loadCachedSubtitles(video.id, vf.path)
-        // 异步检测视频比例
-        detectVideoRatio(video.id, url)
-      }
+      const count = importVideoBatch(videoFiles)
       ElMessage.success(`已导入 ${count} 个视频`)
     })
     return
@@ -341,8 +375,6 @@ function detectVideoRatio(videoId: string, url: string) {
   temp.style.display = 'none'
   document.body.appendChild(temp)
   temp.preload = 'metadata'
-  temp.muted = true
-  temp.crossOrigin = 'anonymous'
   temp.src = url
   temp.onloadedmetadata = () => {
     const w = temp.videoWidth
@@ -361,7 +393,8 @@ function detectVideoRatio(videoId: string, url: string) {
   }
 }
 
-function handleImport(e: Event) {
+/** 浏览器环境：通过 <input> 导入视频 */
+function handleFileImport(e: Event) {
   const input = e.target as HTMLInputElement
   const files = input.files
   if (!files || files.length === 0) return
@@ -370,15 +403,11 @@ function handleImport(e: Event) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
     const url = URL.createObjectURL(file)
-    // @ts-ignore
-    const fullPath: string = file.path || file.name
-    const video = store.addVideo(file, url, fullPath)
-    if (!video) continue  // 重复跳过
+    const fullPath: string = (file as any).path || file.name
+    const video = store.addVideo(file, url, fullPath, 'manual')
+    if (!video) continue
     count++
-
-    // 尝试加载缓存的字幕文件
     loadCachedSubtitles(video.id, fullPath)
-    // 异步检测视频比例
     detectVideoRatio(video.id, url)
   }
   ElMessage.success(`已导入 ${count} 个视频`)
@@ -982,27 +1011,58 @@ watch(() => store.activeVideoId, () => {
   display: flex;
   gap: 0;
   overflow: hidden;
+  user-select: none;
+}
+
+/* 侧边栏面板 */
+.sidebar-panel {
+  min-width: 180px;
+  max-width: 480px;
+  flex-shrink: 0;
+  flex-grow: 0;
+  background: #fff;
+  border-right: 1px solid #f0f2f5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 拖拽把手 */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: #409eff;
+}
+
+/* 水平拖拽把手 */
+.resize-handle-h {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resize-handle-h:hover {
+  background: #409eff;
 }
 
 /* 视频列表 */
 .video-list-panel {
-  width: 200px;
-  min-width: 200px;
+  width: 240px;
+  min-width: 240px;
   background: #fff;
   border-right: 1px solid #f0f2f5;
   display: flex;
   flex-direction: column;
 }
 
-.panel-header {
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-  border-bottom: 1px solid #f0f2f5;
-}
-
-.panel-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 12px; padding: 16px; }
 .panel-empty-sm { display: flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 12px; padding: 20px; }
 
 .video-list { flex: 1; overflow-y: auto; }
@@ -1055,6 +1115,7 @@ watch(() => store.activeVideoId, () => {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .video-meta { font-size: 11px; color: #909399; }
+.folder-name { line-height: 1.6; }
 .asr-badge { font-size: 10px; padding: 0 4px; border-radius: 2px; }
 .asr-idle { color: #c0c4cc; }
 .asr-processing { color: #e6a23c; }
@@ -1216,8 +1277,10 @@ watch(() => store.activeVideoId, () => {
 
 /* 右侧面板 */
 .right-panel {
-  width: 260px;
-  min-width: 260px;
+  min-width: 180px;
+  max-width: 480px;
+  flex-shrink: 0;
+  flex-grow: 0;
   background: #fff;
   border-left: 1px solid #f0f2f5;
   display: flex;

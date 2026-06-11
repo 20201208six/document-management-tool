@@ -20,22 +20,42 @@
           工作流
         </button>
       </div>
+
+      <!-- 工作流子 Tab -->
+      <div v-if="store.subMode === 'workflow'" class="wf-subtabs">
+        <button
+          class="subtab-btn"
+          :class="{ active: wfSubTab === 'official' }"
+          @click="wfSubTab = 'official'"
+        >官方工作流</button>
+        <button
+          class="subtab-btn"
+          :class="{ active: wfSubTab === 'canvas' }"
+          @click="wfSubTab = 'canvas'"
+        >自定义画布</button>
+      </div>
     </div>
 
-    <!-- 工作状态：视频剪切 -->
+    <!-- 工作状态 -->
     <VideoClipper v-if="store.subMode === 'work-state'" />
 
-    <!-- 工作流：无限画布 -->
-    <InfiniteCanvas v-if="store.subMode === 'workflow'" />
+    <!-- 工作流：官方工作流 + 自定义画布 -->
+    <template v-if="store.subMode === 'workflow'">
+      <WorkflowPanel v-if="wfSubTab === 'official'" />
+      <InfiniteCanvas v-if="wfSubTab === 'canvas'" />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 import VideoClipper from '@/components/creator/VideoClipper.vue'
+import WorkflowPanel from '@/components/creator/WorkflowPanel.vue'
 import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
 
 const store = useCreatorModeStore()
+const wfSubTab = ref<'official' | 'canvas'>('official')
 </script>
 
 <style scoped>
@@ -56,6 +76,7 @@ const store = useCreatorModeStore()
   border-bottom: 1px solid #e4e7ed;
   height: 44px;
   min-height: 44px;
+  gap: 16px;
 }
 
 .submode-tabs {
@@ -78,13 +99,29 @@ const store = useCreatorModeStore()
   transition: all 0.2s;
 }
 
-.submode-tab:hover {
-  color: #409eff;
-  background: #ecf5ff;
+.submode-tab:hover { color: #409eff; background: #ecf5ff; }
+.submode-tab.active { color: #409eff; background: #ecf5ff; }
+
+.wf-subtabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid #e4e7ed;
 }
 
-.submode-tab.active {
-  color: #409eff;
-  background: #ecf5ff;
+.subtab-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: #909399;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
 }
+
+.subtab-btn:hover { color: #67c23a; background: #f0f9eb; }
+.subtab-btn.active { color: #67c23a; background: #f0f9eb; }
 </style>
