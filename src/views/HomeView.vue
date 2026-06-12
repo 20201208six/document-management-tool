@@ -1,6 +1,6 @@
 <template>
   <div class="home-view">
-    <!-- 模式切换栏 -->
+    <!-- 左侧模式栏 -->
     <div class="mode-bar">
       <div class="mode-buttons">
         <button
@@ -9,12 +9,19 @@
           class="mode-btn"
           :class="{ active: modeStore.currentMode === cfg.key }"
           @click="modeStore.switchMode(cfg.key)"
+          :title="cfg.label"
         >
-          <span class="mode-dot"></span>
-          {{ cfg.label }}
+          <el-icon><component :is="cfg.icon" /></el-icon>
         </button>
       </div>
+      <div class="mode-separator"></div>
+      <button class="mode-btn mode-settings" @click="showGlobalModelManager = true" title="全局模型管理">
+        <el-icon><Setting /></el-icon>
+      </button>
     </div>
+
+    <!-- 内容区域 -->
+    <div class="view-container">
 
     <!-- 基础模式 -->
     <template v-if="modeStore.currentMode === 'basic'">
@@ -304,20 +311,31 @@
 
     <!-- 创作者模式 -->
     <CreatorModeView v-if="modeStore.currentMode === 'creator'" />
+
+    <!-- 自动化模式 -->
+    <AutomationModeView v-if="modeStore.currentMode === 'automation'" />
+
+    </div>  <!-- .view-container -->
+
+    <!-- 全局模型管理对话框 -->
+    <ModelManager v-model:visible="showGlobalModelManager" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, nextTick, onMounted, onUnmounted, provide } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import FolderBrowser from '@/components/FolderBrowser.vue'
 import FavoritesPanel from '@/components/FavoritesPanel.vue'
 import DocFavoritesPanel from '@/components/DocFavoritesPanel.vue'
 import BrowserPanel from '@/components/BrowserPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import ModelManager from '@/components/ModelManager.vue'
 import UniqueModeView from '@/views/UniqueModeView.vue'
 import CreatorModeView from '@/views/CreatorModeView.vue'
+import AutomationModeView from '@/views/AutomationModeView.vue'
 import { useFileStore } from '@/stores/file'
 import { useFavoritesStore } from '@/stores/favorites'
 import { useDocFavoritesStore } from '@/stores/docFavorites'
@@ -334,6 +352,10 @@ const favoritesStore = useFavoritesStore()
 const docFavStore = useDocFavoritesStore()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+
+// 全局模型管理
+const showGlobalModelManager = ref(false)
+provide('showGlobalModelManager', showGlobalModelManager)
 
 const editorContent = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -1039,69 +1061,80 @@ async function executeCantoneseTranslate() {
   width: 100%;
   height: 100vh;
   background: #f5f6fa;
-  position: relative;
+  overflow: hidden;
 }
 
-/* 模式切换栏 */
+/* 左侧模式栏 */
 .mode-bar {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  background: #fff;
-  border-radius: 24px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 56px;
+  min-width: 56px;
+  background: #f5f6fa;
+  padding: 16px 0;
+  z-index: 100;
+  user-select: none;
 }
 
 .mode-buttons {
   display: flex;
-  gap: 0;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
 }
 
 .mode-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  font-size: 13px;
-  font-weight: 500;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   border: none;
   background: transparent;
-  color: #909399;
+  color: #a8abb2;
   cursor: pointer;
-  border-radius: 21px;
-  transition: all 0.25s ease;
-  white-space: nowrap;
+  border-radius: 12px;
+  transition: all 0.15s ease;
+  font-size: 20px;
 }
 
 .mode-btn:hover {
-  color: #409eff;
-  background: #ecf5ff;
+  color: #606266;
+  background: #e8eaed;
 }
 
 .mode-btn.active {
-  color: #fff;
-  background: #409eff;
-  box-shadow: 0 2px 8px rgba(64,158,255,0.3);
+  color: #409eff;
+  background: #e8f4ff;
 }
 
-.mode-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.5;
+.mode-separator {
+  width: 24px;
+  height: 1px;
+  background: #dcdfe6;
+  margin: 10px 0;
 }
 
-.mode-btn.active .mode-dot {
-  opacity: 1;
-  background: #fff;
-  box-shadow: 0 0 6px rgba(255,255,255,0.6);
+.mode-btn.mode-settings {
+  color: #c0c4cc;
+  font-size: 18px;
+  margin-top: 2px;
 }
 
-/* 模式占位页面 */
+.mode-btn.mode-settings:hover {
+  color: #606266;
+}
+
+/* 内容区域 */
+.view-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 基础模式布局 */
 .mode-placeholder {
   flex: 1;
   display: flex;

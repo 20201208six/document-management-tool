@@ -17,45 +17,41 @@
           @click="store.switchSubMode('workflow')"
         >
           <el-icon><Connection /></el-icon>
-          工作流
+          官方工作流
         </button>
       </div>
 
-      <!-- 工作流子 Tab -->
-      <div v-if="store.subMode === 'workflow'" class="wf-subtabs">
-        <button
-          class="subtab-btn"
-          :class="{ active: wfSubTab === 'official' }"
-          @click="wfSubTab = 'official'"
-        >官方工作流</button>
-        <button
-          class="subtab-btn"
-          :class="{ active: wfSubTab === 'canvas' }"
-          @click="wfSubTab = 'canvas'"
-        >自定义画布</button>
-      </div>
+      <div class="header-spacer"></div>
+
+      <el-tooltip content="模型管理" placement="bottom">
+        <el-button size="small" circle @click="openModelManager">
+          <el-icon><Setting /></el-icon>
+        </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 工作状态 -->
     <VideoClipper v-if="store.subMode === 'work-state'" />
 
-    <!-- 工作流：官方工作流 + 自定义画布 -->
-    <template v-if="store.subMode === 'workflow'">
-      <WorkflowPanel v-if="wfSubTab === 'official'" />
-      <InfiniteCanvas v-if="wfSubTab === 'canvas'" />
-    </template>
+    <!-- 工作流 -->
+    <WorkflowPanel v-if="store.subMode === 'workflow'" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
+import { Setting } from '@element-plus/icons-vue'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 import VideoClipper from '@/components/creator/VideoClipper.vue'
 import WorkflowPanel from '@/components/creator/WorkflowPanel.vue'
-import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
 
 const store = useCreatorModeStore()
-const wfSubTab = ref<'official' | 'canvas'>('official')
+
+// 使用全局模型管理对话框
+const globalModelManager = inject<ReturnType<typeof ref<boolean>>>('showGlobalModelManager', ref(false))
+function openModelManager() {
+  globalModelManager.value = true
+}
 </script>
 
 <style scoped>
@@ -79,6 +75,8 @@ const wfSubTab = ref<'official' | 'canvas'>('official')
   gap: 16px;
 }
 
+.header-spacer { flex: 1; }
+
 .submode-tabs {
   display: flex;
   gap: 4px;
@@ -101,27 +99,4 @@ const wfSubTab = ref<'official' | 'canvas'>('official')
 
 .submode-tab:hover { color: #409eff; background: #ecf5ff; }
 .submode-tab.active { color: #409eff; background: #ecf5ff; }
-
-.wf-subtabs {
-  display: flex;
-  gap: 2px;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid #e4e7ed;
-}
-
-.subtab-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  border: none;
-  background: transparent;
-  color: #909399;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s;
-}
-
-.subtab-btn:hover { color: #67c23a; background: #f0f9eb; }
-.subtab-btn.active { color: #67c23a; background: #f0f9eb; }
 </style>

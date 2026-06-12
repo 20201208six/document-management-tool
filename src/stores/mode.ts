@@ -10,7 +10,7 @@ export const useModeStore = defineStore('mode', () => {
   function loadMode(): AppMode {
     try {
       const val = localStorage.getItem(MODE_KEY)
-      if (val === 'unique' || val === 'creator' || val === 'basic') return val
+      if (val === 'unique' || val === 'creator' || val === 'basic' || val === 'automation') return val
     } catch {}
     return 'basic'
   }

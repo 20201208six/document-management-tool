@@ -189,13 +189,6 @@
           </div>
         </el-popover>
 
-        <!-- 模型管理 -->
-        <el-tooltip content="模型管理" placement="bottom">
-          <el-button size="small" circle @click="showModelManager = true">
-            <el-icon><Setting /></el-icon>
-          </el-button>
-        </el-tooltip>
-
         <!-- 对话收藏 -->
         <el-tooltip placement="bottom">
           <template #content>
@@ -436,9 +429,6 @@
       </div>
     </div>
 
-    <!-- 模型管理器对话框 -->
-    <ModelManager v-model:visible="showModelManager" />
-
     <!-- 对话收藏对话框 -->
     <el-dialog v-model="showFavoritesDialog" title="对话收藏" width="680px" destroy-on-close>
       <div class="favorites-search">
@@ -489,7 +479,6 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import ChatMessage from '@/components/ChatMessage.vue'
-import ModelManager from '@/components/ModelManager.vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatFavoritesStore } from '@/stores/chatFavorites'
 
@@ -507,7 +496,6 @@ const uploadedFile = ref<{ name: string; content: string } | null>(null)
 const isUploading = ref(false)
 
 // 对话框状态
-const showModelManager = ref(false)
 const showFavoritesDialog = ref(false)
 const showDisplayPopover = ref(false)
 const showHistoryPopover = ref(false)

@@ -11,6 +11,9 @@
         <span class="cat-label">数据源</span>
         <button class="node-btn" @click="addNodeAtCenter('source', '读取视频')">📹 读取视频</button>
         <button class="node-btn" @click="addNodeAtCenter('source', '读取文件')">📄 读取文件</button>
+        <button class="node-btn" @click="addNodeAtCenter('source', '读取文件夹')">📁 读取文件夹</button>
+        <button class="node-btn" @click="addNodeAtCenter('source', '新建文档')">📝 新建文档</button>
+        <button class="node-btn" @click="addNodeAtCenter('source', '读取字幕')">💬 读取字幕</button>
       </div>
       <div class="node-category">
         <span class="cat-label">处理</span>
@@ -25,18 +28,31 @@
       </div>
 
       <div class="palette-actions">
-        <el-button size="small" @click="clearCanvas">清空画布</el-button>
+        <el-button size="small" type="primary" @click="runWorkflow" :loading="store.isWorkflowRunning" :disabled="store.isWorkflowRunning">
+          执行工作流
+        </el-button>
+        <el-button size="small" @click="clearCanvas" :disabled="store.isWorkflowRunning">清空画布</el-button>
+      </div>
+
+      <!-- 执行日志 -->
+      <div v-if="store.workflowLogs.length > 0" class="workflow-logs">
+        <div class="logs-title">执行日志</div>
+        <div class="logs-list">
+          <div v-for="(log, i) in store.workflowLogs" :key="i" class="log-line" :class="{ 'log-error': log.includes('✗'), 'log-success': log.includes('✓') }">
+            {{ log }}
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- 无限画布 -->
     <div
       class="canvas-area"
+      :class="{ 'canvas-grabbing': isDraggingCanvas }"
       ref="canvasContainerRef"
       @mousedown="onCanvasMouseDown"
-      @mousemove="onCanvasMouseMove"
-      @mouseup="onCanvasMouseUp"
       @wheel.prevent="onCanvasWheel"
+      @contextmenu.prevent
     >
       <div
         class="canvas-content"
@@ -55,22 +71,40 @@
           <rect width="100%" height="100%" fill="url(#grid)" />
         </svg>
 
-        <!-- 连线 -->
-        <svg class="edges-svg" :width="canvasW" :height="canvasH" style="position:absolute;top:0;left:0;pointer-events:none">
-          <line
-            v-for="edge in store.workflowEdges"
-            :key="edge.id"
-            :x1="getNodeCenter(edge.fromNodeId).x"
-            :y1="getNodeCenter(edge.fromNodeId).y"
-            :x2="getNodeCenter(edge.toNodeId).x"
-            :y2="getNodeCenter(edge.toNodeId).y"
-            stroke="#409eff"
-            stroke-width="2"
-            marker-end="url(#arrowhead)"
-          />
+        <!-- 连线（可点击删除） -->
+        <svg class="edges-svg" :width="canvasW" :height="canvasH" style="position:absolute;top:0;left:0;">
+          <g v-for="edge in store.workflowEdges" :key="edge.id">
+            <!-- 透明宽线用于点击 -->
+            <line
+              :x1="getNodeCenter(edge.fromNodeId).x"
+              :y1="getNodeCenter(edge.fromNodeId).y"
+              :x2="getNodeCenter(edge.toNodeId).x"
+              :y2="getNodeCenter(edge.toNodeId).y"
+              stroke="transparent"
+              stroke-width="12"
+              style="cursor:pointer"
+              @click.stop="deleteEdge(edge.id)"
+              @mouseenter="hoveredEdgeId = edge.id"
+              @mouseleave="hoveredEdgeId = null"
+            />
+            <!-- 可视连线 -->
+            <line
+              :x1="getNodeCenter(edge.fromNodeId).x"
+              :y1="getNodeCenter(edge.fromNodeId).y"
+              :x2="getNodeCenter(edge.toNodeId).x"
+              :y2="getNodeCenter(edge.toNodeId).y"
+              :stroke="hoveredEdgeId === edge.id ? '#f56c6c' : '#409eff'"
+              :stroke-width="hoveredEdgeId === edge.id ? 3 : 2"
+              marker-end="url(#arrowhead)"
+              style="pointer-events:none"
+            />
+          </g>
           <defs>
             <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
               <polygon points="0 0, 10 3.5, 0 7" fill="#409eff"/>
+            </marker>
+            <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#f56c6c"/>
             </marker>
           </defs>
         </svg>
@@ -82,7 +116,8 @@
           class="wf-node"
           :class="[
             'node-' + node.type,
-            { selected: store.selectedNodeId === node.id }
+            { selected: store.selectedNodeId === node.id },
+            nodeStatusClass(node)
           ]"
           :style="{ left: node.x + 'px', top: node.y + 'px' }"
           @mousedown.stop="onNodeDragStart($event, node.id)"
@@ -91,9 +126,21 @@
           <div class="node-header">
             <span class="node-icon">{{ nodeIcon(node.type) }}</span>
             <span class="node-label">{{ node.label }}</span>
+            <!-- 执行状态指示器 -->
+            <span v-if="node.config.result" class="node-status" :class="'status-' + node.config.result.status">
+              {{ statusEmoji(node.config.result.status) }}
+            </span>
           </div>
           <div class="node-body">
             <span class="node-type">{{ nodeTypeLabel(node.type) }}</span>
+            <!-- 执行结果摘要 -->
+            <div v-if="node.config.result && node.config.result.status !== 'idle'" class="node-result">
+              <template v-if="node.config.result.status === 'running'">执行中...</template>
+              <template v-else-if="node.config.result.status === 'success'">{{ truncate(node.config.result.output, 50) }}</template>
+              <template v-else-if="node.config.result.status === 'error'">
+                <span class="result-error">{{ truncate(node.config.result.error || '未知错误', 40) }}</span>
+              </template>
+            </div>
           </div>
           <div class="node-connector left" @mousedown.stop="startConnection(node.id, 'from')"></div>
           <div class="node-connector right" @mousedown.stop="startConnection(node.id, 'to')"></div>
@@ -110,16 +157,240 @@
         </el-button-group>
         <el-button size="small" @click="resetView">重置视图</el-button>
       </div>
+
+      <!-- 连线提示 -->
+      <div v-if="connectionFrom" class="connection-hint">
+        已选择起始节点，请点击目标节点的左侧连接点完成连线（点击空白取消）
+      </div>
+    </div>
+
+    <!-- 节点配置面板（右侧） -->
+    <div v-if="selectedNode" class="config-panel">
+      <div class="config-panel-header">
+        <span class="config-panel-title">{{ selectedNode.label }} 配置</span>
+        <button class="config-panel-close" @click="store.selectNode(null)">×</button>
+      </div>
+      <div class="config-panel-body">
+        <!-- 节点基础信息 -->
+        <div class="config-group">
+          <label class="config-label">节点名称</label>
+          <el-input v-model="editNodeLabel" size="small" @change="saveNodeLabel" />
+        </div>
+
+        <!-- 触发器：定时触发 -->
+        <template v-if="selectedNode.label === '定时触发'">
+          <div class="config-group">
+            <label class="config-label">触发间隔（秒）</label>
+            <el-input-number v-model="nodeConfig.interval" :min="1" :max="3600" size="small" @change="saveConfig" />
+          </div>
+          <div class="config-group">
+            <label class="config-label">Cron 表达式（可选）</label>
+            <el-input v-model="nodeConfig.cron" size="small" placeholder="如 */5 * * * *" @change="saveConfig" />
+          </div>
+        </template>
+
+        <!-- 数据源：读取字幕 -->
+        <template v-if="selectedNode.label === '读取字幕'">
+          <div class="config-group">
+            <label class="config-label">字幕源概况</label>
+            <div class="subtitle-summary">
+              <template v-if="videosWithSubtitles.length > 0">
+                <div class="summary-row">
+                  <span>已识别视频</span>
+                  <span>{{ videosWithSubtitles.length }} 个</span>
+                </div>
+                <div class="summary-row">
+                  <span>字幕总数</span>
+                  <span>{{ totalSubtitleCount }} 条</span>
+                </div>
+                <div class="summary-videos">
+                  <div v-for="v in videosWithSubtitles" :key="v.id" class="summary-video-item">
+                    📹 {{ v.name }} ({{ v.subtitleCount }} 条)
+                  </div>
+                </div>
+              </template>
+              <div v-else class="config-hint">
+                暂无可用字幕，请先在「工作状态」中为视频进行语音识别
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 数据源：读取视频 / 读取文件 -->
+        <template v-if="selectedNode.label === '读取视频' || selectedNode.label === '读取文件'">
+          <div class="config-group">
+            <label class="config-label">文件路径</label>
+            <div class="config-file-input">
+              <el-input v-model="nodeConfig.filePath" size="small" placeholder="点击右侧按钮选择文件" />
+              <el-button size="small" @click="selectFileForNode">选择</el-button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 数据源：读取文件夹 -->
+        <template v-if="selectedNode.label === '读取文件夹'">
+          <div class="config-group">
+            <label class="config-label">文件夹路径</label>
+            <div class="config-file-input">
+              <el-input v-model="nodeConfig.folderPath" size="small" placeholder="点击右侧按钮选择文件夹" />
+              <el-button size="small" @click="selectFolderForNode">选择</el-button>
+            </div>
+          </div>
+          <div class="config-group">
+            <label class="config-label">文件过滤（可选）</label>
+            <el-input v-model="nodeConfig.fileFilter" size="small" placeholder="如 *.txt, *.mp4 留空则全部" @change="saveConfig" />
+          </div>
+          <div class="config-group">
+            <label class="config-label">包含子目录</label>
+            <el-switch v-model="nodeConfig.recursive" size="small" @change="saveConfig" />
+          </div>
+        </template>
+
+        <!-- 数据源：新建文档 -->
+        <template v-if="selectedNode.label === '新建文档'">
+          <div class="config-group">
+            <label class="config-label">文件名</label>
+            <el-input v-model="nodeConfig.docFileName" size="small" placeholder="如 文案初稿.txt" @change="saveConfig" />
+          </div>
+          <div class="config-group">
+            <label class="config-label">输出目录</label>
+            <div class="config-file-input">
+              <el-input v-model="nodeConfig.docOutputPath" size="small" placeholder="选择输出目录" />
+              <el-button size="small" @click="selectDocOutputFolder">选择</el-button>
+            </div>
+          </div>
+          <div class="config-group">
+            <label class="config-label">文件类型</label>
+            <el-select v-model="nodeConfig.docFileType" size="small" @change="saveConfig">
+              <el-option label="纯文本 (.txt)" value="txt" />
+              <el-option label="Markdown (.md)" value="md" />
+              <el-option label="JSON (.json)" value="json" />
+              <el-option label="字幕 (.srt)" value="srt" />
+              <el-option label="CSV (.csv)" value="csv" />
+            </el-select>
+          </div>
+          <div class="config-group">
+            <label class="config-label">初始内容（可选）</label>
+            <el-input
+              v-model="nodeConfig.docContent"
+              type="textarea"
+              :rows="3"
+              placeholder="留空则创建空白文件"
+              @change="saveConfig"
+            />
+          </div>
+        </template>
+
+        <!-- 处理：AI文案生成 -->
+        <template v-if="selectedNode.label === 'AI文案生成'">
+          <div class="config-group">
+            <label class="config-label">AI 提示词</label>
+            <el-input
+              v-model="nodeConfig.prompt"
+              type="textarea"
+              :rows="4"
+              placeholder="输入文案生成的提示词，例如：为以上内容生成5条短视频文案"
+              @change="saveConfig"
+            />
+          </div>
+          <div class="config-group">
+            <label class="config-label">模型选择</label>
+            <el-select v-model="nodeConfig.modelId" size="small" placeholder="默认模型" clearable @change="saveConfig">
+              <el-option v-for="m in availableModels" :key="m.id" :label="m.name" :value="m.id" />
+            </el-select>
+          </div>
+        </template>
+
+        <!-- 处理：文本处理 -->
+        <template v-if="selectedNode.label === '文本处理'">
+          <div class="config-group">
+            <label class="config-label">操作类型</label>
+            <el-select v-model="nodeConfig.operation" size="small" @change="saveConfig">
+              <el-option label="文本替换" value="replace" />
+              <el-option label="格式整理" value="format" />
+              <el-option label="摘要截取" value="summarize" />
+            </el-select>
+          </div>
+          <template v-if="nodeConfig.operation === 'replace'">
+            <div class="config-group">
+              <label class="config-label">查找模式（正则）</label>
+              <el-input v-model="nodeConfig.pattern" size="small" placeholder="如 [\s]+" @change="saveConfig" />
+            </div>
+            <div class="config-group">
+              <label class="config-label">替换为</label>
+              <el-input v-model="nodeConfig.replacement" size="small" placeholder="如 （空格）" @change="saveConfig" />
+            </div>
+          </template>
+        </template>
+
+        <!-- 处理：格式转换 -->
+        <template v-if="selectedNode.label === '格式转换'">
+          <div class="config-group">
+            <label class="config-label">目标格式</label>
+            <el-select v-model="nodeConfig.targetFormat" size="small" @change="saveConfig">
+              <el-option label="纯文本 (TXT)" value="txt" />
+              <el-option label="JSON" value="json" />
+              <el-option label="Markdown" value="md" />
+              <el-option label="字幕 (SRT)" value="srt" />
+            </el-select>
+          </div>
+        </template>
+
+        <!-- 输出：保存文件 -->
+        <template v-if="selectedNode.label === '保存文件'">
+          <div class="config-group">
+            <label class="config-label">输出目录</label>
+            <div class="config-file-input">
+              <el-input v-model="nodeConfig.outputPath" size="small" placeholder="选择输出目录" />
+              <el-button size="small" @click="selectOutputFolder">选择</el-button>
+            </div>
+          </div>
+          <div class="config-group">
+            <label class="config-label">文件名</label>
+            <el-input v-model="nodeConfig.fileName" size="small" placeholder="output.txt" @change="saveConfig" />
+          </div>
+        </template>
+
+        <!-- 输出：导出剪映 -->
+        <template v-if="selectedNode.label === '导出剪映'">
+          <div class="config-group">
+            <label class="config-label">项目名称</label>
+            <el-input v-model="nodeConfig.projectName" size="small" placeholder="输入剪映项目名称" @change="saveConfig" />
+          </div>
+          <div class="config-group">
+            <label class="config-label">草稿目录（可选）</label>
+            <div class="config-file-input">
+              <el-input v-model="nodeConfig.draftPath" size="small" placeholder="默认使用剪映草稿目录" />
+              <el-button size="small" @click="selectDraftFolder">选择</el-button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 执行结果详情 -->
+        <div v-if="selectedNode.config.result && selectedNode.config.result.status !== 'idle'" class="config-group">
+          <label class="config-label">执行结果</label>
+          <div class="result-detail" :class="'result-' + selectedNode.config.result.status">
+            <template v-if="selectedNode.config.result.status === 'success'">
+              {{ selectedNode.config.result.output }}
+            </template>
+            <template v-else-if="selectedNode.config.result.status === 'error'">
+              {{ selectedNode.config.result.error }}
+            </template>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useCreatorModeStore } from '@/stores/creatorMode'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useCreatorModeStore, type NodeConfig } from '@/stores/creatorMode'
+import { useChatStore } from '@/stores/chat'
 
 const store = useCreatorModeStore()
+const chatStore = useChatStore()
 
 const canvasContainerRef = ref<HTMLElement | null>(null)
 const canvasW = ref(3000)
@@ -127,10 +398,50 @@ const canvasH = ref(2000)
 
 // 画布拖拽
 const isDraggingCanvas = ref(false)
+const isSpacePressed = ref(false)
 const dragStart = reactive({ x: 0, y: 0 })
+let dragButton = 0           // 0=左键, 1=中键
 let nodeDragId: string | null = null
 let nodeDragStart = { x: 0, y: 0 }
 let connectionFrom: string | null = null
+const hoveredEdgeId = ref<string | null>(null)
+
+// 节点配置面板
+const editNodeLabel = ref('')
+const nodeConfig = reactive<NodeConfig>({})
+
+const selectedNode = computed(() => {
+  return store.workflowNodes.find(n => n.id === store.selectedNodeId) || null
+})
+
+// 当选中节点变化时，同步配置面板
+watch(() => store.selectedNodeId, (newId) => {
+  const node = store.workflowNodes.find(n => n.id === newId)
+  if (node) {
+    editNodeLabel.value = node.label
+    Object.assign(nodeConfig, { ...node.config })
+    delete (nodeConfig as any).result // 不显示 result 在编辑中
+  }
+})
+
+// 可用模型列表（从全局模型管理读取）
+const availableModels = computed(() => chatStore.models)
+
+// 有字幕的视频列表
+const videosWithSubtitles = computed(() => {
+  return store.importedVideos
+    .filter(v => v.subtitles.length > 0)
+    .map(v => ({
+      id: v.id,
+      name: v.name,
+      subtitleCount: v.subtitles.length,
+      subtitles: v.subtitles
+    }))
+})
+
+const totalSubtitleCount = computed(() =>
+  videosWithSubtitles.value.reduce((sum, v) => sum + v.subtitleCount, 0)
+)
 
 function nodeIcon(type: string): string {
   const icons: Record<string, string> = { trigger: '⏰', source: '📥', process: '⚙️', output: '📤' }
@@ -142,6 +453,21 @@ function nodeTypeLabel(type: string): string {
   return labels[type] || type
 }
 
+function statusEmoji(status: string): string {
+  const map: Record<string, string> = { running: '⏳', success: '✅', error: '❌' }
+  return map[status] || ''
+}
+
+function nodeStatusClass(node: any): string {
+  if (!node.config.result) return ''
+  return 'status-' + node.config.result.status
+}
+
+function truncate(text: string, max: number): string {
+  if (!text) return ''
+  return text.length > max ? text.slice(0, max) + '...' : text
+}
+
 function addNodeAtCenter(type: 'trigger' | 'source' | 'process' | 'output', label: string) {
   const x = 200 + Math.random() * 400
   const y = 100 + Math.random() * 300
@@ -150,9 +476,16 @@ function addNodeAtCenter(type: 'trigger' | 'source' | 'process' | 'output', labe
 }
 
 function clearCanvas() {
-  store.workflowNodes.length = 0
-  store.workflowEdges.length = 0
-  store.selectedNodeId = null
+  ElMessageBox.confirm('确定要清空画布吗？所有节点和连线将被删除。', '确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    store.workflowNodes.length = 0
+    store.workflowEdges.length = 0
+    store.selectedNodeId = null
+    ElMessage.success('画布已清空')
+  }).catch(() => {})
 }
 
 function getNodeCenter(nodeId: string): { x: number; y: number } {
@@ -161,19 +494,14 @@ function getNodeCenter(nodeId: string): { x: number; y: number } {
   return { x: node.x + 80, y: node.y + 40 }
 }
 
-// 画布平移
-function onCanvasMouseDown(e: MouseEvent) {
-  if (e.target === canvasContainerRef.value || (e.target as HTMLElement).classList.contains('canvas-svg')) {
-    isDraggingCanvas.value = true
-    dragStart.x = e.clientX - store.canvasOffset.x
-    dragStart.y = e.clientY - store.canvasOffset.y
-  }
-}
+// ===== 全局鼠标事件（在 window 上捕获，确保拖出画布也不丢失） =====
 
-function onCanvasMouseMove(e: MouseEvent) {
+function onWindowMouseMove(e: MouseEvent) {
+  // 画布平移
   if (isDraggingCanvas.value) {
     store.setCanvasOffset(e.clientX - dragStart.x, e.clientY - dragStart.y)
   }
+  // 节点拖拽
   if (nodeDragId) {
     const node = store.workflowNodes.find(n => n.id === nodeDragId)
     if (node) {
@@ -186,14 +514,119 @@ function onCanvasMouseMove(e: MouseEvent) {
   }
 }
 
-function onCanvasMouseUp() {
+function onWindowMouseUp(_e: MouseEvent) {
   isDraggingCanvas.value = false
   nodeDragId = null
+  dragButton = 0
+}
+
+// ===== 键盘事件（空格键临时切为拖拽模式） =====
+
+function onWindowKeyDown(e: KeyboardEvent) {
+  if (e.code === 'Space' && !isSpacePressed.value) {
+    // 仅在画布区域内触发，避免干扰输入框
+    const target = e.target as HTMLElement
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+    e.preventDefault()
+    isSpacePressed.value = true
+  }
+}
+
+function onWindowKeyUp(e: KeyboardEvent) {
+  if (e.code === 'Space') {
+    isSpacePressed.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('mousemove', onWindowMouseMove)
+  window.addEventListener('mouseup', onWindowMouseUp)
+  window.addEventListener('keydown', onWindowKeyDown)
+  window.addEventListener('keyup', onWindowKeyUp)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onWindowMouseMove)
+  window.removeEventListener('mouseup', onWindowMouseUp)
+  window.removeEventListener('keydown', onWindowKeyDown)
+  window.removeEventListener('keyup', onWindowKeyUp)
+})
+
+// ===== 画布平移/缩放 =====
+
+/** 判断点击是否落在画布空白区域（可触发平移） */
+function isCanvasBackground(target: HTMLElement): boolean {
+  if (target === canvasContainerRef.value) return true
+  // 检查是否是 canvas-content 本身或其下的 svg/rect
+  if (target.classList.contains('canvas-content') || target.classList.contains('canvas-svg')) return true
+  // 落在 svg 内的 rect/pattern 等子元素
+  const parent = target.parentElement
+  if (parent && (parent.classList.contains('canvas-svg') || parent === canvasContainerRef.value)) return true
+  return false
+}
+
+function onCanvasMouseDown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+
+  // 中键按下 → 平移（传统画布操作）
+  if (e.button === 1) {
+    isDraggingCanvas.value = true
+    dragButton = 1
+    dragStart.x = e.clientX - store.canvasOffset.x
+    dragStart.y = e.clientY - store.canvasOffset.y
+    return
+  }
+
+  // 左键按下 + 空格键 → 平移
+  if (e.button === 0 && isSpacePressed.value) {
+    isDraggingCanvas.value = true
+    dragButton = 0
+    dragStart.x = e.clientX - store.canvasOffset.x
+    dragStart.y = e.clientY - store.canvasOffset.y
+    return
+  }
+
+  // 左键按下在画布空白区域 → 平移
+  if (e.button === 0 && isCanvasBackground(target)) {
+    isDraggingCanvas.value = true
+    dragButton = 0
+    dragStart.x = e.clientX - store.canvasOffset.x
+    dragStart.y = e.clientY - store.canvasOffset.y
+    // 点击空白取消连线
+    if (connectionFrom) {
+      connectionFrom = null
+    }
+  }
 }
 
 function onCanvasWheel(e: WheelEvent) {
-  const delta = e.deltaY > 0 ? -0.05 : 0.05
-  store.setCanvasScale(store.canvasScale + delta)
+  // Ctrl + 滚轮 → 缩放（以鼠标位置为中心）
+  if (e.ctrlKey || e.metaKey) {
+    const rect = canvasContainerRef.value?.getBoundingClientRect()
+    if (!rect) return
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+
+    const oldScale = store.canvasScale
+    const delta = e.deltaY > 0 ? -0.05 : 0.05
+    const newScale = Math.max(0.3, Math.min(3, oldScale + delta))
+
+    // 以鼠标位置为中心缩放
+    const scaleFactor = newScale / oldScale
+    const newOffsetX = mouseX - (mouseX - store.canvasOffset.x) * scaleFactor
+    const newOffsetY = mouseY - (mouseY - store.canvasOffset.y) * scaleFactor
+
+    store.setCanvasScale(newScale)
+    store.setCanvasOffset(newOffsetX, newOffsetY)
+    return
+  }
+
+  // 普通滚轮 → 垂直/水平平移
+  const panSpeed = 1.5
+  store.setCanvasOffset(
+    store.canvasOffset.x - e.deltaX * panSpeed,
+    store.canvasOffset.y - e.deltaY * panSpeed
+  )
 }
 
 // 节点拖拽
@@ -207,10 +640,124 @@ function onNodeDragStart(e: MouseEvent, nodeId: string) {
 function startConnection(nodeId: string, side: 'from' | 'to') {
   if (side === 'from') {
     connectionFrom = nodeId
+    ElMessage.info('请点击目标节点的左侧连接点完成连线')
   } else if (connectionFrom && connectionFrom !== nodeId) {
-    store.addEdge(connectionFrom, nodeId)
+    const edge = store.addEdge(connectionFrom, nodeId)
     connectionFrom = null
-    ElMessage.success('连线已创建')
+    if (edge) {
+      ElMessage.success('连线已创建')
+    } else {
+      ElMessage.warning('无法创建连线：连接已存在或会导致循环引用')
+    }
+  }
+}
+
+// 删除连线
+function deleteEdge(edgeId: string) {
+  ElMessageBox.confirm('确定要删除这条连线吗？', '确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'info'
+  }).then(() => {
+    store.removeEdge(edgeId)
+    ElMessage.success('连线已删除')
+  }).catch(() => {})
+}
+
+// ===== 节点配置面板 =====
+function saveNodeLabel() {
+  if (!store.selectedNodeId || !editNodeLabel.value.trim()) return
+  const node = store.workflowNodes.find(n => n.id === store.selectedNodeId)
+  if (node) {
+    node.label = editNodeLabel.value.trim()
+    // 手动触发 save
+    store.updateNodeConfig(store.selectedNodeId, {})
+  }
+}
+
+function saveConfig() {
+  if (!store.selectedNodeId) return
+  const cfg: NodeConfig = { ...nodeConfig }
+  delete (cfg as any).result
+  store.updateNodeConfig(store.selectedNodeId, cfg)
+}
+
+async function selectFileForNode() {
+  const api = (window as any).electronAPI
+  if (api?.selectFile) {
+    const result = await api.selectFile()
+    if (result && result.filePath) {
+      nodeConfig.filePath = result.filePath
+      saveConfig()
+    }
+  } else {
+    ElMessage.warning('文件选择功能仅在 Electron 环境下可用')
+  }
+}
+
+async function selectFolderForNode() {
+  const api = (window as any).electronAPI
+  if (api?.selectFolder) {
+    const result = await api.selectFolder()
+    if (result) {
+      nodeConfig.folderPath = result
+      saveConfig()
+    }
+  } else {
+    ElMessage.warning('文件夹选择功能仅在 Electron 环境下可用')
+  }
+}
+
+async function selectOutputFolder() {
+  const api = (window as any).electronAPI
+  if (api?.selectFolder) {
+    const result = await api.selectFolder()
+    if (result) {
+      nodeConfig.outputPath = result
+      saveConfig()
+    }
+  } else {
+    ElMessage.warning('文件夹选择功能仅在 Electron 环境下可用')
+  }
+}
+
+async function selectDraftFolder() {
+  const api = (window as any).electronAPI
+  if (api?.selectFolder) {
+    const result = await api.selectFolder()
+    if (result) {
+      nodeConfig.draftPath = result
+      saveConfig()
+    }
+  } else {
+    ElMessage.warning('文件夹选择功能仅在 Electron 环境下可用')
+  }
+}
+
+async function selectDocOutputFolder() {
+  const api = (window as any).electronAPI
+  if (api?.selectFolder) {
+    const result = await api.selectFolder()
+    if (result) {
+      nodeConfig.docOutputPath = result
+      saveConfig()
+    }
+  } else {
+    ElMessage.warning('文件夹选择功能仅在 Electron 环境下可用')
+  }
+}
+
+// ===== 工作流执行 =====
+async function runWorkflow() {
+  if (store.workflowNodes.length === 0) {
+    ElMessage.warning('画布中没有节点，请先添加节点')
+    return
+  }
+  try {
+    await store.executeWorkflow()
+    ElMessage.success('工作流执行完毕')
+  } catch (e: any) {
+    ElMessage.error('工作流执行出错: ' + (e.message || String(e)))
   }
 }
 
@@ -229,8 +776,8 @@ function resetView() {
 
 /* 工具箱 */
 .workflow-palette {
-  width: 180px;
-  min-width: 180px;
+  width: 200px;
+  min-width: 200px;
   background: #fff;
   border-right: 1px solid #e4e7ed;
   overflow-y: auto;
@@ -286,7 +833,42 @@ function resetView() {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid #f0f2f5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
+
+/* 执行日志 */
+.workflow-logs {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f2f5;
+}
+
+.logs-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.logs-list {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 11px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  line-height: 1.6;
+  color: #606266;
+}
+
+.log-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-success { color: #67c23a; }
+.log-error { color: #f56c6c; }
 
 /* 画布 */
 .canvas-area {
@@ -294,6 +876,11 @@ function resetView() {
   overflow: hidden;
   position: relative;
   background: #fafbfc;
+  cursor: default;
+}
+
+.canvas-area.canvas-grabbing {
+  cursor: grabbing;
 }
 
 .canvas-content {
@@ -302,8 +889,12 @@ function resetView() {
   height: 2000px;
 }
 
-.canvas-svg, .edges-svg {
+.canvas-svg {
   pointer-events: none;
+}
+
+.edges-svg {
+  pointer-events: auto;
 }
 
 /* 节点 */
@@ -315,7 +906,7 @@ function resetView() {
   border-radius: 8px;
   cursor: move;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .wf-node:hover { border-color: #c0c4cc; }
@@ -325,6 +916,11 @@ function resetView() {
 .node-source { border-left: 3px solid #67c23a; }
 .node-process { border-left: 3px solid #409eff; }
 .node-output { border-left: 3px solid #f56c6c; }
+
+/* 节点执行状态 */
+.wf-node.status-running { border-color: #e6a23c; box-shadow: 0 0 8px rgba(230,162,60,0.3); }
+.wf-node.status-success { border-color: #67c23a; box-shadow: 0 0 8px rgba(103,194,58,0.2); }
+.wf-node.status-error { border-color: #f56c6c; box-shadow: 0 0 8px rgba(245,108,108,0.3); }
 
 .node-header {
   display: flex;
@@ -342,6 +938,12 @@ function resetView() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.node-status {
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .node-body {
@@ -352,6 +954,17 @@ function resetView() {
   font-size: 11px;
   color: #c0c4cc;
 }
+
+.node-result {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #303133;
+  line-height: 1.4;
+  max-height: 36px;
+  overflow: hidden;
+}
+
+.result-error { color: #f56c6c; }
 
 .node-connector {
   position: absolute;
@@ -403,5 +1016,156 @@ function resetView() {
   padding: 6px 12px;
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+/* 连线提示 */
+.connection-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ecf5ff;
+  border: 1px solid #409eff;
+  color: #409eff;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 10;
+}
+
+/* 节点配置面板（右侧） */
+.config-panel {
+  width: 260px;
+  min-width: 260px;
+  background: #fff;
+  border-left: 1px solid #e4e7ed;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f2f5;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.config-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.config-panel-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #e4e7ed;
+  background: #fff;
+  color: #909399;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.config-panel-close:hover { color: #f56c6c; border-color: #f56c6c; }
+
+.config-panel-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.config-file-input {
+  display: flex;
+  gap: 4px;
+}
+.config-file-input .el-input { flex: 1; }
+
+.result-detail {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.result-success {
+  background: #f0f9eb;
+  border: 1px solid #e1f3d8;
+  color: #67c23a;
+}
+
+.result-error {
+  background: #fef0f0;
+  border: 1px solid #fde2e2;
+  color: #f56c6c;
+}
+
+/* 字幕源概况 */
+.config-hint {
+  font-size: 11px;
+  color: #e6a23c;
+  padding: 4px 0;
+}
+
+.subtitle-summary {
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #606266;
+}
+
+.summary-row span:last-child {
+  font-weight: 600;
+  color: #303133;
+}
+
+.summary-videos {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #ebeef5;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.summary-video-item {
+  font-size: 11px;
+  color: #606266;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

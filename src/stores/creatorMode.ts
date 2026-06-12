@@ -46,7 +46,7 @@ export interface WorkflowNode {
   label: string
   x: number
   y: number
-  config: Record<string, any>
+  config: NodeConfig
 }
 
 /** 工作流连线 */
@@ -55,6 +55,53 @@ export interface WorkflowEdge {
   fromNodeId: string
   toNodeId: string
   label: string
+}
+
+/** 节点执行状态 */
+export type NodeExecStatus = 'idle' | 'running' | 'success' | 'error'
+
+/** 节点执行结果 */
+export interface NodeExecResult {
+  status: NodeExecStatus
+  output: string       // 输出内容
+  error?: string       // 错误信息
+  data?: any           // 结构化输出数据
+}
+
+/** 节点配置类型（根据节点 label 不同） */
+export interface NodeConfig {
+  // 定时触发
+  cron?: string
+  interval?: number
+  // 读取视频/文件
+  filePath?: string
+  fileType?: string
+  // 读取文件夹
+  folderPath?: string
+  fileFilter?: string
+  recursive?: boolean
+  // 新建文档
+  docFileName?: string
+  docContent?: string
+  docOutputPath?: string
+  docFileType?: 'txt' | 'md' | 'json' | 'srt' | 'csv'
+  // AI文案生成
+  prompt?: string
+  modelId?: string
+  // 文本处理
+  operation?: 'replace' | 'format' | 'summarize'
+  pattern?: string
+  replacement?: string
+  // 格式转换
+  targetFormat?: 'srt' | 'txt' | 'json' | 'md'
+  // 保存文件
+  outputPath?: string
+  fileName?: string
+  // 导出剪映
+  projectName?: string
+  draftPath?: string
+  // 执行结果（运行时填充）
+  result?: NodeExecResult
 }
 
 /** 创作者模式子模式 */
@@ -487,7 +534,14 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (node) { node.x = x; node.y = y; saveWorkflow() }
   }
 
-  function addEdge(fromNodeId: string, toNodeId: string, label = ''): WorkflowEdge {
+  function edgeExists(fromNodeId: string, toNodeId: string): boolean {
+    return workflowEdges.value.some(e => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId)
+  }
+
+  function addEdge(fromNodeId: string, toNodeId: string, label = ''): WorkflowEdge | null {
+    if (edgeExists(fromNodeId, toNodeId)) return null
+    // 防止循环引用：检查 toNodeId 是否已经可以到达 fromNodeId
+    if (canReach(toNodeId, fromNodeId)) return null
     const edge: WorkflowEdge = { id: 'edge_' + Date.now(), fromNodeId, toNodeId, label }
     workflowEdges.value.push(edge)
     saveWorkflow()
@@ -499,9 +553,512 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     saveWorkflow()
   }
 
+  function removeEdgesForNode(nodeId: string) {
+    workflowEdges.value = workflowEdges.value.filter(e => e.fromNodeId !== nodeId && e.toNodeId !== nodeId)
+    saveWorkflow()
+  }
+
   function selectNode(nodeId: string | null) { selectedNodeId.value = nodeId }
   function setCanvasOffset(x: number, y: number) { canvasOffset.x = x; canvasOffset.y = y }
   function setCanvasScale(s: number) { canvasScale.value = Math.max(0.3, Math.min(3, s)) }
+
+  // ===== 节点配置 =====
+  function updateNodeConfig(nodeId: string, config: Partial<NodeConfig>) {
+    const node = workflowNodes.value.find(n => n.id === nodeId)
+    if (node) {
+      node.config = { ...node.config, ...config }
+      saveWorkflow()
+    }
+  }
+
+  function setNodeResult(nodeId: string, status: NodeExecStatus, output: string, error?: string, data?: any) {
+    const node = workflowNodes.value.find(n => n.id === nodeId)
+    if (node) {
+      node.config.result = { status, output, error, data }
+      saveWorkflow()
+    }
+  }
+
+  function resetAllNodeResults() {
+    for (const node of workflowNodes.value) {
+      delete node.config.result
+    }
+    saveWorkflow()
+  }
+
+  // ===== DAG 拓扑排序 =====
+  function getTopologicalOrder(): WorkflowNode[] {
+    const inDegree = new Map<string, number>()
+    const adjacency = new Map<string, string[]>()
+    const nodeMap = new Map(workflowNodes.value.map(n => [n.id, n]))
+
+    for (const node of workflowNodes.value) {
+      inDegree.set(node.id, 0)
+      adjacency.set(node.id, [])
+    }
+    for (const edge of workflowEdges.value) {
+      if (nodeMap.has(edge.fromNodeId) && nodeMap.has(edge.toNodeId)) {
+        adjacency.get(edge.fromNodeId)!.push(edge.toNodeId)
+        inDegree.set(edge.toNodeId, (inDegree.get(edge.toNodeId) || 0) + 1)
+      }
+    }
+
+    const queue: string[] = []
+    for (const [nodeId, degree] of inDegree) {
+      if (degree === 0) queue.push(nodeId)
+    }
+
+    const result: WorkflowNode[] = []
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      const node = nodeMap.get(current)
+      if (node) result.push(node)
+      for (const neighbor of adjacency.get(current) || []) {
+        const newDegree = (inDegree.get(neighbor) || 1) - 1
+        inDegree.set(neighbor, newDegree)
+        if (newDegree === 0) queue.push(neighbor)
+      }
+    }
+
+    return result
+  }
+
+  function getUpstreamResults(nodeId: string): NodeExecResult[] {
+    const upstreamEdges = workflowEdges.value.filter(e => e.toNodeId === nodeId)
+    return upstreamEdges
+      .map(e => workflowNodes.value.find(n => n.id === e.fromNodeId))
+      .filter((n): n is WorkflowNode => !!n && !!n.config.result)
+      .map(n => n.config.result!)
+  }
+
+  function canReach(fromId: string, toId: string): boolean {
+    const visited = new Set<string>()
+    const adjacency = new Map<string, string[]>()
+    for (const node of workflowNodes.value) {
+      adjacency.set(node.id, [])
+    }
+    for (const edge of workflowEdges.value) {
+      const arr = adjacency.get(edge.fromNodeId)
+      if (arr) arr.push(edge.toNodeId)
+    }
+    function dfs(current: string): boolean {
+      if (current === toId) return true
+      visited.add(current)
+      for (const neighbor of adjacency.get(current) || []) {
+        if (!visited.has(neighbor) && dfs(neighbor)) return true
+      }
+      return false
+    }
+    return dfs(fromId)
+  }
+
+  // ===== 工作流执行引擎 =====
+  const isWorkflowRunning = ref(false)
+  const workflowLogs = ref<string[]>([])
+
+  function addWorkflowLog(msg: string) {
+    workflowLogs.value.push(`[${new Date().toLocaleTimeString()}] ${msg}`)
+  }
+
+  async function executeWorkflow() {
+    if (isWorkflowRunning.value) return
+    isWorkflowRunning.value = true
+    workflowLogs.value = []
+    resetAllNodeResults()
+
+    const ordered = getTopologicalOrder()
+    if (ordered.length === 0) {
+      addWorkflowLog('画布中没有节点')
+      isWorkflowRunning.value = false
+      return
+    }
+
+    addWorkflowLog(`开始执行工作流 (共 ${ordered.length} 个节点)`)
+
+    for (const node of ordered) {
+      setNodeResult(node.id, 'running', '执行中...')
+      addWorkflowLog(`执行节点: ${node.label}`)
+      await new Promise(r => setTimeout(r, 200)) // 短暂延迟让 UI 更新
+
+      try {
+        const upstreamResults = getUpstreamResults(node.id)
+        const result = await executeNode(node, upstreamResults)
+        setNodeResult(node.id, 'success', result.output, undefined, result.data)
+        addWorkflowLog(`  ✓ ${node.label} 完成`)
+      } catch (e: any) {
+        const errMsg = e.message || String(e)
+        setNodeResult(node.id, 'error', '', errMsg)
+        addWorkflowLog(`  ✗ ${node.label} 失败: ${errMsg}`)
+      }
+    }
+
+    isWorkflowRunning.value = false
+    addWorkflowLog('工作流执行完毕')
+  }
+
+  async function executeNode(
+    node: WorkflowNode,
+    upstreamResults: NodeExecResult[]
+  ): Promise<{ output: string; data?: any }> {
+    const cfg = node.config
+    const api = (window as any).electronAPI
+
+    switch (node.label) {
+      // ===== 触发器 =====
+      case '定时触发':
+        return { output: '触发信号已发出', data: { triggered: true, timestamp: Date.now() } }
+
+      // ===== 数据源 =====
+      case '读取视频': {
+        const filePath = cfg.filePath
+        if (!filePath) throw new Error('未配置文件路径')
+        if (!api?.readFileAsText) throw new Error('文件系统 API 不可用')
+        const res = await api.readFileAsText(filePath)
+        if (!res.success) throw new Error(res.error || '读取失败')
+        const videoName = filePath.split(/[\\/]/).pop() || filePath
+        return {
+          output: `已读取视频文件: ${videoName}`,
+          data: { filePath, fileName: videoName, content: res.content }
+        }
+      }
+
+      case '读取文件': {
+        const filePath = cfg.filePath
+        if (!filePath) throw new Error('未配置文件路径')
+        if (!api?.readFileAsText) throw new Error('文件系统 API 不可用')
+        const res = await api.readFileAsText(filePath)
+        if (!res.success) throw new Error(res.error || '读取失败')
+        const fileName = filePath.split(/[\\/]/).pop() || filePath
+        return {
+          output: `已读取文件: ${fileName}`,
+          data: { filePath, fileName, content: res.content }
+        }
+      }
+
+      case '读取文件夹': {
+        const folderPath = cfg.folderPath
+        if (!folderPath) throw new Error('未配置文件夹路径')
+        if (!api?.listDirectory) throw new Error('文件系统 API 不可用')
+
+        const fileFilter = cfg.fileFilter || ''
+        const recursive = cfg.recursive || false
+        const filters = fileFilter.split(',').map(f => f.trim()).filter(Boolean)
+
+        async function listRecursive(dirPath: string): Promise<any[]> {
+          const results: any[] = []
+          try {
+            const entries = await api!.listDirectory(dirPath)
+            for (const entry of entries) {
+              if (entry.isFile) {
+                const ext = '.' + entry.name.split('.').pop()?.toLowerCase()
+                const match = filters.length === 0 || filters.some(f => {
+                  if (f.startsWith('*.')) return ext === f.slice(1)
+                  return entry.name.includes(f)
+                })
+                if (match) results.push({ name: entry.name, path: entry.path, type: 'file' })
+              } else if (entry.isDirectory && recursive) {
+                const sub = await listRecursive(entry.path)
+                results.push(...sub)
+              }
+            }
+          } catch {}
+          return results
+        }
+
+        const files = await listRecursive(folderPath)
+        const folderName = folderPath.split(/[\\/]/).pop() || folderPath
+        const fileList = files.map(f => f.name).join(', ')
+
+        return {
+          output: `已读取文件夹: ${folderName} (${files.length} 个文件)`,
+          data: { folderPath, folderName, files, fileList, fileCount: files.length }
+        }
+      }
+
+      case '读取字幕': {
+        const allVideos = importedVideos.value.filter(v => v.subtitles.length > 0)
+        if (allVideos.length === 0) throw new Error('没有可用的字幕数据，请先在「工作状态」中为视频进行语音识别')
+
+        // 汇总所有视频的字幕
+        const allSubs: Array<{ videoId: string; videoName: string; text: string; startTime: number; endTime: number }> = []
+        for (const video of allVideos) {
+          for (const seg of video.subtitles) {
+            allSubs.push({
+              videoId: video.id,
+              videoName: video.name,
+              text: seg.text,
+              startTime: seg.startTime,
+              endTime: seg.endTime
+            })
+          }
+        }
+
+        // 按视频名 + 时间排序
+        allSubs.sort((a, b) => a.videoName.localeCompare(b.videoName) || a.startTime - b.startTime)
+
+        const fullText = allSubs.map(s => `[${s.videoName}] ${s.text}`).join('\n')
+
+        // 生成 SRT 格式（跨视频合并）
+        const srtContent = allSubs.map((s, i) => {
+          const sTime = formatTimeMs(s.startTime)
+          const eTime = formatTimeMs(s.endTime)
+          return `${i + 1}\n${sTime} --> ${eTime}\n[${s.videoName}] ${s.text}\n`
+        }).join('\n')
+
+        return {
+          output: `已读取全部字幕: ${allVideos.length} 个视频, 共 ${allSubs.length} 条`,
+          data: {
+            videoCount: allVideos.length,
+            subtitleCount: allSubs.length,
+            content: fullText,
+            srtContent,
+            subtitles: allSubs
+          }
+        }
+      }
+
+      case '新建文档': {
+        const docFileName = cfg.docFileName
+        const docOutputPath = cfg.docOutputPath
+        const docFileType = cfg.docFileType || 'txt'
+        const docContent = cfg.docContent || ''
+
+        if (!docFileName) throw new Error('未配置文件名')
+        if (!docOutputPath) throw new Error('未配置输出目录')
+        if (!api?.writeFile || !api?.createDirectory) throw new Error('文件系统 API 不可用')
+
+        // 确保目录存在
+        await api.createDirectory(docOutputPath)
+
+        // 根据类型生成默认模板内容
+        let content = docContent
+        if (!content.trim()) {
+          switch (docFileType) {
+            case 'md':
+              content = `# ${docFileName.replace(/\.\w+$/, '')}\n\n`
+              break
+            case 'json':
+              content = '{\n  \n}\n'
+              break
+            case 'csv':
+              content = '列1,列2,列3\n'
+              break
+            case 'srt':
+              content = '1\n00:00:00,000 --> 00:00:02,000\n\n\n'
+              break
+            default:
+              content = ''
+          }
+        }
+
+        // 确保文件名有正确的扩展名
+        const ext = `.${docFileType}`
+        const finalName = docFileName.endsWith(ext) ? docFileName : docFileName + ext
+        const fullPath = `${docOutputPath.replace(/\\/g, '/')}/${finalName}`
+
+        await api.writeFile(fullPath, content)
+        return {
+          output: `文档已创建: ${finalName}`,
+          data: { fileName: finalName, filePath: fullPath, content, fileType: docFileType }
+        }
+      }
+
+      // ===== 处理节点 =====
+      case 'AI文案生成': {
+        const prompt = cfg.prompt
+        if (!prompt) throw new Error('未配置 AI 提示词')
+        // 收集上游内容作为上下文
+        let context = ''
+        for (const r of upstreamResults) {
+          if (r.data?.content) context += `\n---\n${r.data.content}`
+          else if (r.output) context += `\n${r.output}`
+        }
+
+        // 动态导入 DeepSeek 服务和 chat store
+        const { sendChatMessage } = await import('@/services/deepseek')
+        const { useChatStore } = await import('@/stores/chat')
+        const chatStore = useChatStore()
+        const modelKey = cfg.modelId || 'deepseek-default'
+         let model: any = chatStore.models.find(m => m.id === modelKey)
+        if (!model) {
+          model = chatStore.currentModel
+        }
+        if (!model) {
+          // fallback: 使用默认的 deepseek-v4-pro
+          model = {
+            id: 'deepseek-default',
+            name: 'DeepSeek V4 Pro',
+            provider: 'deepseek',
+            apiUrl: 'https://api.deepseek.com/chat/completions',
+            apiKey: '',
+            supportDeepThinking: true,
+            isDefault: true,
+            modelParam: 'deepseek-v4-pro'
+          }
+        }
+
+        const fullPrompt = context
+          ? `基于以下内容，${prompt}\n\n内容：\n${context}`
+          : prompt
+
+        const response = await sendChatMessage(model, [
+          { id: 'temp', role: 'user', content: fullPrompt, deepThinking: false, reasoningContent: '', timestamp: '', followUpTo: null, followUpIds: [], isFavorited: false, isStreaming: false }
+        ])
+        return { output: response, data: { prompt: fullPrompt, aiResponse: response } }
+      }
+
+      case '文本处理': {
+        const operation = cfg.operation || 'replace'
+        let outputText = ''
+        // 从上游获取文本内容
+        let inputText = ''
+        for (const r of upstreamResults) {
+          if (r.data?.content) inputText += r.data.content + '\n'
+          else if (r.data?.aiResponse) inputText += r.data.aiResponse + '\n'
+          else if (r.output) inputText += r.output + '\n'
+        }
+        if (!inputText.trim()) throw new Error('没有可处理的输入文本')
+
+        switch (operation) {
+          case 'replace': {
+            const pattern = cfg.pattern || ''
+            const replacement = cfg.replacement || ''
+            if (!pattern) throw new Error('未配置替换模式')
+            outputText = inputText.replace(new RegExp(pattern, 'g'), replacement)
+            return {
+              output: `文本替换完成 (匹配 ${pattern})`,
+              data: { inputText, outputText, operation: 'replace' }
+            }
+          }
+          case 'format': {
+            outputText = inputText.trim().split('\n').filter(l => l.trim()).map(l => l.trim()).join('\n')
+            return {
+              output: '文本格式化完成',
+              data: { inputText, outputText, operation: 'format' }
+            }
+          }
+          case 'summarize': {
+            // 简单截断摘要
+            const lines = inputText.trim().split('\n').filter(l => l.trim())
+            outputText = lines.slice(0, 5).join('\n') + (lines.length > 5 ? '\n...(已截断)' : '')
+            return {
+              output: `文本摘要完成 (${lines.length} 行 → ${Math.min(lines.length, 5)} 行)`,
+              data: { inputText, outputText, operation: 'summarize' }
+            }
+          }
+          default:
+            throw new Error(`未知的文本操作: ${operation}`)
+        }
+      }
+
+      case '格式转换': {
+        const targetFormat = cfg.targetFormat || 'txt'
+        let inputText = ''
+        for (const r of upstreamResults) {
+          if (r.data?.content) inputText += r.data.content + '\n'
+          else if (r.data?.outputText) inputText += r.data.outputText + '\n'
+          else if (r.data?.aiResponse) inputText += r.data.aiResponse + '\n'
+          else if (r.output) inputText += r.output + '\n'
+        }
+        if (!inputText.trim()) throw new Error('没有可转换的输入内容')
+
+        let outputText = ''
+        switch (targetFormat) {
+          case 'txt':
+            outputText = inputText
+            break
+          case 'json':
+            outputText = JSON.stringify({ content: inputText.trim(), timestamp: Date.now() }, null, 2)
+            break
+          case 'md':
+            outputText = inputText.trim().split('\n').map(l => l.trim() ? `- ${l.trim()}` : '').join('\n')
+            break
+          case 'srt': {
+            const lines = inputText.trim().split('\n').filter(l => l.trim())
+            outputText = lines.map((l, i) => `${i + 1}\n00:00:${String(i).padStart(2, '0')},000 --> 00:00:${String(i + 1).padStart(2, '0')},000\n${l}\n`).join('\n')
+            break
+          }
+          default:
+            throw new Error(`不支持的格式: ${targetFormat}`)
+        }
+        return {
+          output: `已转换为 ${targetFormat.toUpperCase()} 格式`,
+          data: { inputText, outputText, targetFormat }
+        }
+      }
+
+      // ===== 输出节点 =====
+      case '保存文件': {
+        const outputPath = cfg.outputPath
+        const fileName = cfg.fileName || 'output.txt'
+        if (!outputPath) throw new Error('未配置输出路径')
+        // 收集上游内容
+        let content = ''
+        for (const r of upstreamResults) {
+          if (r.data?.outputText) content += r.data.outputText
+          else if (r.data?.aiResponse) content += r.data.aiResponse
+          else if (r.data?.content) content += r.data.content
+          else if (r.output) content += r.output
+        }
+        if (!content.trim()) throw new Error('没有可保存的内容')
+
+        const fullPath = `${outputPath.replace(/\\/g, '/')}/${fileName}`
+        if (!api?.writeFile) throw new Error('文件系统 API 不可用')
+        await api.writeFile(fullPath, content)
+        return {
+          output: `文件已保存: ${fullPath}`,
+          data: { savedPath: fullPath, content }
+        }
+      }
+
+      case '导出剪映': {
+        const projectName = cfg.projectName || '草稿项目'
+        const draftPath = cfg.draftPath
+        // 从上游收集字幕和视频信息
+        let subtitleText = ''
+        let videoFiles: string[] = []
+        for (const r of upstreamResults) {
+          if (r.data?.content || r.data?.outputText || r.data?.aiResponse) {
+            subtitleText += (r.data?.outputText || r.data?.aiResponse || r.data?.content || '') + '\n'
+          }
+          if (r.data?.filePath) videoFiles.push(r.data.filePath)
+        }
+
+        const { exportJianyingProject, buildProject } = await import('@/services/jianying')
+
+        const subtitleLines = subtitleText.trim().split('\n').filter(l => l.trim())
+        const clips = videoFiles.map((f, i) => ({
+          sourceFile: f,
+          sourceFileName: f.split(/[\\/]/).pop() || `video_${i}`,
+          startMs: 0,
+          endMs: 10000,
+          width: 1080,
+          height: 1920
+        }))
+        const subtitles = subtitleLines.map((text, i) => ({
+          text,
+          startMs: i * 2000,
+          endMs: (i + 1) * 2000
+        }))
+
+        const project = buildProject(clips, subtitles, projectName)
+        const result = await exportJianyingProject(project, draftPath)
+        if (!result.success) throw new Error(result.error || '导出失败')
+        return {
+          output: `剪映工程已导出: ${result.draftDir}`,
+          data: { draftDir: result.draftDir, projectName }
+        }
+      }
+
+      default:
+        throw new Error(`未知的节点类型: ${node.label}`)
+    }
+  }
+
+  function stopWorkflow() {
+    isWorkflowRunning.value = false
+    addWorkflowLog('工作流已被用户中止')
+  }
 
   // ===== 视频文件夹导航（对齐基础模式 FolderPath 结构） =====
   interface VideoFolderPath {
@@ -744,7 +1301,11 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     // 工作流
     workflowNodes, workflowEdges, selectedNodeId,
     addNode, removeNode, updateNodePosition,
-    addEdge, removeEdge, selectNode,
+    addEdge, removeEdge, removeEdgesForNode, selectNode,
+    edgeExists, updateNodeConfig, setNodeResult, resetAllNodeResults,
+    getTopologicalOrder, getUpstreamResults,
+    isWorkflowRunning, workflowLogs,
+    executeWorkflow, executeNode, stopWorkflow,
     canvasOffset, canvasScale,
     setCanvasOffset, setCanvasScale,
 
