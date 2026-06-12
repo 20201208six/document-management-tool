@@ -1,11 +1,14 @@
 <template>
-  <el-dialog v-model="visible" title="模型管理" width="600px" destroy-on-close>
-    <!-- 当前活跃模型状态 -->
-    <div class="current-model-bar">
-      <el-tag type="success" effect="dark" size="large">
-        当前模型：{{ chatStore.currentModel.name }}
-      </el-tag>
-    </div>
+  <el-dialog v-model="visible" title="全局模型管理" width="640px" destroy-on-close>
+    <el-tabs v-model="activeTab" type="border-card">
+      <!-- AI 模型 Tab -->
+      <el-tab-pane label="AI 模型" name="ai">
+        <!-- 当前活跃模型状态 -->
+        <div class="current-model-bar">
+          <el-tag type="success" effect="dark" size="large">
+            当前模型：{{ chatStore.currentModel.name }}
+          </el-tag>
+        </div>
 
     <!-- 模型列表 -->
     <el-table :data="chatStore.modelList" size="small" style="width: 100%">
@@ -119,6 +122,34 @@
         <el-button type="primary" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
+      </el-tab-pane>
+
+      <!-- ASR 语音识别 Tab -->
+      <el-tab-pane label="语音识别" name="asr">
+        <div class="asr-config-section">
+          <p class="section-desc">配置火山引擎 / 豆包语音识别 API，用于视频自动生成字幕</p>
+          <el-form :model="asrForm" label-width="100px" size="small">
+            <el-form-item label="APP ID">
+              <el-input v-model="asrForm.appId" placeholder="火山引擎应用的 APP ID" />
+            </el-form-item>
+            <el-form-item label="Access Token">
+              <el-input v-model="asrForm.accessToken" type="password" show-password placeholder="火山引擎 Access Token" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveAsrConfig" :loading="asrSaving">
+                保存配置
+              </el-button>
+              <el-button text type="primary" @click="testAsrConfig" :loading="asrTesting">
+                测试连接
+              </el-button>
+            </el-form-item>
+          </el-form>
+          <div v-if="asrTestResult" class="asr-test-result" :class="{ success: asrTestOk, fail: !asrTestOk }">
+            {{ asrTestResult }}
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </el-dialog>
 </template>
 
@@ -143,7 +174,9 @@ const visible = computed({
 
 const chatStore = useChatStore()
 const showAddForm = ref(false)
+const activeTab = ref('ai')
 
+// AI 模型表单
 const newModelForm = reactive({
   name: '',
   provider: 'deepseek' as AIModel['provider'],
@@ -213,6 +246,47 @@ function saveEdit() {
     showEditDialog.value = false
   }
 }
+
+// ===== ASR 配置 =====
+const asrForm = reactive({
+  appId: chatStore.asrConfig.appId,
+  accessToken: chatStore.asrConfig.accessToken
+})
+const asrSaving = ref(false)
+const asrTesting = ref(false)
+const asrTestResult = ref('')
+const asrTestOk = ref(false)
+
+function saveAsrConfig() {
+  chatStore.updateAsrConfig({
+    appId: asrForm.appId.trim(),
+    accessToken: asrForm.accessToken.trim()
+  })
+  asrSaving.value = true
+  setTimeout(() => { asrSaving.value = false }, 500)
+  ElMessage.success('ASR 配置已保存')
+}
+
+async function testAsrConfig() {
+  if (!asrForm.appId || !asrForm.accessToken) {
+    asrTestResult.value = '请先填写 APP ID 和 Access Token'
+    asrTestOk.value = false
+    return
+  }
+  asrTesting.value = true
+  asrTestResult.value = ''
+  try {
+    const { testAsrConnection } = await import('@/services/asr')
+    const ok = await testAsrConnection(asrForm.appId, asrForm.accessToken)
+    asrTestOk.value = ok
+    asrTestResult.value = ok ? '连接成功！API 配置正确' : '连接失败，请检查 APP ID 和 Access Token'
+  } catch (e: any) {
+    asrTestOk.value = false
+    asrTestResult.value = '连接异常: ' + (e.message || String(e))
+  } finally {
+    asrTesting.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -228,5 +302,31 @@ function saveEdit() {
   margin-left: 8px;
   font-size: 12px;
   color: #909399;
+}
+
+/* ASR 配置 */
+.section-desc {
+  font-size: 12px;
+  color: #909399;
+  margin: 0 0 16px 0;
+}
+
+.asr-test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.asr-test-result.success {
+  background: #f0f9eb;
+  color: #67c23a;
+  border: 1px solid #e1f3d8;
+}
+
+.asr-test-result.fail {
+  background: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fde2e2;
 }
 </style>

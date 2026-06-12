@@ -68,8 +68,9 @@
     <!-- 文件/文件夹列表 -->
     <div class="file-list">
       <div v-if="store.videoDirLoading" class="no-paths"><span>加载中...</span></div>
-      <div v-else-if="currentEntries.length === 0 && !store.videoDirLoading" class="no-paths" @click="!getRootPath() && handleSelectFolder()">
-        <span>此文件夹为空</span>
+      <div v-else-if="currentEntries.length === 0 && !store.videoDirLoading" class="no-paths clickable" @click="!getRootPath() && handleSelectFolder()">
+        <el-icon><FolderAdd /></el-icon>
+        <span>点击添加文件夹</span>
       </div>
       <template v-else v-for="entry in sortedEntries" :key="entry.path">
         <!-- 文件夹 -->
@@ -139,6 +140,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderAdd } from '@element-plus/icons-vue'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 
 const store = useCreatorModeStore()

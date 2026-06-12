@@ -11,11 +11,6 @@
           {{ store.accountName ? '切换' : '设置账号' }}
         </el-button>
       </div>
-      <el-tooltip content="模型管理" placement="bottom">
-        <el-button size="small" circle @click="openModelManager">
-          <el-icon><Setting /></el-icon>
-        </el-button>
-      </el-tooltip>
     </div>
 
     <!-- 主内容区：两栏布局 -->
@@ -56,8 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, inject } from 'vue'
-import { Setting } from '@element-plus/icons-vue'
+import { ref } from 'vue'
 import { useUniqueModeStore } from '@/stores/uniqueMode'
 import UniqueChatPanel from '@/components/unique/UniqueChatPanel.vue'
 import UniqueFileBrowser from '@/components/unique/UniqueFileBrowser.vue'
@@ -67,11 +61,6 @@ import CopywritingSuggestions from '@/components/unique/CopywritingSuggestions.v
 const store = useUniqueModeStore()
 const showAccountDialog = ref(!store.accountName)
 
-// 使用全局模型管理对话框
-const globalModelManager = inject<ReturnType<typeof ref<boolean>>>('showGlobalModelManager', ref(false))
-function openModelManager() {
-  globalModelManager.value = true
-}
 const accountInput = ref(store.accountName)
 
 async function confirmAccount() {

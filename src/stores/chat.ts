@@ -773,6 +773,32 @@ export const useChatStore = defineStore('chat', () => {
     saveDisplaySettings()
   }
 
+  // ===== ASR 语音识别配置 =====
+  const ASR_CONFIG_KEY = 'copywriting-asr-config'
+
+  interface AsrConfig {
+    appId: string
+    accessToken: string
+  }
+
+  const asrConfig = ref<AsrConfig>({ appId: '', accessToken: '' });
+
+  (function loadAsrConfig() {
+    try {
+      const data = localStorage.getItem(ASR_CONFIG_KEY)
+      if (data) Object.assign(asrConfig.value, JSON.parse(data))
+    } catch {}
+  })()
+
+  function saveAsrConfig() {
+    localStorage.setItem(ASR_CONFIG_KEY, JSON.stringify(asrConfig.value))
+  }
+
+  function updateAsrConfig(config: Partial<AsrConfig>) {
+    Object.assign(asrConfig.value, config)
+    saveAsrConfig()
+  }
+
   // ===== 初始化：恢复收藏状态 =====
   function refreshFavoriteStatus() {
     for (const session of sessions.value) {
@@ -846,5 +872,9 @@ export const useChatStore = defineStore('chat', () => {
     setPanelWidth,
     displaySettings,
     updateDisplaySettings,
+
+    // ASR
+    asrConfig,
+    updateAsrConfig,
   }
 })

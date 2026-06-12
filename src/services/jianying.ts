@@ -176,88 +176,15 @@ function buildDraftContent(project: JYDraftProject, draftId: string): object {
     width: v.width
   }))
 
-  // 文本素材
-  const textMaterials = project.texts.map(t => ({
-    add_type: 0,
-    alignment: 1,
-    background_alpha: 1.0,
-    background_color: '',
-    background_height: 1.0,
-    background_horizontal_offset: 0.0,
-    background_round_radius: 0.0,
-    background_style: 0,
-    background_vertical_offset: 0.0,
-    background_width: 1.0,
-    bold_width: 0.0,
-    border_color: '',
-    border_width: 0.08,
-    check_flag: 7,
-    content: `<font id="" size="7.0"><color_val>${t.content}</color_val></font>`,
-    font_category_id: '',
-    font_category_name: '',
-    font_id: '',
-    font_name: '',
-    font_path: '',
-    font_resource_id: '',
-    font_size: 6.0,
-    font_source_platform: 0,
-    font_team_id: '',
-    font_title: 'none',
-    font_url: '',
-    fonts: [],
-    force_apply_line_max_width: false,
-    global_alpha: 1.0,
-    group_id: '',
-    has_shadow: false,
-    id: t.id,
-    initial_scale: 1.0,
-    is_rich_text: false,
-    italic_degree: 0,
-    ktv_color: '',
-    language: '',
-    layer_weight: 1,
-    letter_spacing: 0.0,
-    line_spacing: 0.02,
-    name: '',
-    preset_category: '',
-    preset_category_id: '',
-    preset_has_set_alignment: false,
-    preset_id: '',
-    preset_index: 0,
-    preset_name: '',
-    recognize_type: 0,
-    relevance_segment: [],
-    shadow_alpha: 0.8,
-    shadow_angle: -45.0,
-    shadow_color: '',
-    shadow_distance: 8.0,
-    shadow_point: { x: 1.018, y: -1.018 },
-    shadow_smoothing: 1.0,
-    shape_clip_x: false,
-    shape_clip_y: false,
-    style_name: '',
-    sub_type: 0,
-    text_alpha: 1.0,
-    text_color: '#FFFFFF',
-    text_preset_resource_id: '',
-    text_size: 30,
-    text_to_audio_ids: [],
-    tts_auto_update: false,
-    type: 'text',
-    typesetting: 0,
-    underline: false,
-    underline_offset: 0.22,
-    underline_width: 0.05,
-    use_effect_default_color: true,
-    words: []
-  }))
+  // 文本素材（暂不启用）
+  const textMaterials: object[] = []
 
   // 视频轨道
   const videoTrack = {
     attribute: 0,
     flag: 0,
     id: uuid4(),
-    segments: project.videoSegments.map(seg => ({
+    segments: project.videoSegments.map((seg, i) => ({
       cartoon: false,
       clip: {
         alpha: 1.0,
@@ -282,7 +209,7 @@ function buildDraftContent(project: JYDraftProject, draftId: string): object {
       keyframe_refs: [],
       last_nonzero_volume: 1.0,
       material_id: seg.materialId,
-      render_index: 0,
+      render_index: i,
       reverse: false,
       source_timerange: {
         duration: seg.sourceDuration,
@@ -303,56 +230,8 @@ function buildDraftContent(project: JYDraftProject, draftId: string): object {
     type: 'video'
   }
 
-  // 字幕轨道
-  const textTrack = project.textSegments.length > 0 ? {
-    attribute: 0,
-    flag: 1,
-    id: uuid4(),
-    segments: project.textSegments.map(seg => ({
-      cartoon: false,
-      clip: {
-        alpha: 1.0,
-        flip: { horizontal: false, vertical: false },
-        rotation: 0.0,
-        scale: { x: 1.0, y: 1.0 },
-        transform: { x: 0.0, y: 0.0 }
-      },
-      common_keyframes: [],
-      enable_adjust: true,
-      enable_color_curves: true,
-      enable_color_wheels: true,
-      enable_lut: true,
-      enable_smart_color_adjust: false,
-      extra_material_refs: [],
-      group_id: '',
-      hdr_settings: { intensity: 1.0, mode: 1, nits: 1000 },
-      id: seg.id,
-      intensifies_audio: false,
-      is_placeholder: false,
-      is_tone_modify: false,
-      keyframe_refs: [],
-      last_nonzero_volume: 1.0,
-      material_id: seg.materialId,
-      render_index: 0,
-      reverse: false,
-      source_timerange: {
-        duration: seg.targetDuration,
-        start: seg.targetStart
-      },
-      speed: 1.0,
-      target_timerange: {
-        duration: seg.targetDuration,
-        start: seg.targetStart
-      },
-      template_id: '',
-      template_scene: 'default',
-      track_attribute: 0,
-      track_render_index: 0,
-      visible: true,
-      volume: 1.0
-    })),
-    type: 'text'
-  } : null
+  // 字幕轨道（暂不启用，等待剪映字幕格式稳定）
+  const textTrack = null
 
   const tracks: object[] = [videoTrack]
   if (textTrack) tracks.push(textTrack as object)
@@ -450,7 +329,7 @@ function buildDraftContent(project: JYDraftProject, draftId: string): object {
       stickers: [],
       tail_leaders: [],
       text_templates: [],
-      texts: textMaterials,
+      texts: [],   // 字幕暂不启用
       time_marks: [],
       transitions: [],
       video_effects: [],
@@ -501,25 +380,6 @@ function buildDraftMetaInfo(project: JYDraftProject, draftRoot: string, safeName
       sub_time_range: { duration: -1, start: -1 },
       type: 0,
       width: v.width || 0
-    })
-  }
-
-  for (const t of project.texts) {
-    materials.push({
-      create_time: now,
-      duration: 0,
-      extra_info: t.content.replace(/<[^>]+>/g, '').substring(0, 50),
-      file_Path: '',
-      height: 0,
-      id: t.id,
-      import_time: now,
-      import_time_ms: now * 1000,
-      md5: '',
-      metetype: 'text',
-      roughcut_time_range: { duration: 0, start: 0 },
-      sub_time_range: { duration: -1, start: -1 },
-      type: 1,
-      width: 0
     })
   }
 

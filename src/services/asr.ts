@@ -8,13 +8,27 @@
  *   4. 返回 utterances（词级时间轴）
  *
  * 文档: https://www.volcengine.com/docs/6561/80909
+ *
+ * 配置：从全局模型管理 → ASR 语音识别中设置
  */
 
-// ===== 配置（由用户提供） =====
-const APP_ID = '4064117990'
-const ACCESS_TOKEN = 'uW7Wx6cWjcun0rUWFA_NJgFSPpadmSAt'
-
 const BASE_URL = 'https://openspeech.bytedance.com/api/v1/vc'
+
+/** 获取 ASR 配置（从 store 动态读取） */
+function getAsrConfig(): { appId: string; accessToken: string } {
+  const raw = localStorage.getItem('copywriting-asr-config')
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw)
+      if (cfg.appId && cfg.accessToken) return cfg
+    } catch {}
+  }
+  // 默认值（兼容旧版硬编码）
+  return {
+    appId: '4064117990',
+    accessToken: 'uW7Wx6cWjcun0rUWFA_NJgFSPpadmSAt'
+  }
+}
 
 // ===== 类型定义 =====
 
@@ -53,8 +67,9 @@ export interface SubtitleSegment {
  * @returns 任务 ID
  */
 async function submitAudio(audioBuffer: ArrayBuffer): Promise<string> {
+  const cfg = getAsrConfig()
   const params = new URLSearchParams({
-    appid: APP_ID,
+    appid: cfg.appId,
     language: 'zh-CN',
     use_itn: 'True',
     caption_type: 'speech',
@@ -66,7 +81,7 @@ async function submitAudio(audioBuffer: ArrayBuffer): Promise<string> {
     method: 'POST',
     headers: {
       'Content-Type': 'audio/wav',
-      'Authorization': `Bearer; ${ACCESS_TOKEN}`
+      'Authorization': `Bearer; ${cfg.accessToken}`
     },
     body: audioBuffer
   })
@@ -90,8 +105,9 @@ async function submitAudio(audioBuffer: ArrayBuffer): Promise<string> {
  * @returns ASR 结果
  */
 async function queryResult(jobId: string): Promise<ASRResult> {
+  const cfg = getAsrConfig()
   const params = new URLSearchParams({
-    appid: APP_ID,
+    appid: cfg.appId,
     id: jobId,
     blocking: '1'
   })
@@ -99,7 +115,7 @@ async function queryResult(jobId: string): Promise<ASRResult> {
   const response = await fetch(`${BASE_URL}/query?${params}`, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer; ${ACCESS_TOKEN}`
+      'Authorization': `Bearer; ${cfg.accessToken}`
     }
   })
 
@@ -193,6 +209,24 @@ export function msToTime(ms: number): string {
   const m = Math.floor(totalSec / 60)
   const s = (totalSec % 60).toFixed(1)
   return `${m.toString().padStart(2, '0')}:${parseFloat(s).toFixed(1).padStart(4, '0')}`
+}
+
+/**
+ * 测试 ASR 连接（简单 GET 请求验证凭证是否有效）
+ */
+export async function testAsrConnection(appId: string, accessToken: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${BASE_URL}/query?appid=${appId}&id=dummy_test&blocking=0`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer; ${accessToken}`
+      }
+    })
+    // 200/400 等都表示服务可达，凭证有效
+    return response.status < 500
+  } catch {
+    return false
+  }
 }
 
 function sleep(ms: number): Promise<void> {

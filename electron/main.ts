@@ -515,12 +515,14 @@ const ASR_QUERY_URL = 'https://openspeech.bytedance.com/api/v1/vc/query'
 
 /** 查找 ffmpeg 路径（优先使用项目内的完整版） */
 function findFfmpeg(): string {
-  // 1. 优先：项目目录内的完整版 ffmpeg
+  const appRoot = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..')
+
+  // 1. 优先：项目 resources 目录内的完整版 ffmpeg
   const localPaths = [
-    path.join(__dirname, '..', 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
+    path.join(appRoot, 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
+    path.join(appRoot, 'ffmpeg.exe'),
+    path.join(appRoot, 'resources', 'ffmpeg.exe'),
     path.join(process.cwd(), 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
-    path.join(__dirname, '..', 'ffmpeg.exe'),
-    path.join(__dirname, '..', 'resources', 'ffmpeg.exe'),
     path.join(process.cwd(), 'ffmpeg.exe'),
     path.join(process.cwd(), 'resources', 'ffmpeg.exe'),
   ]

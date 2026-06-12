@@ -20,14 +20,6 @@
           官方工作流
         </button>
       </div>
-
-      <div class="header-spacer"></div>
-
-      <el-tooltip content="模型管理" placement="bottom">
-        <el-button size="small" circle @click="openModelManager">
-          <el-icon><Setting /></el-icon>
-        </el-button>
-      </el-tooltip>
     </div>
 
     <!-- 工作状态 -->
@@ -39,19 +31,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, inject } from 'vue'
-import { Setting } from '@element-plus/icons-vue'
+import { ref } from 'vue'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 import VideoClipper from '@/components/creator/VideoClipper.vue'
 import WorkflowPanel from '@/components/creator/WorkflowPanel.vue'
 
 const store = useCreatorModeStore()
-
-// 使用全局模型管理对话框
-const globalModelManager = inject<ReturnType<typeof ref<boolean>>>('showGlobalModelManager', ref(false))
-function openModelManager() {
-  globalModelManager.value = true
-}
 </script>
 
 <style scoped>

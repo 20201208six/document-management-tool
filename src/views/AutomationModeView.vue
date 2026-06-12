@@ -6,27 +6,13 @@
         <span class="header-title">自动化工作流</span>
         <span class="header-desc">通过可视化节点编排，自动化处理文案生成、格式转换、文件输出等任务</span>
       </div>
-      <div class="header-right">
-        <el-tooltip content="模型管理" placement="bottom">
-          <el-button size="small" circle @click="openModelManager">
-            <el-icon><Setting /></el-icon>
-          </el-button>
-        </el-tooltip>
-      </div>
     </div>
     <InfiniteCanvas />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, inject } from 'vue'
-import { Setting } from '@element-plus/icons-vue'
 import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
-
-const globalModelManager = inject<ReturnType<typeof ref<boolean>>>('showGlobalModelManager', ref(false))
-function openModelManager() {
-  globalModelManager.value = true
-}
 </script>
 
 <style scoped>
