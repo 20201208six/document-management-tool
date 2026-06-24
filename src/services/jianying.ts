@@ -526,7 +526,8 @@ export function buildProject(
   }>,
   projectName: string,
   canvasW = 1080,
-  canvasH = 1920
+  canvasH = 1920,
+  clipGapMs = 0           // 片段间间隔，毫秒
 ): JYDraftProject {
   const videoMaterials: JYVideoMaterial[] = []
   const videoMaterialMap = new Map<string, JYVideoMaterial>()
@@ -550,6 +551,7 @@ export function buildProject(
   }
 
   // 视频片段 → segments
+  const gapUs = msToUs(clipGapMs)
   let cumulativeUs = 0
   const videoSegments: JYVideoSegment[] = clips.map((clip, _i) => {
     const mat = videoMaterialMap.get(clip.sourceFile)!
@@ -562,7 +564,7 @@ export function buildProject(
       sourceDuration,
       targetStart: cumulativeUs
     }
-    cumulativeUs += sourceDuration
+    cumulativeUs += sourceDuration + gapUs
     return seg
   })
 

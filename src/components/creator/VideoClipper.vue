@@ -310,7 +310,7 @@
       </div>
       <template v-else>
         <div style="margin-bottom: 8px; color: #606266; font-size: 13px;">
-          共 {{ allSubtitleEntries.length }} 个视频，共 {{ store.subtitleCacheCount }} 条可用字幕条
+          共 {{ allSubtitleEntries.length }} 个字幕文件
         </div>
         <div class="sub-mgr-list" v-for="vid in allSubtitleEntries" :key="vid.id">
           <div class="sub-mgr-header" @click="toggleSubMgrExpand(vid.id)">
@@ -1357,7 +1357,7 @@ const allSubtitleEntries = computed(() => {
     fromDisk?: boolean; diskFile?: string; videoPath?: string; isImported?: boolean
   }> = []
 
-  // 来自 importedVideos
+  // 来自 importedVideos（仅当有对应磁盘缓存时才显示）
   for (const v of store.importedVideos) {
     if (v.asrStatus === 'done' && v.subtitles.length > 0) {
       // 查找对应的磁盘缓存文件（用于显示链接状态）
@@ -1367,15 +1367,18 @@ const allSubtitleEntries = computed(() => {
         sf.fileName === videoBaseName ||
         (sf.videoPath && v.path && sf.videoPath.replace(/\\/g, '/') === v.path.replace(/\\/g, '/'))
       )
-      entries.push({
-        id: v.id,
-        name: v.name,
-        subtitles: [...v.subtitles],
-        fromDisk: !!diskCache,
-        diskFile: diskCache?.filePath,
-        videoPath: diskCache?.videoPath || v.path,
-        isImported: true
-      })
+      // 只有在磁盘缓存中找到对应文件时才加入列表
+      if (diskCache) {
+        entries.push({
+          id: v.id,
+          name: v.name,
+          subtitles: [...v.subtitles],
+          fromDisk: true,
+          diskFile: diskCache.filePath,
+          videoPath: diskCache.videoPath || v.path,
+          isImported: true
+        })
+      }
     }
   }
 

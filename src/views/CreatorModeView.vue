@@ -22,21 +22,23 @@
       </div>
     </div>
 
-    <!-- 工作状态 -->
-    <VideoClipper v-if="store.subMode === 'work-state'" />
-
-    <!-- 工作流 -->
-    <WorkflowPanel v-if="store.subMode === 'workflow'" />
+    <KeepAlive>
+      <component :is="currentTab" />
+    </KeepAlive>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 import VideoClipper from '@/components/creator/VideoClipper.vue'
 import WorkflowPanel from '@/components/creator/WorkflowPanel.vue'
 
 const store = useCreatorModeStore()
+
+const currentTab = computed(() =>
+  store.subMode === 'work-state' ? VideoClipper : WorkflowPanel
+)
 </script>
 
 <style scoped>

@@ -27,13 +27,16 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="API Key" width="120">
+      <el-table-column label="API Key" width="150">
         <template #default="{ row }">
           <span v-if="row.apiKey" style="color:#67c23a;font-size:12px">已设置</span>
           <span v-else style="color:#f56c6c;font-size:12px">未设置</span>
+          <span v-if="testResults.has(row.id)" :style="{ color: testResults.get(row.id)!.ok ? '#67c23a' : '#f56c6c', fontSize: '11px', marginLeft: '6px' }">
+            {{ testResults.get(row.id)!.ok ? '✓' : '✗' }}
+          </span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="260">
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="editModel(row)">编辑</el-button>
           <el-button
@@ -43,6 +46,13 @@
             link
             @click="chatStore.setDefaultModel(row.id)"
           >设为默认</el-button>
+          <el-button
+            size="small"
+            type="warning"
+            link
+            :loading="testingId === row.id"
+            @click="testModelConnection(row)"
+          >测试</el-button>
           <el-button
             v-if="row.id !== 'deepseek-default'"
             size="small"
@@ -69,32 +79,49 @@
         size="small"
         style="margin-top: 16px"
       >
-        <el-form-item label="模型名称" required>
-          <el-input v-model="newModelForm.name" placeholder="例如：GPT-4o、Qwen-Max" />
-        </el-form-item>
-        <el-form-item label="服务商" required>
-          <el-select v-model="newModelForm.provider" style="width: 100%">
-            <el-option label="DeepSeek" value="deepseek" />
-            <el-option label="OpenAI 兼容" value="openai" />
-            <el-option label="自定义" value="custom" />
+        <el-form-item label="选择模型" required>
+          <el-select v-model="selectedPreset" style="width: 100%" @change="onPresetChange" placeholder="选择预设模型">
+            <el-option
+              v-for="p in modelPresets"
+              :key="p.name"
+              :label="p.name"
+              :value="p.name"
+            >
+              <span>{{ p.name }}</span>
+              <span style="float:right;color:#909399;font-size:11px">{{ p.providerLabel }}</span>
+            </el-option>
+            <el-option label="自定义 / 其他..." value="_custom_" />
           </el-select>
         </el-form-item>
-        <el-form-item label="API 地址" required>
-          <el-input v-model="newModelForm.apiUrl" placeholder="https://api.xxx.com/v1/chat/completions" />
-        </el-form-item>
-        <el-form-item label="API Key" required>
-          <el-input v-model="newModelForm.apiKey" type="password" show-password placeholder="sk-..." />
-        </el-form-item>
-        <el-form-item label="模型参数">
-          <el-input v-model="newModelForm.modelParam" placeholder="API 请求中使用的 model 值" />
-        </el-form-item>
-        <el-form-item label="深度思考">
-          <el-switch v-model="newModelForm.supportDeepThinking" />
-          <span class="form-tip">是否支持深度思考模式</span>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleAddModel">确认添加</el-button>
-        </el-form-item>
+
+        <template v-if="selectedPreset">
+          <el-form-item label="模型名称">
+            <el-input v-model="newModelForm.name" placeholder="可自定义名称" />
+          </el-form-item>
+          <el-form-item v-if="selectedPreset === '_custom_'" label="服务商" required>
+            <el-select v-model="newModelForm.provider" style="width: 100%">
+              <el-option label="DeepSeek" value="deepseek" />
+              <el-option label="OpenAI 兼容" value="openai" />
+              <el-option label="自定义" value="custom" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="selectedPreset === '_custom_'" label="API 地址" required>
+            <el-input v-model="newModelForm.apiUrl" placeholder="https://api.xxx.com/v1/chat/completions" />
+          </el-form-item>
+          <el-form-item label="API Key" required>
+            <el-input v-model="newModelForm.apiKey" type="password" show-password placeholder="sk-..." />
+          </el-form-item>
+          <el-form-item v-if="selectedPreset === '_custom_'" label="模型参数">
+            <el-input v-model="newModelForm.modelParam" placeholder="API 请求中使用的 model 值" />
+          </el-form-item>
+          <el-form-item v-if="selectedPreset === '_custom_'" label="深度思考">
+            <el-switch v-model="newModelForm.supportDeepThinking" />
+            <span class="form-tip">是否支持深度思考模式</span>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="handleAddModel">确认添加</el-button>
+          </el-form-item>
+        </template>
       </el-form>
     </div>
 
@@ -175,6 +202,97 @@ const visible = computed({
 const chatStore = useChatStore()
 const showAddForm = ref(false)
 const activeTab = ref('ai')
+const selectedPreset = ref('')
+
+// 预设模型列表
+interface ModelPreset {
+  name: string
+  providerLabel: string
+  provider: AIModel['provider']
+  apiUrl: string
+  modelParam: string
+  supportDeepThinking: boolean
+}
+
+const modelPresets: ModelPreset[] = [
+  {
+    name: 'DeepSeek V4 Pro',
+    providerLabel: 'DeepSeek',
+    provider: 'deepseek',
+    apiUrl: 'https://api.deepseek.com/chat/completions',
+    modelParam: 'deepseek-chat',
+    supportDeepThinking: false
+  },
+  {
+    name: 'DeepSeek R1 (推理)',
+    providerLabel: 'DeepSeek',
+    provider: 'deepseek',
+    apiUrl: 'https://api.deepseek.com/chat/completions',
+    modelParam: 'deepseek-reasoner',
+    supportDeepThinking: true
+  },
+  {
+    name: '豆包 Doubao-Seed-2.0-Lite',
+    providerLabel: '火山引擎',
+    provider: 'openai',
+    apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    modelParam: 'doubao-seed-2-0-lite-260215',
+    supportDeepThinking: false
+  },
+  {
+    name: '豆包 Doubao-Seed-2.0',
+    providerLabel: '火山引擎',
+    provider: 'openai',
+    apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    modelParam: 'doubao-seed-2-0-260615',
+    supportDeepThinking: false
+  },
+  {
+    name: '豆包 Doubao-1.5-pro-32k',
+    providerLabel: '火山引擎',
+    provider: 'openai',
+    apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    modelParam: 'doubao-1-5-pro-32k-250115',
+    supportDeepThinking: false
+  },
+  {
+    name: 'GPT-4o',
+    providerLabel: 'OpenAI',
+    provider: 'openai',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    modelParam: 'gpt-4o',
+    supportDeepThinking: false
+  },
+  {
+    name: 'GPT-4o-mini',
+    providerLabel: 'OpenAI',
+    provider: 'openai',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    modelParam: 'gpt-4o-mini',
+    supportDeepThinking: false
+  }
+]
+
+function onPresetChange(name: string) {
+  if (name === '_custom_') {
+    newModelForm.name = ''
+    newModelForm.provider = 'deepseek'
+    newModelForm.apiUrl = ''
+    newModelForm.apiKey = ''
+    newModelForm.modelParam = ''
+    newModelForm.supportDeepThinking = false
+    return
+  }
+  const preset = modelPresets.find(p => p.name === name)
+  if (preset) {
+    newModelForm.name = preset.name
+    newModelForm.provider = preset.provider
+    newModelForm.apiUrl = preset.apiUrl
+    newModelForm.apiKey = ''
+    newModelForm.modelParam = preset.modelParam
+    newModelForm.supportDeepThinking = preset.supportDeepThinking
+  }
+}
 
 // AI 模型表单
 const newModelForm = reactive({
@@ -191,9 +309,15 @@ function handleAddModel() {
     ElMessage.warning('请输入模型名称')
     return
   }
-  if (!newModelForm.apiUrl.trim()) {
-    ElMessage.warning('请输入 API 地址')
-    return
+  if (selectedPreset.value === '_custom_') {
+    if (!newModelForm.apiUrl.trim()) {
+      ElMessage.warning('请输入 API 地址')
+      return
+    }
+    if (!newModelForm.modelParam.trim()) {
+      ElMessage.warning('请输入模型参数')
+      return
+    }
   }
   if (!newModelForm.apiKey.trim()) {
     ElMessage.warning('请输入 API Key')
@@ -211,6 +335,7 @@ function handleAddModel() {
 
   ElMessage.success('模型添加成功')
   showAddForm.value = false
+  selectedPreset.value = ''
   newModelForm.name = ''
   newModelForm.provider = 'deepseek'
   newModelForm.apiUrl = ''
@@ -244,6 +369,56 @@ function saveEdit() {
     chatStore.updateModel(editingModel.value.id, editingModel.value)
     ElMessage.success('保存成功')
     showEditDialog.value = false
+  }
+  // 清除旧测试结果
+  testResults.delete(editingModel.value?.id || '')
+}
+
+// ===== 测试模型连接 =====
+const testingId = ref('')
+const testResults = reactive(new Map<string, { ok: boolean; msg: string }>())
+
+async function testModelConnection(model: AIModel) {
+  if (!model.apiKey) {
+    ElMessage.warning('请先设置 API Key')
+    return
+  }
+  testingId.value = model.id
+  testResults.delete(model.id)
+  try {
+    const response = await fetch(model.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.apiKey}`
+      },
+      body: JSON.stringify({
+        model: model.modelParam || 'deepseek-chat',
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1
+      })
+    })
+    const ok = response.ok
+    let msg = ''
+    if (ok) {
+      msg = '连接成功'
+    } else {
+      const errText = await response.text()
+      let errMsg = errText
+      try {
+          const parsed = JSON.parse(errText)
+          errMsg = parsed.error?.message || parsed.error_msg || errMsg
+        } catch {}
+      msg = `连接失败 (${response.status}): ${errMsg}`
+    }
+    testResults.set(model.id, { ok, msg })
+    ElMessage[ok ? 'success' : 'error'](msg)
+  } catch (e: any) {
+    const msg = '连接异常: ' + (e.message || String(e))
+    testResults.set(model.id, { ok: false, msg })
+    ElMessage.error(msg)
+  } finally {
+    testingId.value = ''
   }
 }
 
