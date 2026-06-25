@@ -33,39 +33,6 @@
           <button class="nsp-btn nsp-btn-ghost" @click="handleClear" :disabled="!predContent.trim()">清空</button>
         </div>
       </div>
-
-      <!-- 右：预测历史 -->
-      <div class="nsp-history-section" v-if="store.predictionHistory.length > 0">
-        <div class="nsp-hist-header">📜 预测历史 ({{ store.predictionHistory.length }} 条)</div>
-        <div class="nsp-history-list">
-          <div
-            v-for="entry in store.predictionHistory"
-            :key="entry.id"
-            class="nsp-history-item"
-            :class="{ active: viewingHistoryId === entry.id, reviewed: entry.actualLikes != null }"
-            @click="handleViewHistory(entry)"
-          >
-            <div class="nsp-hist-main">
-              <span class="nsp-hist-platform">{{ PLATFORM_CONFIG[entry.platform]?.icon }}</span>
-              <span class="nsp-hist-text">{{ entry.content.slice(0, 50) }}{{ entry.content.length > 50 ? '...' : '' }}</span>
-            </div>
-            <div class="nsp-hist-meta">
-              <span class="nsp-hist-pred">{{ fmt(entry.result.minLikes) }}~{{ fmt(entry.result.maxLikes) }}</span>
-              <span v-if="entry.actualLikes != null" class="nsp-hist-actual" :class="entry.deviation && entry.deviation > 0 ? 'over' : 'under'">
-                → {{ fmt(entry.actualLikes) }}
-              </span>
-              <button
-                v-else
-                class="nsp-hist-retro-btn"
-                @click.stop="showRetroDialog(entry)"
-              >
-                🔄 复盘
-              </button>
-              <span class="nsp-hist-time">{{ entry.predictedAt.slice(5, 16) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- ===== 4. 预测结果 ===== -->
@@ -331,37 +298,6 @@
       <span class="nspe-desc">在上方输入口播文稿，AI 将基于 {{ store.scriptRecords.length || 0 }} 条历史样本进行盲预测</span>
     </div>
 
-    <!-- 偏差趋势警告 -->
-    <div class="nsp-deviation-warn" v-if="store.deviationTrend" :class="warnClass">
-      <span class="nsdw-icon">{{ warnIcon }}</span>
-      <div class="nsdw-body">
-        <div class="nsdw-text">{{ store.deviationTrend.advice }}</div>
-        <div class="nsdw-stats" v-if="store.deviationTrend.headlineHitRate != null">
-          <span class="nsdws-hit" :class="{ low: (store.deviationTrend.headlineHitRate ?? 0) < 50 }">
-            🎯 主桶命中 {{ store.deviationTrend.headlineHitRate }}%
-          </span>
-          <span class="nsdws-adj">📎 相邻桶 {{ store.deviationTrend.adjacentHitRate }}%</span>
-          <span class="nsdws-miss" :class="{ high: (store.deviationTrend.missRate ?? 0) > 50 }">
-            ❌ 脱靶 {{ store.deviationTrend.missRate }}%
-          </span>
-        </div>
-        <div class="nsdw-guide" v-if="store.deviationTrend.needsBump">
-          <span class="nsdwg-step">操作步骤：</span>
-          <span class="nsdwg-item">① 点击下方按钮 →</span>
-          <span class="nsdwg-item">② AI 分析数据给出建议权重 →</span>
-          <span class="nsdwg-item">③ 点击「接受并升级公式」完成</span>
-        </div>
-        <button
-          v-if="store.deviationTrend.needsBump && !store.isGeneratingBump"
-          class="nsdw-bump-btn"
-          @click="handleBump"
-        >
-          🔧 AI 自动建议权重
-        </button>
-        <span v-if="store.isGeneratingBump" class="nsdw-bumping">⏳ AI 正在分析复盘数据，生成权重建议…</span>
-      </div>
-    </div>
-
     <!-- Bump 建议面板 -->
     <div class="nsp-bump-panel" v-if="store.bumpSuggestion">
       <div class="nsbp-header">
@@ -428,10 +364,60 @@
 
       </div><!-- /nsp-main -->
 
-      <!-- ===== 右栏：系统进化看板 ===== -->
-      <div class="nsp-sidebar" v-if="store.evolutionMetrics">
-        <div class="nspsb-card">
-          <div class="nspsb-title">📊 系统进化看板</div>
+      <!-- ===== 右栏：系统进化看板 + 预测历史 ===== -->
+      <div class="nsp-sidebar" v-if="store.evolutionMetrics || store.predictionHistory.length > 0">
+        <!-- 偏差趋势警告 -->
+      <div class="nsp-deviation-warn-side" v-if="store.deviationTrend" :class="warnClass">
+        <div class="nsdw-title-row" @click="showDeviationPanel = !showDeviationPanel">
+          <span class="nspsbt-toggle" :class="{ open: showDeviationPanel }">▶</span>
+          <span class="nsdw-icon">📉</span>
+          <span class="nsdw-label">预测偏差</span>
+          <button
+            v-if="!showDeviationPanel && store.deviationTrend.needsBump && !store.isGeneratingBump"
+            class="nsdw-bump-btn-sm"
+            @click.stop="handleBump"
+          >🔧 建议权重</button>
+        </div>
+        <template v-if="showDeviationPanel">
+        <div class="nsdw-stats-row">
+          <div class="nsdw-stat-item">
+            <span class="nsdw-stat-val" :class="{ low: (store.deviationTrend.headlineHitRate ?? 0) < 50 }">{{ store.deviationTrend.headlineHitRate ?? '--' }}%</span>
+            <span class="nsdw-stat-label">命中率</span>
+          </div>
+          <div class="nsdw-stat-item">
+            <span class="nsdw-stat-val" :class="{ high: (store.deviationTrend.missRate ?? 0) > 0 }">{{ store.deviationTrend.missRate ?? '--' }}%</span>
+            <span class="nsdw-stat-label">脱靶率</span>
+          </div>
+          <div class="nsdw-stat-item">
+            <span class="nsdw-stat-val">{{ store.deviationTrend.avgDev > 0 ? '+' : '' }}{{ store.deviationTrend.avgDev }}%</span>
+            <span class="nsdw-stat-label">偏差</span>
+          </div>
+        </div>
+        <button
+          v-if="store.deviationTrend.needsBump && !store.isGeneratingBump"
+          class="nsdw-bump-btn"
+          @click="handleBump"
+        >🔧 建议权重</button>
+        <span v-if="store.isGeneratingBump" class="nsdw-bumping">⏳ 分析中…</span>
+        </template>
+      </div>
+
+      <div class="nspsb-card" v-if="store.evolutionMetrics">
+          <div class="nspsb-title-row">
+            <span class="nspsbt-toggle" :class="{ open: showEvolutionPanel }" @click="showEvolutionPanel = !showEvolutionPanel">▶</span>
+            <span class="nspsb-title">📊 系统进化看板</span>
+            <label
+              v-if="!showEvolutionPanel"
+              class="nspsb-auto-sm"
+              :class="{ on: store.autoCalibrateEnabled }"
+              @click="store.toggleAutoCalibrate()"
+              title="自动校准开关"
+            >
+              <span class="nspsba-dot"></span>
+              <span class="nspsba-text">{{ store.autoCalibrateEnabled ? '开' : '关' }}</span>
+            </label>
+          </div>
+          <template v-if="showEvolutionPanel">
           <div class="nspsb-stats">
             <div class="nspsbs-item">
               <span class="nspsbs-val">{{ store.evolutionMetrics.totalScripts }}</span>
@@ -502,6 +488,51 @@
               </div>
             </div>
           </div>
+          </template>
+        </div>
+
+        <!-- 预测历史 -->
+        <div class="nsp-history-section" v-if="store.predictionHistory.length > 0">
+          <div class="nsp-hist-header">
+            📜 预测历史 ({{ store.predictionHistory.length }} 条)
+            <span v-if="unreviewedCount > 0" class="nsp-hist-unreviewed">{{ unreviewedCount }} 条未复盘</span>
+          </div>
+          <div class="nsp-history-list">
+            <div
+              v-for="entry in store.predictionHistory"
+              :key="entry.id"
+              class="nsp-history-item"
+              :class="{ active: viewingHistoryId === entry.id, reviewed: entry.actualLikes != null }"
+              @click="handleViewHistory(entry)"
+            >
+              <div class="nsp-hist-main">
+                <span class="nsp-hist-platform">{{ PLATFORM_CONFIG[entry.platform]?.icon }}</span>
+                <span class="nsp-hist-text">{{ entry.content.slice(0, 50) }}{{ entry.content.length > 50 ? '...' : '' }}</span>
+              </div>
+              <div class="nsp-hist-meta">
+                <span class="nsp-hist-pred">{{ fmt(entry.result.minLikes) }}~{{ fmt(entry.result.maxLikes) }}</span>
+                <span v-if="entry.actualLikes != null" class="nsp-hist-actual" :class="entry.deviation && entry.deviation > 0 ? 'over' : 'under'">
+                  → {{ fmt(entry.actualLikes) }}
+                </span>
+                <button
+                  v-else
+                  class="nsp-hist-retro-btn"
+                  @click.stop="showRetroDialog(entry)"
+                >
+                  🔄 复盘
+                </button>
+                <span class="nsp-hist-time">{{ entry.predictedAt.slice(5, 16) }}</span>
+              </div>
+              <button class="nsp-hist-del" @click.stop="handleDeleteHistory(entry)" title="删除此条预测">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -539,7 +570,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUniqueModeStore, PLATFORM_CONFIG, SCORING_DIMENSION_CONFIG, type Platform, type PredictionLogEntry } from '@/stores/uniqueMode'
 
 const store = useUniqueModeStore()
@@ -613,9 +644,15 @@ function getDimensionAdvice(key: string): string {
 
 const predContent = ref('')
 const predPlatform = ref<Platform>('抖音')
+const showEvolutionPanel = ref(false)
+const showDeviationPanel = ref(true)
 
 const samePlatformCount = computed(() =>
   store.scriptRecords.filter(s => s.platform === predPlatform.value).length
+)
+
+const unreviewedCount = computed(() =>
+  store.predictionHistory.filter(e => e.actualLikes == null).length
 )
 
 async function handlePredict() {
@@ -647,6 +684,22 @@ function handleViewHistory(entry: PredictionLogEntry) {
       if (cards.length) cards[0].scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 100)
   }
+}
+
+async function handleDeleteHistory(entry: PredictionLogEntry) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除此条预测记录？\n\n"${entry.content.slice(0, 40)}..."`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    if (viewingHistoryId.value === entry.id) {
+      viewingHistoryId.value = null
+      viewingHistoryTime.value = ''
+    }
+    store.deletePredictionHistoryEntry(entry.id)
+    ElMessage.success('已删除')
+  } catch { /* 取消 */ }
 }
 
 function clearViewingHistory() {
@@ -790,15 +843,6 @@ const warnClass = computed(() => {
   return 'warn-mild'
 })
 
-const warnIcon = computed(() => {
-  const t = store.deviationTrend
-  if (!t) return ''
-  if (t.needsBump) return '🚨'
-  if (t.trend === 'over') return '⚠️'
-  if (t.trend === 'under') return '📉'
-  return ''
-})
-
 async function handleBump() {
   await store.generateBumpSuggestion()
   // 自动滚动到 bump 面板
@@ -907,13 +951,19 @@ function scoreTagText(s: number): string {
 
 /* ===== 3. 预测历史（右侧面板） ===== */
 .nsp-history-section {
-  width: 320px; flex-shrink: 0;
+  width: 100%; flex-shrink: 0;
   background: #fff; border-radius: 12px; border: 1px solid #eef2f6;
-  display: flex; flex-direction: column; max-height: 340px;
+  display: flex; flex-direction: column; max-height: 300px;
 }
 .nsp-hist-header {
   font-size: 13px; font-weight: 600; color: #303133;
   padding: 12px 14px; border-bottom: 1px solid #eef2f6; flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.nsp-hist-unreviewed {
+  margin-left: auto;
+  padding: 2px 9px; border-radius: 14px; font-size: 10px; font-weight: 600; white-space: nowrap;
+  background: #e6f7e6; color: #0f7b3a;
 }
 
 .nsp-history-list {
@@ -921,13 +971,21 @@ function scoreTagText(s: number): string {
   overflow-y: auto; flex: 1; padding: 6px;
 }
 .nsp-history-item {
-  display: flex; flex-direction: column; gap: 4px;
+  position: relative; display: flex; flex-direction: column; gap: 4px;
   padding: 8px 10px; background: #fafcfd; border: 1px solid #eef2f6; border-radius: 8px;
   cursor: pointer; transition: background 0.15s, border-color 0.15s;
 }
 .nsp-history-item:hover { background: #f0f4ff; }
 .nsp-history-item.active { background: #eef3ff; border-color: #3b82f6; }
 .nsp-history-item.reviewed { background: #f9fafb; }
+.nsp-hist-del {
+  position: absolute; bottom: 6px; right: 6px;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: #9ca3af; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.nsp-history-item:hover .nsp-hist-del { opacity: 1; }
+.nsp-hist-del:hover { color: #ef4444; background: #fef2f2; }
 .nsp-hist-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .nsp-hist-platform { font-size: 14px; flex-shrink: 0; }
 .nsp-hist-text { font-size: 12px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1111,40 +1169,48 @@ function scoreTagText(s: number): string {
 .nsaai-advice { font-size: 12px; color: #4b5563; line-height: 1.6; padding: 8px 10px; background: #f0fdf4; border-radius: 8px; border-left: 3px solid #22c55e; }
 .nsaai-advice.warn { background: #fef9f0; border-left-color: #f59e0b; color: #78350f; font-weight: 500; }
 
-/* 偏差趋势警告 */
-.nsp-deviation-warn {
-  display: flex; align-items: flex-start; gap: 8px; padding: 12px 16px; border-radius: 10px;
-  margin-top: 4px; font-size: 12px; line-height: 1.6; border: 1px solid;
+/* 偏差趋势警告（卡片风格） */
+.nsp-deviation-warn-side {
+  background: #fff; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+  border: 1px solid #eef2f6; display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 0.2s;
 }
-.nsp-deviation-warn.warn-severe { background: #fef2f2; border-color: #fecaca; }
-.nsp-deviation-warn.warn-moderate { background: #fef9f0; border-color: #fce8c0; }
-.nsp-deviation-warn.warn-mild { background: #f0f9ff; border-color: #bae6fd; }
-.nsdw-icon { flex-shrink: 0; font-size: 16px; margin-top: 1px; }
-.nsdw-body { flex: 1; }
-.nsdw-text { font-size: 13px; }
-.warn-severe .nsdw-text { color: #991b1b; font-weight: 600; }
-.warn-moderate .nsdw-text { color: #8a6d3b; }
-.warn-mild .nsdw-text { color: #1e40af; }
-.nsdw-stats { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
-.nsdws-hit, .nsdws-adj, .nsdws-miss { font-size: 11px; padding: 2px 8px; border-radius: 6px; }
-.nsdws-hit { background: #dcfce7; color: #166534; }
-.nsdws-hit.low { background: #fef3c7; color: #92400e; }
-.nsdws-adj { background: #f0f2f5; color: #6b7280; }
-.nsdws-miss { background: #f1f5f9; color: #64748b; }
-.nsdws-miss.high { background: #fee2e2; color: #991b1b; font-weight: 600; }
+.nsp-deviation-warn-side.warn-severe:hover { border-color: #ef4444; }
+.nsp-deviation-warn-side.warn-moderate:hover { border-color: #f59e0b; }
+.nsp-deviation-warn-side.warn-mild:hover { border-color: #3b82f6; }
+.nsdw-title-row {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+}
+.nsdw-label {
+  font-size: 12px; font-weight: 700; color: #1f2937;
+}
+.nsdw-bump-btn-sm {
+  margin-left: auto; padding: 2px 8px; border: none; border-radius: 10px;
+  background: #eef2ff; color: #4338ca; font-size: 10px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.nsdw-bump-btn-sm:hover { background: #e0e7ff; }
+.nsdw-stats-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+}
+.nsdw-stat-item {
+  padding: 8px 4px; background: #f8fafc; border-radius: 8px; text-align: center;
+}
+.nsdw-stat-val {
+  display: block; font-size: 18px; font-weight: 700; color: #1f2937; line-height: 1.2;
+}
+.nsdw-stat-val.low { color: #f59e0b; }
+.nsdw-stat-val.high { color: #ef4444; }
+.nsdw-stat-label {
+  display: block; font-size: 10px; color: #9ca3af; margin-top: 1px;
+}
 .nsdw-bump-btn {
-  margin-top: 8px; padding: 4px 14px; border: 1px solid #c7d2fe; border-radius: 6px; background: #eef2ff;
-  color: #4338ca; font-size: 12px; cursor: pointer; font-weight: 500; transition: all 0.15s;
+  padding: 6px 0; border: none; border-radius: 8px;
+  background: #4f46e5; color: #fff; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s; text-align: center;
 }
-.nsdw-bump-btn:hover { background: #e0e7ff; border-color: #a5b4fc; }
-.nsdw-bumping { display: inline-block; margin-top: 8px; font-size: 12px; color: #6b7280; }
-.nsdw-guide {
-  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
-  margin-top: 6px; padding: 6px 10px; background: rgba(255,255,255,0.5); border-radius: 6px;
-  font-size: 11px; line-height: 1.6;
-}
-.nsdwg-step { font-weight: 600; color: #4338ca; margin-right: 2px; }
-.nsdwg-item { color: #6b7280; }
+.nsdw-bump-btn:hover { background: #4338ca; }
+.nsdw-bumping { font-size: 11px; color: #9ca3af; text-align: center; }
 
 /* Bump 建议面板 */
 .nsp-bump-panel { margin-top: 4px; padding: 16px; background: #fff; border: 2px solid #c7d2fe; border-radius: 14px; }
@@ -1241,6 +1307,29 @@ function scoreTagText(s: number): string {
   display: flex; flex-direction: column; gap: 14px;
 }
 .nspsb-title { font-size: 14px; font-weight: 700; color: #1f2937; }
+.nspsb-title-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.nspsbt-toggle {
+  cursor: pointer; user-select: none; transition: transform 0.2s;
+  display: inline-block; font-size: 10px; color: #9ca3af;
+  width: 16px; text-align: center; line-height: 1;
+}
+.nspsbt-toggle:hover { color: #1f2937; }
+.nspsbt-toggle.open { transform: rotate(90deg); }
+.nspsb-auto-sm {
+  margin-left: auto; display: flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 10px; background: #f3f4f6;
+  font-size: 11px; color: #9ca3af; cursor: pointer; user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.nspsb-auto-sm:hover { background: #e5e7eb; }
+.nspsb-auto-sm.on { background: #dcfce7; color: #16a34a; }
+.nspsb-auto-sm .nspsba-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #d1d5db; transition: background 0.15s;
+}
+.nspsb-auto-sm.on .nspsba-dot { background: #22c55e; box-shadow: 0 0 4px rgba(34,197,94,0.5); }
 .nspsb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .nspsbs-item {
   padding: 8px; background: #f8fafc; border-radius: 8px; text-align: center;

@@ -996,6 +996,14 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
     localStorage.setItem(predictionHistoryKey(), JSON.stringify(predictionHistory.value))
   }
 
+  /** 删除预测历史中的一条记录 */
+  function deletePredictionHistoryEntry(predictionId: string) {
+    const idx = predictionHistory.value.findIndex(e => e.id === predictionId)
+    if (idx === -1) return
+    predictionHistory.value.splice(idx, 1)
+    savePredictionHistory()
+  }
+
   /** 从预测历史中加载条目到当前预测视图（用于查看历史详情） */
   function loadHistoryEntry(predictionId: string): { content: string; platform: Platform } | null {
     const entry = predictionHistory.value.find(e => e.id === predictionId)
@@ -1429,6 +1437,12 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
   function scriptsByPlatform(platform: Platform): ScriptRecord[] { return scriptRecords.value.filter(s => s.platform === platform) }
 
   const sortedScripts = computed(() => [...scriptRecords.value].sort((a, b) => b.actualLikes - a.actualLikes))
+
+  /** 按各平台高赞阈值过滤后的样本（仅显示达标样本） */
+  const thresholdFilteredScripts = computed(() => {
+    const thresholds = highLikeThresholds.value
+    return sortedScripts.value.filter(r => r.actualLikes >= (thresholds[r.platform] ?? 500))
+  })
 
   const platformStats = computed(() => {
     const stats: Record<string, { count: number; avgLikes: number; totalLikes: number }> = {}
@@ -3007,14 +3021,19 @@ ${ap.coreConfusions.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
   async function generateAudienceProfile(nicheKeywords: string, notes?: string): Promise<AudienceProfile> {
     audienceLoading.value = true
     try {
-      // 收集已有文稿作为分析素材
-      const samples = scriptRecords.value
+      // 收集已有文稿作为分析素材（附带平台和互动数据）
+      const rawSamples = scriptRecords.value
         .filter(r => r.content && r.content.trim().length > 0)
         .slice(0, 20)
-        .map(r => r.content.length > 300 ? r.content.slice(0, 300) + '...' : r.content)
       
-      const sampleBlock = samples.length > 0
-        ? `\n【已有文稿样本】\n${samples.map((s, i) => `[${i + 1}] ${s}`).join('\n---\n')}`
+      const sampleBlock = rawSamples.length > 0
+        ? `\n【已有文稿样本（含平台与表现数据，高赞/高点赞率的样本参考价值更高，低互动样本仅作反例）】\n${rawSamples.map((r, i) => {
+            const text = r.content.length > 300 ? r.content.slice(0, 300) + '...' : r.content
+            const perf = r.views && r.views > 0
+              ? `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()} | 播放：${r.views.toLocaleString()} | 点赞率：${(r.likeRate ?? (r.views > 0 ? (r.actualLikes / r.views * 100) : 0)).toFixed(2)}%`
+               : `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()}`
+            return `[${i + 1}] ${perf}\n${text}`
+          }).join('\n---\n')}`
         : ''
 
       const prompt = `你是一位内容策略分析师。请基于以下信息，分析该账号的受众画像。
@@ -3035,7 +3054,9 @@ ${sampleBlock}
 
 注意：
 - 基于已有文稿的风格反推受众，不要编造与内容无关的描述
-- 所有输出聚焦"受众需要什么"，而不是"创作者做什么"`
+- 所有输出聚焦"受众需要什么"，而不是"创作者做什么"
+- 高点赞、高点赞率的样本应作为正面参考重点分析；低互动的样本仅推测"缺少共鸣"的方向
+- 同一平台内，点赞量绝对值受该平台用户基数影响（如抖音普遍偏高、视频号偏低），请用点赞率做跨样本公平对比`
 
       const raw = await callAI('', prompt, 0.15)
       const jsonMatch = raw.match(/\{[\s\S]*\}/)
@@ -3830,7 +3851,7 @@ ${bestRefs ? '参考样本：\n' + bestRefs : ''}
     isAnalyzing,
 
     // 点赞预测
-    scriptRecords, sortedScripts, platformStats,
+    scriptRecords, sortedScripts, thresholdFilteredScripts, platformStats,
     isAnalyzingScript, isPredicting, isSummarizing, isGeneratingFramework, isValidatingWeights, isGeneratingBump,
     patternSummary, writingFramework, lastPrediction, predictionHistory, customWeights, customCriteria,
     pendingReviewCount, deviationTrend,
@@ -3842,7 +3863,7 @@ ${bestRefs ? '参考样本：\n' + bestRefs : ''}
     reAnalyzeScript, generatePatternSummary, generateWritingFramework,
     reloadPatternSummary, reloadFramework, updateCustomWeights, resetCustomWeights,
     updateCustomCriteria, resetCustomCriteria,
-    predictLikes, retroPrediction, aiReviewPrediction, loadHistoryEntry, clearScripts, validateWeights,
+    predictLikes, retroPrediction, aiReviewPrediction, loadHistoryEntry, deletePredictionHistoryEntry, clearScripts, validateWeights,
     isReviewingPrediction, aiReviewResult,
     generateBumpSuggestion, applyBumpWeights, dismissBumpSuggestion,
     autoCalibrateEnabled, toggleAutoCalibrate,

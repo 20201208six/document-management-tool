@@ -1,9 +1,14 @@
 <template>
   <div class="sample-library">
-    <!-- 工具栏：标题 + 导入/导出/恢复（始终可见） -->
+    <!-- 工具栏：标题 + 导入/导出/恢复 + 阈值过滤（始终可见） -->
     <div class="sl-toolbar">
       <span class="sl-toolbar-title">历史样本库</span>
       <div class="sl-toolbar-actions">
+        <label class="sl-filter-toggle" title="仅显示达到各平台高赞门槛的样本">
+          <input type="checkbox" v-model="thresholdFilter" />
+          <span class="slft-label">高赞门槛</span>
+          <span class="slft-count" v-if="thresholdFilter">({{ store.thresholdFilteredScripts.length }}/{{ store.scriptRecords.length }})</span>
+        </label>
         <button class="sl-btn sl-btn-outline" @click="$emit('import-json')">
           <span>📂</span> 导入JSON
         </button>
@@ -26,38 +31,46 @@
     <div v-else class="sl-layout">
       <!-- 左侧：样本卡片列表 -->
       <div class="sl-cards">
+        <div v-if="displayScripts.length === 0" class="sl-no-match" v-show="thresholdFilter">
+          暂无达到高赞门槛的样本
+        </div>
         <div
-          v-for="r in store.sortedScripts"
+          v-for="r in displayScripts"
           :key="r.id"
           class="sl-card"
-          :class="{ selected: selectedId === r.id, unscored: r.compositeScore <= 0 }"
+          :class="{ selected: selectedId === r.id, unscored: r.compositeScore <= 0, 'below-threshold': !meetsThreshold(r) }"
           @click="selectScript(r)"
         >
           <div class="slc-header">
-            <div class="slc-title">
-              <span class="slc-platform">{{ PLATFORM_CONFIG[r.platform]?.icon || '🎵' }}</span>
-              <span class="slc-title-text">{{ r.content.slice(0, 40) }}{{ r.content.length > 40 ? '...' : '' }}</span>
-            </div>
-            <div class="slc-badges">
-              <span class="slc-score">{{ r.compositeScore || '--' }} <small>模型分</small></span>
-              <span class="slc-likes">{{ fmt(r.actualLikes) }} <small>赞</small></span>
-              <span v-if="r.views && editingViewsId !== r.id" class="slc-views">{{ fmt(r.views!) }} <small>播</small></span>
-              <span v-else-if="r.views && editingViewsId === r.id" class="slc-views slc-views-done">{{ fmt(r.views!) }} <small>播</small></span>
-              <template v-else-if="editingViewsId === r.id">
-                <input v-model="editViewsVal" type="number" class="slc-views-input" @click.stop @keyup.enter="saveViews(r)" ref="viRef" />
-                <button class="slc-views-ok" @click.stop="saveViews(r)">✓</button>
-                <button class="slc-views-cancel" @click.stop="editingViewsId = null">×</button>
-              </template>
-              <span v-else class="slc-views slc-views-empty" @click.stop="startEditViews(r)">+播放量</span>
-            </div>
+            <span class="slc-platform">{{ PLATFORM_CONFIG[r.platform]?.icon || '🎵' }}</span>
+            <span class="slc-title-text">{{ r.content.slice(0, 10) }}{{ r.content.length > 10 ? '...' : '' }}</span>
+            <span v-if="!meetsThreshold(r)" class="slc-below-pill">未达标</span>
+          </div>
+
+          <div class="slc-stats">
+            <span class="slc-score">{{ r.compositeScore || '--' }} <small>模型分</small></span>
+            <span v-if="editingLikesId !== r.id" class="slc-likes" @click.stop="startEditLikes(r)" title="点击编辑点赞量">{{ fmt(r.actualLikes) }} <small>赞</small></span>
+            <template v-else>
+              <input v-model="editLikesVal" type="number" class="slc-views-input" @click.stop @keyup.enter="saveLikes(r)" />
+              <button class="slc-views-ok" @click.stop="saveLikes(r)">✓</button>
+              <button class="slc-views-cancel" @click.stop="editingLikesId = null">×</button>
+            </template>
+            <span v-if="r.views && editingViewsId !== r.id" class="slc-views">{{ fmt(r.views!) }} <small>播</small></span>
+            <span v-else-if="r.views && editingViewsId === r.id" class="slc-views slc-views-done">{{ fmt(r.views!) }} <small>播</small></span>
+            <template v-else-if="editingViewsId === r.id">
+              <input v-model="editViewsVal" type="number" class="slc-views-input" @click.stop @keyup.enter="saveViews(r)" ref="viRef" />
+              <button class="slc-views-ok" @click.stop="saveViews(r)">✓</button>
+              <button class="slc-views-cancel" @click.stop="editingViewsId = null">×</button>
+            </template>
+            <span v-else class="slc-views slc-views-empty" @click.stop="startEditViews(r)">+播放量</span>
+            <span class="slc-tag" :class="scoreTag(r.compositeScore)">{{ scoreTagText(r.compositeScore) }}</span>
           </div>
 
           <div class="slc-content">{{ r.content }}</div>
 
           <div class="slc-footer">
             <span class="slc-date">{{ r.updatedAt?.slice(0, 10) || r.createdAt.slice(0, 10) }}</span>
-            <span v-if="r.platform" class="slc-date">{{ r.platform }}</span>
-            <span class="slc-tag" :class="scoreTag(r.compositeScore)">{{ scoreTagText(r.compositeScore) }}</span>
+            <span v-if="r.platform" class="slc-platform-label">{{ r.platform }}</span>
             <span v-if="r.tags?.length" class="slc-tags">
               <span v-for="(t, i) in r.tags.slice(0, 3)" :key="i" class="slc-tag-label">{{ t }}</span>
             </span>
@@ -100,11 +113,11 @@
             </div>
             <div class="sld-meta-row">
               <span class="sld-meta-label">实际点赞</span>
-              <span class="sld-meta-val likes">{{ fmt(selectedRecord.actualLikes) }}</span>
+              <span v-if="selectedRecord" class="sld-meta-val likes editable" @click="startEditLikes(selectedRecord)" title="点击编辑">{{ fmt(selectedRecord.actualLikes) }}</span>
             </div>
-            <div class="sld-meta-row" v-if="selectedRecord.views">
+            <div class="sld-meta-row" v-if="selectedRecord?.views">
               <span class="sld-meta-label">播放量</span>
-              <span class="sld-meta-val">{{ fmt(selectedRecord.views!) }}</span>
+              <span v-if="selectedRecord" class="sld-meta-val editable" @click="startEditViews(selectedRecord)" title="点击编辑">{{ fmt(selectedRecord.views!) }}</span>
             </div>
             <div class="sld-meta-row">
               <span class="sld-meta-label">平台</span>
@@ -160,6 +173,15 @@ defineEmits<{
 
 const store = useUniqueModeStore()
 const selectedId = ref<string | null>(null)
+const thresholdFilter = ref(false)
+
+const displayScripts = computed(() =>
+  thresholdFilter.value ? store.thresholdFilteredScripts : store.sortedScripts
+)
+
+function meetsThreshold(r: ScriptRecord): boolean {
+  return r.actualLikes >= (store.highLikeThresholds[r.platform] ?? 500)
+}
 
 const selectedRecord = computed(() =>
   selectedId.value ? store.scriptRecords.find(r => r.id === selectedId.value) ?? null : null
@@ -172,6 +194,8 @@ function selectScript(r: ScriptRecord) {
 // 播放量编辑
 const editingViewsId = ref<string | null>(null)
 const editViewsVal = ref(0)
+const editingLikesId = ref<string | null>(null)
+const editLikesVal = ref(0)
 
 function startEditViews(record: any) {
   editingViewsId.value = record.id
@@ -185,6 +209,20 @@ function saveViews(record: any) {
   })
   editingViewsId.value = null
   ElMessage.success('播放量已更新')
+}
+
+function startEditLikes(record: any) {
+  editingLikesId.value = record.id
+  editLikesVal.value = record.actualLikes || 0
+}
+function saveLikes(record: any) {
+  const v = editLikesVal.value || 0
+  store.updateScript(record.id, {
+    actualLikes: v,
+    likeRate: record.views > 0 ? Math.round(v / record.views * 10000) / 100 : undefined
+  })
+  editingLikesId.value = null
+  ElMessage.success('点赞量已更新')
 }
 
 // 复制到其他平台
@@ -275,7 +313,27 @@ async function handleDelete(id: string) {
 /* 工具栏 */
 .sl-toolbar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; margin-bottom: 8px; }
 .sl-toolbar-title { font-size: 15px; font-weight: 600; color: #0b1a30; }
-.sl-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.sl-toolbar-actions { display: flex; align-items: center; gap: 10px; }
+
+/* 高赞门槛过滤开关 */
+.sl-filter-toggle {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 5px 10px; border-radius: 8px; border: 1px solid #eef2f6;
+  background: #fff; font-size: 12px; color: #5a6a80; user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sl-filter-toggle:hover { border-color: #1a4cff; background: #f5f7ff; }
+.sl-filter-toggle input[type="checkbox"] {
+  accent-color: #1a4cff; width: 14px; height: 14px; margin: 0; cursor: pointer;
+}
+.slft-label { font-weight: 500; }
+.slft-count { color: #1a4cff; font-weight: 600; }
+
+/* 无达标样本提示 */
+.sl-no-match {
+  grid-column: 1 / -1; text-align: center; padding: 32px 20px;
+  color: #8b9bb5; font-size: 13px;
+}
 
 .sl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: pointer; font-family: inherit; transition: all 0.15s; }
 .sl-btn span { font-size: 14px; }
@@ -288,32 +346,43 @@ async function handleDelete(id: string) {
 .sl-layout { flex: 1; overflow: hidden; display: flex; gap: 12px; }
 
 /* 左侧卡片列表 */
-.sl-cards { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 8px; align-content: start; align-items: start; padding-right: 2px; }
+.sl-cards { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 8px; align-content: start; align-items: start; padding: 4px; }
 @media (max-width: 900px) { .sl-cards { grid-template-columns: 1fr; } }
 
-.sl-card { background: #fff; border: 1px solid #eef2f6; border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
-.sl-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-color: #d4daef; }
+.sl-card { background: #fff; border: 1px solid #eef2f6; border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s; aspect-ratio: 2 / 1; display: flex; flex-direction: column; }
+.sl-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); border-color: #d4daef; transform: translateY(-1px); }
 .sl-card.selected { border-color: #1a4cff; box-shadow: 0 0 0 2px rgba(26,76,255,0.12); }
 .sl-card.unscored { cursor: default; opacity: 0.75; }
 .sl-card.unscored:hover { box-shadow: none; border-color: #eef2f6; }
+.sl-card.below-threshold { border-style: dashed; border-color: #e0e4ec; opacity: 0.7; }
+.sl-card.below-threshold:hover { border-color: #d0d5e0; opacity: 0.85; }
 
-/* 卡片头部 */
-.slc-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 4px; }
-.slc-title { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; }
-.slc-platform { font-size: 13px; flex-shrink: 0; }
-.slc-title-text { font-size: 13px; font-weight: 600; color: #0b1a30; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 卡片头部：平台图标 + 标题 */
+.slc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-shrink: 0; }
+.slc-platform { font-size: 15px; flex-shrink: 0; line-height: 1; }
+.slc-title-text { font-size: 13px; font-weight: 600; color: #1a1a2e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.slc-below-pill {
+  flex-shrink: 0; font-size: 9px; padding: 1px 6px; border-radius: 8px;
+  background: #fef3c7; color: #d97706; font-weight: 600; margin-left: auto;
+}
 
-.slc-badges { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-.slc-score { background: #eef3ff; padding: 2px 8px; border-radius: 12px; font-weight: 700; font-size: 12px; color: #1a4cff; }
-.slc-score small { font-size: 9px; font-weight: 400; opacity: 0.7; }
-.slc-likes { font-weight: 700; font-size: 12px; color: #e6a23c; }
-.slc-likes small { font-size: 9px; font-weight: 400; color: #909399; }
+/* 卡片数据行：评分 + 点赞 + 播放 + 标签 */
+.slc-stats { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; }
+.slc-score { background: #eef3ff; padding: 3px 10px; border-radius: 14px; font-weight: 700; font-size: 12px; color: #1a4cff; white-space: nowrap; }
+.slc-score small { font-size: 10px; font-weight: 400; opacity: 0.6; }
+.slc-likes { font-weight: 700; font-size: 13px; color: #e6a23c; white-space: nowrap; cursor: pointer; padding: 1px 4px; border-radius: 4px; transition: background 0.15s; }
+.slc-likes:hover { background: #fdf6ec; }
+.slc-likes small { font-size: 10px; font-weight: 400; color: #b0b8c8; }
 
-.slc-content { font-size: 11px; color: #3d5068; line-height: 1.5; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.slc-content { font-family: 'SimSun', '宋体', 'Noto Serif SC', serif; font-size: 12px; color: #4a5568; line-height: 2; letter-spacing: 1px; padding: 8px 12px 8px 10px; margin-bottom: 10px; white-space: pre-line; display: -webkit-box; overflow: hidden; flex: 1; }
+/* autoprefixer: ignore next */
+.slc-content { -webkit-box-orient: vertical; }
 
-.slc-footer { display: flex; align-items: center; gap: 6px; font-size: 10px; flex-wrap: wrap; }
-.slc-date { color: #7a8a9e; }
-.slc-tag { padding: 1px 7px; border-radius: 12px; font-size: 9px; font-weight: 500; }
+.slc-footer { display: flex; align-items: center; gap: 8px; font-size: 11px; flex-wrap: wrap; margin-top: auto; flex-shrink: 0; padding-top: 8px; border-top: 1px solid #f0f2f6; }
+.slc-date { color: #8b9bb5; }
+.slc-platform-label { color: #8b9bb5; }
+.slc-platform-label::before { content: '·'; margin-right: 4px; }
+.slc-tag { padding: 2px 9px; border-radius: 14px; font-size: 10px; font-weight: 600; white-space: nowrap; }
 .slc-tag.excellent { background: #fff4e0; color: #b45a1c; }
 .slc-tag.good { background: #e6f7e6; color: #0f7b3a; }
 .slc-tag.normal { background: #fdf6ec; color: #e6a23c; }
@@ -347,7 +416,7 @@ async function handleDelete(id: string) {
 /* 详情面板 - 内容区 */
 .sld-section { margin-bottom: 14px; }
 .sld-section-title { font-size: 12px; font-weight: 600; color: #6b7a8f; margin-bottom: 6px; }
-.sld-content { font-size: 12px; color: #374151; line-height: 1.7; max-height: 140px; overflow-y: auto; padding: 8px 10px; background: #f9fafb; border-radius: 8px; }
+.sld-content { font-size: 12px; color: #374151; line-height: 1.7; max-height: 140px; overflow-y: auto; padding: 8px 10px; background: #f9fafb; border-radius: 8px; white-space: pre-line; }
 
 /* 7维评分 */
 .sld-scores { display: flex; flex-direction: column; gap: 5px; }
@@ -364,6 +433,8 @@ async function handleDelete(id: string) {
 .sld-meta-label { color: #6b7a8f; }
 .sld-meta-val { font-weight: 600; color: #303133; }
 .sld-meta-val.likes { color: #e6a23c; }
+.sld-meta-val.editable { cursor: pointer; border-bottom: 1px dashed #c0c8d4; }
+.sld-meta-val.editable:hover { border-bottom-color: #3b82f6; color: #3b82f6; }
 
 /* 操作按钮 */
 .sld-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
