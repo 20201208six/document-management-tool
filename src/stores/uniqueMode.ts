@@ -2781,10 +2781,8 @@ ${originalContent}
       createdAt: now,
       updatedAt: now
     }
-    scriptRecords.value.unshift(record)
-    saveScripts()
 
-    // 自动 AI 7维评分 + 分析
+    // 自动 AI 7维评分 + 分析（先评分，成功后再入库）
     isAnalyzingScript.value = true
     try {
       const aiResult = await scoreSingleScript(record)
@@ -2794,7 +2792,11 @@ ${originalContent}
       record.analysis = cleanAnalysisText(aiResult)
       record.scoredWithProfile = !!audienceProfile.value
       record.updatedAt = new Date().toLocaleString('zh-CN')
+
+      // AI 评分成功后才写入样本库
+      scriptRecords.value.unshift(record)
       saveScripts()
+
       // 后台静默拆解（不阻塞）
       autoDecomposeScript(record).catch(() => {})
       // 首次积累足够样本后，提示配置受众画像
@@ -2810,6 +2812,7 @@ ${originalContent}
       }
     } catch (e: any) {
       ElMessage.warning('AI 分析失败: ' + (e.message || '未知错误'))
+      throw e
     } finally {
       isAnalyzingScript.value = false
     }
