@@ -515,11 +515,11 @@
                   → {{ fmt(entry.actualLikes) }}
                 </span>
                 <button
-                  v-else
                   class="nsp-hist-retro-btn"
+                  :class="{ rero: entry.actualLikes != null }"
                   @click.stop="showRetroDialog(entry)"
                 >
-                  🔄 复盘
+                  {{ entry.actualLikes != null ? '🔄 更新' : '🔄 复盘' }}
                 </button>
                 <span class="nsp-hist-time">{{ entry.predictedAt.slice(5, 16) }}</span>
               </div>
@@ -539,7 +539,7 @@
     </div><!-- /nsp-layout -->
 
     <!-- 复盘弹窗（保留原有手动录入功能） -->
-    <el-dialog v-model="showRetro" title="📊 复盘录入" width="420px" :close-on-click-modal="true">
+    <el-dialog v-model="showRetro" :title="isReRetro ? '🔄 更新数据（不重复入库）' : '📊 复盘录入'" width="420px" :close-on-click-modal="true">
       <div class="retro-body" v-if="retroEntry">
         <div class="retro-pred">
           <span class="retro-label">预测区间：</span>
@@ -547,6 +547,7 @@
           <span class="retro-time">（{{ retroEntry.predictedAt }}）</span>
         </div>
         <div class="retro-content-preview">{{ retroEntry.content.slice(0, 100) }}{{ retroEntry.content.length > 100 ? '...' : '' }}</div>
+        <div v-if="isReRetro" class="retro-rero-hint">⚠️ 仅更新预测历史中的数据，不会重复存入样本库</div>
         <div class="retro-form">
           <label class="retro-label">实际点赞量：</label>
           <el-input-number v-model="retroLikes" :min="0" :step="100" :max="99999999" style="width:100%;margin-top:6px" placeholder="输入发布后的真实点赞量" />
@@ -779,6 +780,7 @@ function useGenerated() {
 
 // ===== 复盘 =====
 const showRetro = ref(false)
+const isReRetro = ref(false)
 const retroEntry = ref<PredictionLogEntry | null>(null)
 const retroLikes = ref<number | null>(null)
 const retroViews = ref<number | null>(null)
@@ -811,6 +813,7 @@ function getWeightDiffs(entry: { oldWeights: Record<string, number>; newWeights:
 
 function showRetroDialog(entry: PredictionLogEntry) {
   retroEntry.value = entry
+  isReRetro.value = entry.actualLikes != null
   retroLikes.value = entry.actualLikes ?? null
   retroViews.value = entry.actualViews ?? null
   retroNote.value = entry.retroNote ?? ''
@@ -819,10 +822,11 @@ function showRetroDialog(entry: PredictionLogEntry) {
 
 function handleRetro() {
   if (!retroEntry.value || retroLikes.value == null) return
-  store.retroPrediction(retroEntry.value.id, retroLikes.value, retroViews.value || undefined, retroNote.value || undefined)
-  ElMessage.success('复盘数据已保存，文稿已自动加入样本库')
+  store.retroPrediction(retroEntry.value.id, retroLikes.value, retroViews.value || undefined, retroNote.value || undefined, isReRetro.value)
+  ElMessage.success(isReRetro.value ? '更新完成，数据已刷新（未重复入库）' : '复盘数据已保存，文稿已自动加入样本库')
   showRetro.value = false
   retroLikes.value = null; retroViews.value = null; retroNote.value = ''
+  isReRetro.value = false
 }
 
 function isOverdue(entry: PredictionLogEntry): boolean {
@@ -997,9 +1001,11 @@ function scoreTagText(s: number): string {
 .nsp-hist-pending { font-size: 11px; color: #909399; background: #f0f2f5; padding: 2px 8px; border-radius: 8px; }
 .nsp-hist-retro-btn {
   padding: 2px 8px; border: 1px solid #f59e0b; border-radius: 6px; background: #fffbeb;
-  color: #d97706; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  color: #d97706; font-size: 8px; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .nsp-hist-retro-btn:hover { background: #fef3c7; border-color: #d97706; }
+.nsp-hist-retro-btn.rero { border-color: #93c5fd; color: #3b82f6; }
+.nsp-hist-retro-btn.rero:hover { background: #eff6ff; border-color: #3b82f6; }
 .nsp-hist-time { font-size: 10px; color: #b0bfd0; }
 
 /* ===== 查看历史提示条 ===== */
@@ -1142,6 +1148,7 @@ function scoreTagText(s: number): string {
 .retro-pred strong { color: #e6a23c; }
 .retro-time { font-size: 11px; color: #909399; margin-left: 6px; }
 .retro-content-preview { font-size: 12px; color: #909399; padding: 8px; background: #f5f7fb; border-radius: 8px; margin: 8px 0; line-height: 1.5; }
+.retro-rero-hint { font-size: 11px; color: #f59e0b; background: #fffbeb; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; }
 .retro-label { font-size: 13px; color: #6b7a8f; font-weight: 500; }
 .retro-form { margin-bottom: 4px; }
 

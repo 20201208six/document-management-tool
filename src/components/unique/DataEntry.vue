@@ -1,116 +1,157 @@
 <template>
-  <div class="data-entry">
-    <!-- 受众画像未配置提示 -->
-    <div v-if="!store.audienceProfile && !quickProfileOpen" class="de-audience-banner">
+  <div class="de-root">
+    <!-- 受众画像横幅 -->
+    <div v-if="!store.audienceProfile && !quickProfileOpen" class="de-audience-bar" @click="quickProfileOpen = true">
       <span class="deab-icon">🎯</span>
-      <div class="deab-body">
-        <span class="deab-title">建议先配置「受众画像」再导入文稿</span>
-        <span class="deab-desc">让 AI 知道你的视频在跟谁说话——走进他们的困惑，共鸣才准。</span>
+      <div class="deab-text">
+        <span class="deab-title">配置受众画像，让 AI 评分更精准</span>
+        <span class="deab-sub">告诉 AI 你的观众是谁，共鸣才准</span>
       </div>
-      <span class="deab-quick" @click="quickProfileOpen = true">快速配置</span>
-      <el-button size="small" type="primary" @click="quickProfileOpen = true" class="deab-btn">去设置</el-button>
+      <span class="deab-action">去设置 →</span>
     </div>
-    <!-- 快速配置弹窗（零样本关键词分析） -->
-    <div v-if="quickProfileOpen" class="de-quick-profile">
-      <div class="dqp-title">快速配置受众画像</div>
-      <div class="dqp-desc">只需输入赛道关键词，AI 立即推断受众画像（导入文稿后可重新分析获得更精准结果）</div>
-      <div class="dqp-input-row">
+
+    <!-- 快速配置弹窗 -->
+    <div v-if="quickProfileOpen" class="de-quick-audience">
+      <div class="dqa-head">
+        <span class="dqah-title">快速配置受众画像</span>
+        <span class="dqah-desc">输入赛道关键词，AI 立即推断受众画像</span>
+      </div>
+      <div class="dqa-body">
         <input
           v-model="quickNiche"
-          class="dqp-input"
+          class="dqa-input"
           placeholder="输入赛道关键词，如：玄学/国学、职场成长..."
           @keyup.enter="handleQuickAudience"
         />
-        <button class="dqp-confirm" @click="handleQuickAudience" :disabled="!quickNiche.trim() || quickAudienceLoading">
-          {{ quickAudienceLoading ? 'AI 分析中...' : '确认' }}
-        </button>
-        <button class="dqp-cancel" @click="quickProfileOpen = false">取消</button>
+        <div class="dqa-btns">
+          <button class="dqa-btn primary" :disabled="!quickNiche.trim() || quickAudienceLoading" @click="handleQuickAudience">
+            {{ quickAudienceLoading ? '分析中...' : '确认分析' }}
+          </button>
+          <button class="dqa-btn" @click="quickProfileOpen = false">取消</button>
+        </div>
       </div>
-      <div class="dqp-hint">{{ store.scriptRecords.length > 0 ? `AI 将基于已有 ${store.scriptRecords.length} 条文稿 + 关键词进行分析` : '暂无文稿样本，AI 将仅基于关键词推断（建议先录入几条文稿以获得更准结果）' }}</div>
+      <div class="dqa-foot">
+        {{ store.scriptRecords.length > 0 ? `AI 将基于已有 ${store.scriptRecords.length} 条文稿 + 关键词进行分析` : '暂无文稿，AI 将基于关键词推断（建议先录入几条文稿）' }}
+      </div>
     </div>
-    <div class="de-card">
-      <div class="de-title">录入新样本</div>
-      <div class="de-desc">添加已发布的口播文稿，AI 将自动进行7维评分并加入样本库。</div>
 
-      <!-- 模式切换 -->
-      <div class="de-mode-tabs">
-        <span class="demt-tab" :class="{ active: entryMode === 'single' }" @click="entryMode = 'single'">单条录入</span>
-        <span class="demt-tab" :class="{ active: entryMode === 'batch' }" @click="entryMode = 'batch'">批量录入</span>
+    <!-- 主卡片 -->
+    <div class="de-main">
+      <!-- 顶部：标题 + 模式切换 -->
+      <div class="de-top-bar">
+        <div class="det-left">
+          <span class="det-title">录入新样本</span>
+          <span class="det-desc">添加已发布的口播文稿，AI 自动7维评分</span>
+        </div>
+        <div class="det-tabs">
+          <button class="dett-tab" :class="{ active: entryMode === 'single' }" @click="entryMode = 'single'">
+            <span class="dett-icon">📝</span> 单条
+          </button>
+          <button class="dett-tab" :class="{ active: entryMode === 'batch' }" @click="entryMode = 'batch'">
+            <span class="dett-icon">📚</span> 批量
+          </button>
+        </div>
       </div>
 
       <!-- 单条录入 -->
-      <el-form v-if="entryMode === 'single'" label-width="80px" :model="form" class="de-form">
-        <div class="de-multi-switch" @click="toggleMulti">
-          <span class="de-toggle" :class="{ active: multiPlatform }">
-            <span class="de-toggle-dot"></span>
+      <template v-if="entryMode === 'single'">
+        <!-- 多平台开关 -->
+        <div class="de-row de-switch-row" @click="toggleMulti">
+          <div class="desw-left">
+            <span class="desw-label">多平台发布</span>
+            <span class="desw-hint">{{ multiPlatform ? '已开启 · 可为各平台分别填写数据' : '开启后可为各平台分别填写点赞量' }}</span>
+          </div>
+          <span class="desw-toggle" :class="{ on: multiPlatform }">
+            <span class="deswt-knob"></span>
           </span>
-          <span class="de-toggle-label">{{ multiPlatform ? '已开启：可为各平台分别填写点赞量' : '开启后可为各平台分别填写点赞量' }}</span>
         </div>
 
-        <el-form-item label="文稿内容">
-          <el-input v-model="form.content" type="textarea" :rows="7" placeholder="粘贴口播文案的完整文字稿..." />
-        </el-form-item>
-        <el-form-item label="发布链接">
-          <el-input v-model="form.link" placeholder="选填，视频链接" />
-        </el-form-item>
-        <template v-if="!multiPlatform">
-          <el-form-item label="发布平台">
-            <el-select v-model="form.platform" style="width:100%">
-              <el-option v-for="(c, k) in PLATFORM_CONFIG" :key="k" :label="c.icon + ' ' + c.label" :value="k" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="点赞量">
-            <el-input-number v-model="form.actualLikes" :min="0" :max="99999999" :step="100" style="width:100%" />
-          </el-form-item>
-          <el-form-item label="播放量">
-            <el-input-number v-model="form.views" :min="0" :max="999999999" :step="100" style="width:100%" placeholder="选填，实际播放观看次数" />
-          </el-form-item>
-        </template>
-        <div v-else class="de-multi">
-          <div class="dem-header">
-            <span class="demh-title">多平台发布</span>
-            <span class="demh-hint">勾选平台并填写各平台的实际点赞量</span>
+        <!-- 内容输入 -->
+        <div class="de-block">
+          <div class="deb-label">文稿内容 <span class="debl-req">*</span></div>
+          <textarea
+            v-model="form.content"
+            class="de-textarea"
+            rows="8"
+            placeholder="粘贴口播文案的完整文字稿..."
+          ></textarea>
+          <div class="deb-foot">
+            <span>{{ form.content.length }} 字</span>
           </div>
-          <div class="dem-grid">
+        </div>
+
+        <!-- 链接 -->
+        <div class="de-row">
+          <span class="der-label">发布链接</span>
+          <input v-model="form.link" class="de-input" placeholder="选填，视频链接" />
+        </div>
+
+        <!-- 单平台模式 -->
+        <template v-if="!multiPlatform">
+          <div class="de-row">
+            <span class="der-label">平台</span>
+            <select v-model="form.platform" class="de-select">
+              <option v-for="(c, k) in PLATFORM_CONFIG" :key="k" :value="k">{{ c.icon }} {{ c.label }}</option>
+            </select>
+          </div>
+          <div class="de-row de-row-dual">
+            <div class="derd-item">
+              <span class="der-label">点赞量</span>
+              <input v-model.number="form.actualLikes" type="number" class="de-input de-input-num" min="0" placeholder="0" />
+            </div>
+            <div class="derd-item">
+              <span class="der-label">播放量</span>
+              <input v-model.number="form.views" type="number" class="de-input de-input-num" min="0" placeholder="选填" />
+            </div>
+          </div>
+        </template>
+
+        <!-- 多平台模式 -->
+        <div v-else class="de-multi-block">
+          <div class="demb-head">选择发布平台并填写数据</div>
+          <div class="demb-grid">
             <div
               v-for="p in platformList" :key="p"
-              class="dem-card"
-              :class="{ enabled: platformEntries[p].enabled }"
+              class="demb-card"
+              :class="{ active: platformEntries[p].enabled }"
               @click="platformEntries[p].enabled = !platformEntries[p].enabled"
             >
-              <div class="demc-top">
-                <span class="demc-check" :class="{ on: platformEntries[p].enabled }">
-                  <span v-if="platformEntries[p].enabled">✓</span>
-                </span>
-                <span class="demc-icon">{{ PLATFORM_CONFIG[p]?.icon }}</span>
-                <span class="demc-label">{{ PLATFORM_CONFIG[p]?.label }}</span>
+              <div class="dembc-top">
+                <span class="dembc-check" :class="{ on: platformEntries[p].enabled }">✓</span>
+                <span class="dembc-icon">{{ PLATFORM_CONFIG[p]?.icon }}</span>
+                <span class="dembc-name">{{ PLATFORM_CONFIG[p]?.label }}</span>
               </div>
-              <el-input-number
-                v-model="platformEntries[p].likes" :min="0" :max="99999999" :step="100"
-                :disabled="!platformEntries[p].enabled" size="small" controls-position="right" @click.stop placeholder="点赞"
-              />
-              <el-input-number
-                v-model="platformEntries[p].views" :min="0" :max="999999999" :step="100"
-                :disabled="!platformEntries[p].enabled" size="small" controls-position="right" @click.stop placeholder="播放量" style="margin-top:4px"
-              />
+              <div class="dembc-data" v-if="platformEntries[p].enabled">
+                <input v-model.number="platformEntries[p].likes" type="number" class="dembc-num" placeholder="点赞" @click.stop />
+                <input v-model.number="platformEntries[p].views" type="number" class="dembc-num" placeholder="播放" @click.stop />
+              </div>
             </div>
           </div>
         </div>
-        <el-form-item label="标签">
-          <el-input v-model="form.tagsStr" placeholder="选填，#号分隔（如：情感#励志#干货）" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" size="large" @click="handleSubmit" :loading="store.isAnalyzingScript" :disabled="!canSubmit" class="de-submit">
-            {{ store.isAnalyzingScript ? 'AI 评分中...' : (multiPlatform ? `保存 ${activePlatformCount} 个平台样本` : '保存样本') }}
-          </el-button>
-        </el-form-item>
-      </el-form>
+
+        <!-- 标签 -->
+        <div class="de-row">
+          <span class="der-label">标签</span>
+          <input v-model="form.tagsStr" class="de-input" placeholder="选填，#号分隔 如：情感#励志#干货" />
+        </div>
+
+        <!-- 提交 -->
+        <button class="de-submit-btn" :disabled="!canSubmit || store.isAnalyzingScript" @click="handleSubmit">
+          <span v-if="store.isAnalyzingScript" class="dsub-loading"></span>
+          {{ store.isAnalyzingScript ? 'AI 评分中...' : (multiPlatform ? `保存 ${activePlatformCount} 个平台样本` : '保存样本并 AI 评分') }}
+        </button>
+
+        <div v-if="submitMsg" class="de-msg" :class="submitOk ? 'ok' : 'err'">{{ submitMsg }}</div>
+      </template>
 
       <!-- 批量录入 -->
-      <div v-else class="de-batch">
-        <div class="deb-help">
-          <span>批量粘贴多篇文稿，用 <code>---</code> 分隔。可在每篇前用 <code>[likes=xxxx]</code> <code>[views=yyyy]</code> 单独指定，否则使用下方统一默认值。例如：</span>
-          <pre>[likes=15200] [views=500000]
+      <template v-else>
+        <div class="de-batch-help">
+          <div class="dbh-title">批量粘贴规则</div>
+          <div class="dbh-body">
+            多篇文稿用 <code>---</code> 分隔。每篇前可加 <code>[likes=15200]</code> <code>[views=500000]</code> 单独指定数据。
+          </div>
+          <pre class="dbh-example">[likes=15200] [views=500000]
 第一句口播文案的内容...
 第二句继续...
 ---
@@ -118,55 +159,67 @@
 第二篇口播文案的内容...</pre>
         </div>
 
-        <el-form label-width="80px" :model="batchForm" class="de-form">
-          <el-form-item label="默认平台">
-            <el-select v-model="batchForm.platform" style="width:200px">
-              <el-option v-for="(c, k) in PLATFORM_CONFIG" :key="k" :label="c.icon + ' ' + c.label" :value="k" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="默认点赞量">
-            <el-input-number v-model="batchForm.defaultLikes" :min="0" :max="99999999" :step="100" />
-            <span class="deb-hint">未用 [likes=] 指定的文稿将使用此默认值</span>
-          </el-form-item>
-          <el-form-item label="默认播放量">
-            <el-input-number v-model="batchForm.defaultViews" :min="0" :max="999999999" :step="100" />
-            <span class="deb-hint">选填，未用 [views=] 指定的文稿将使用此默认值</span>
-          </el-form-item>
-          <el-form-item label="批量内容">
-            <el-input v-model="batchForm.raw" type="textarea" :rows="12" placeholder="粘贴多篇文稿，每篇之间用 --- 分隔&#10;&#10;[likes=15200]&#10;第一篇内容...&#10;---&#10;[likes=8300]&#10;第二篇内容..." />
-          </el-form-item>
-          <el-form-item label="标签">
-            <el-input v-model="batchForm.tagsStr" placeholder="选填，#号分隔（如：情感#励志#干货）" />
-          </el-form-item>
-        </el-form>
+        <div class="de-block">
+          <div class="deb-label">批量内容 <span class="debl-req">*</span></div>
+          <textarea
+            v-model="batchForm.raw"
+            class="de-textarea"
+            rows="10"
+            placeholder="粘贴多篇文稿，每篇之间用 --- 分隔..."
+          ></textarea>
+        </div>
 
-        <!-- 解析预览 -->
-        <div v-if="batchPreview.length > 0" class="deb-preview">
-          <div class="debph">已解析 <strong>{{ batchPreview.length }}</strong> 篇文稿：</div>
-          <div v-for="(item, idx) in batchPreview" :key="idx" class="debp-item">
-            <span class="debpi-idx">{{ idx + 1 }}</span>
-            <span class="debpi-platform">{{ PLATFORM_CONFIG[item.platform]?.icon }}</span>
-            <span class="debpi-likes">{{ formatLikes(item.likes) }} 赞</span>
-            <span class="debpi-text">{{ item.content.slice(0, 50) }}{{ item.content.length > 50 ? '…' : '' }}</span>
+        <div class="de-row de-row-dual">
+          <div class="derd-item">
+            <span class="der-label">默认平台</span>
+            <select v-model="batchForm.platform" class="de-select">
+              <option v-for="(c, k) in PLATFORM_CONFIG" :key="k" :value="k">{{ c.icon }} {{ c.label }}</option>
+            </select>
+          </div>
+          <div class="derd-item">
+            <span class="der-label">默认点赞</span>
+            <input v-model.number="batchForm.defaultLikes" type="number" class="de-input de-input-num" min="0" />
+          </div>
+          <div class="derd-item">
+            <span class="der-label">默认播放</span>
+            <input v-model.number="batchForm.defaultViews" type="number" class="de-input de-input-num" min="0" placeholder="选填" />
           </div>
         </div>
 
-        <el-button
-          type="primary" size="large" @click="handleBatchSubmit"
-          :loading="batchLoading" :disabled="!canBatchSubmit" class="de-submit"
-        >
-          {{ batchLoading ? `已提交 ${batchDoneCount}/${batchPreview.length} 篇，AI 评分中...` : `批量保存 ${batchPreview.length} 篇样本` }}
-        </el-button>
+        <div class="de-row">
+          <span class="der-label">标签</span>
+          <input v-model="batchForm.tagsStr" class="de-input" placeholder="选填，#号分隔" />
+        </div>
 
-        <div v-if="batchProgress" class="deb-progress">
-          <div class="debp-bar"><span class="debp-fill" :style="{ width: batchPct + '%' }"></span></div>
-          <span class="debp-label">{{ batchDoneCount }} / {{ batchPreview.length }} 已完成</span>
+        <!-- 解析预览 -->
+        <div v-if="batchPreview.length > 0" class="de-batch-preview">
+          <div class="dbp-head">已解析 <strong>{{ batchPreview.length }}</strong> 篇文稿</div>
+          <div class="dbp-list">
+            <div v-for="(item, idx) in batchPreview" :key="idx" class="dbp-item">
+              <span class="dbpi-num">{{ idx + 1 }}</span>
+              <span class="dbpi-plat">{{ PLATFORM_CONFIG[item.platform]?.icon }}</span>
+              <span class="dbpi-data">{{ formatLikes(item.likes) }} 赞</span>
+              <span class="dbpi-text">{{ item.content.slice(0, 40) }}{{ item.content.length > 40 ? '…' : '' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          class="de-submit-btn"
+          :disabled="!canBatchSubmit || batchLoading"
+          @click="handleBatchSubmit"
+        >
+          <span v-if="batchLoading" class="dsub-loading"></span>
+          {{ batchLoading ? `已提交 ${batchDoneCount}/${batchPreview.length} 篇，AI 评分中...` : `批量保存 ${batchPreview.length} 篇样本` }}
+        </button>
+
+        <div v-if="batchProgress" class="de-batch-progress">
+          <div class="dbp-bar"><span class="dbpb-fill" :style="{ width: batchPct + '%' }"></span></div>
+          <span class="dbp-label">{{ batchDoneCount }} / {{ batchPreview.length }}</span>
         </div>
 
         <div v-if="submitMsg" class="de-msg" :class="submitOk ? 'ok' : 'err'">{{ submitMsg }}</div>
-      </div>
-
-      <div v-if="submitMsg && entryMode === 'single'" class="de-msg" :class="submitOk ? 'ok' : 'err'">{{ submitMsg }}</div>
+      </template>
     </div>
   </div>
 </template>
@@ -180,7 +233,7 @@ const store = useUniqueModeStore()
 const submitMsg = ref('')
 const submitOk = ref(true)
 
-// 快速受众画像配置
+// 快速受众画像
 const quickProfileOpen = ref(false)
 const quickNiche = ref('')
 const quickAudienceLoading = ref(false)
@@ -191,26 +244,22 @@ async function handleQuickAudience() {
     await store.generateAudienceProfile(quickNiche.value.trim())
     quickProfileOpen.value = false
     quickNiche.value = ''
-    ElMessage.success('受众画像已配置，后续评分将基于此画像锚定')
+    ElMessage.success('受众画像已配置')
   } catch (e: any) {
     ElMessage.error('分析失败: ' + (e.message || '未知错误'))
-  } finally {
-    quickAudienceLoading.value = false
-  }
+  } finally { quickAudienceLoading.value = false }
 }
 
-// 模式切换
+// 模式
 const entryMode = ref<'single' | 'batch'>('single')
 const multiPlatform = ref(false)
 function toggleMulti() { multiPlatform.value = !multiPlatform.value }
 
 const form = reactive({ platform: '抖音' as Platform, content: '', link: '', actualLikes: 1000, views: 0 as number | undefined, tagsStr: '' })
-
 const platformList = Object.keys(PLATFORM_CONFIG).filter(k => k !== '全部') as Platform[]
 const platformEntries = reactive<Record<string, { enabled: boolean; likes: number; views: number }>>(
   Object.fromEntries(platformList.map(k => [k, { enabled: false, likes: 0, views: 0 }]))
 )
-
 const activePlatformCount = computed(() => platformList.filter(k => platformEntries[k].enabled).length)
 const canSubmit = computed(() => {
   if (!form.content.trim()) return false
@@ -236,7 +285,7 @@ async function handleSubmit() {
     }
     form.content = ''; form.link = ''; form.actualLikes = 1000; form.views = 0; form.tagsStr = ''
     for (const k of platformList) platformEntries[k] = { enabled: false, likes: 0, views: 0 }
-    submitMsg.value = multiPlatform.value ? `${activePlatformCount.value} 个平台样本已保存！正在后台进行 AI 7维评分...` : '样本保存成功！AI 正在后台进行7维评分...'
+    submitMsg.value = multiPlatform.value ? `${activePlatformCount.value} 个平台样本已保存，AI 评分中...` : '样本保存成功，AI 正在后台评分'
     submitOk.value = true
   } catch (e: any) {
     submitMsg.value = '保存失败: ' + (e.message || '未知错误')
@@ -244,13 +293,12 @@ async function handleSubmit() {
   }
 }
 
-// 批量录入
+// 批量
 const batchForm = reactive({ platform: '抖音' as Platform, defaultLikes: 1000, defaultViews: 0 as number | undefined, raw: '', tagsStr: '' })
 const batchLoading = ref(false)
 const batchProgress = ref(false)
 const batchDoneCount = ref(0)
 const batchPreview = ref<Array<{ content: string; likes: number; views?: number; platform: Platform }>>([])
-
 const batchPct = computed(() => batchPreview.value.length ? Math.round(batchDoneCount.value / batchPreview.value.length * 100) : 0)
 const canBatchSubmit = computed(() => batchPreview.value.length > 0 && !batchLoading.value)
 
@@ -260,10 +308,9 @@ function formatLikes(n: number): string {
   return String(n)
 }
 
-// 实时解析批量内容
-watch(() => batchForm.raw, () => { parseBatch() })
-watch(() => batchForm.platform, () => { parseBatch() })
-watch(() => batchForm.defaultLikes, () => { parseBatch() })
+watch(() => batchForm.raw, () => parseBatch())
+watch(() => batchForm.platform, () => parseBatch())
+watch(() => batchForm.defaultLikes, () => parseBatch())
 
 function parseBatch() {
   const raw = batchForm.raw.trim()
@@ -299,14 +346,9 @@ function parseBatch() {
 
 async function handleBatchSubmit() {
   if (batchPreview.value.length === 0) { ElMessage.warning('请粘贴至少一篇文稿'); return }
-  batchLoading.value = true
-  batchProgress.value = true
-  batchDoneCount.value = 0
-  submitMsg.value = ''
+  batchLoading.value = true; batchProgress.value = true; batchDoneCount.value = 0; submitMsg.value = ''
   const tags = batchForm.tagsStr.split('#').map(t => t.trim()).filter(Boolean)
-  // 收集所有论文稿
-  const tasks: Array<{ content: string; likes: number; views?: number; platform: Platform }> = batchPreview.value.slice()
-  // 并行评分（每次最多 3 个并发）
+  const tasks = batchPreview.value.slice()
   const CONCURRENCY = 3
   const failed: string[] = []
   for (let i = 0; i < tasks.length; i += CONCURRENCY) {
@@ -319,160 +361,269 @@ async function handleBatchSubmit() {
       batchDoneCount.value++
     }
   }
-  batchLoading.value = false
-  batchProgress.value = false
+  batchLoading.value = false; batchProgress.value = false
   if (failed.length > 0) {
-    submitMsg.value = `${tasks.length - failed.length} 篇已保存，${failed.length} 篇失败: ${failed.slice(0, 3).join('; ')}`
+    submitMsg.value = `${tasks.length - failed.length} 篇已保存，${failed.length} 篇失败`
     submitOk.value = false
   } else {
-    submitMsg.value = `${tasks.length} 篇样本全部保存成功！`
-    submitOk.value = true
-    batchForm.raw = ''
+    submitMsg.value = `${tasks.length} 篇样本全部保存成功`
+    submitOk.value = true; batchForm.raw = ''
   }
   if (failed.length < tasks.length) ElMessage.success(`${tasks.length - failed.length} 篇样本已保存`)
 }
 </script>
 
 <style scoped>
-.data-entry { height: 100%; overflow-y: auto; }
-/* 受众画像引导横幅 */
-.de-audience-banner {
+/* ========== 根容器 ========== */
+.de-root {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+}
+
+/* ========== 受众画像横幅 ========== */
+.de-audience-bar {
+  width: 100%;
+  max-width: 760px;
   display: flex; align-items: center; gap: 14px;
-  background: linear-gradient(135deg, #fef7e8 0%, #fdf0d0 100%);
-  border: 1px solid #f0c75e; border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 16px; max-width: 600px;
-}
-.deab-icon { font-size: 28px; flex-shrink: 0; }
-.deab-body { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.deab-title { font-size: 14px; font-weight: 700; color: #7c5e00; }
-.deab-desc { font-size: 12px; color: #a68a3c; line-height: 1.4; }
-.deab-btn { flex-shrink: 0; }
-.deab-quick {
-  font-size: 12px; color: #1a4cff; cursor: pointer; white-space: nowrap;
-  text-decoration: underline; text-underline-offset: 2px;
-}
-.deab-quick:hover { color: #0d3ad6; }
-
-/* 快速配置受众画像卡片 */
-.de-quick-profile {
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
-  border: 1px solid #a8c8ff; border-radius: 12px;
-  padding: 16px 18px; margin-bottom: 16px; max-width: 600px;
-}
-.dqp-title { font-size: 15px; font-weight: 700; color: #1a4cff; margin-bottom: 4px; }
-.dqp-desc { font-size: 12px; color: #5a7db0; margin-bottom: 12px; line-height: 1.4; }
-.dqp-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-.dqp-input {
-  flex: 1; padding: 8px 12px; border: 1px solid #c8d8f0; border-radius: 8px;
-  font-size: 13px; outline: none; background: #fff;
-}
-.dqp-input:focus { border-color: #1a4cff; }
-.dqp-confirm {
-  padding: 8px 18px; background: #1a4cff; color: #fff; border: none;
-  border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
-}
-.dqp-confirm:hover { background: #0d3ad6; }
-.dqp-confirm:disabled { background: #a0b8e8; cursor: not-allowed; }
-.dqp-cancel {
-  padding: 8px 14px; background: #fff; color: #5a7db0; border: 1px solid #c8d8f0;
-  border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
-}
-.dqp-cancel:hover { border-color: #1a4cff; color: #1a4cff; }
-.dqp-hint { font-size: 11px; color: #8ea0c0; }
-.de-card { background: #fff; border-radius: 14px; padding: 22px 24px; border: 1px solid #eef2f6; max-width: 600px; }
-.de-title { font-size: 18px; font-weight: 700; color: #0b1a30; margin-bottom: 4px; }
-.de-desc { font-size: 13px; color: #7a8a9e; margin-bottom: 20px; line-height: 1.5; }
-
-.de-form { max-width: 560px; }
-/* 多平台开关 */
-.de-multi-switch {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; cursor: pointer; user-select: none;
-}
-.de-toggle {
-  position: relative; display: inline-block; width: 44px; height: 24px;
-  background: #dcdfe6; border-radius: 12px; cursor: pointer;
-  vertical-align: middle; transition: background .25s; flex-shrink: 0;
-  border: none; padding: 0; outline: none;
-}
-.de-toggle.active { background: #1a4cff; }
-.de-toggle-dot {
-  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
-  background: #fff; border-radius: 50%; transition: left .25s;
-  box-shadow: 0 1px 3px rgba(0,0,0,.15);
-}
-.de-toggle.active .de-toggle-dot { left: 22px; }
-.de-toggle-label { margin-left: 10px; font-size: 13px; color: #606266; vertical-align: middle; }
-.de-submit { width: 100%; }
-
-/* 多平台卡片 */
-.de-multi {
-  margin-bottom: 12px;
-}
-.dem-header {
-  display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;
-}
-.demh-title {
-  font-size: 13px; font-weight: 600; color: #0b1a30;
-}
-.demh-hint {
-  font-size: 11px; color: #999;
-}
-.dem-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-}
-.dem-card {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-radius: 10px;
-  border: 1.5px solid #e8ecf1; background: #fafbfc;
+  background: linear-gradient(135deg, #fef9ec, #fdf3d6);
+  border: 1px solid #f0c75e; border-radius: 14px;
+  padding: 14px 20px; margin-bottom: 16px;
   cursor: pointer; transition: all .2s;
 }
-.dem-card:hover { border-color: #c4cdd9; background: #fff; }
-.dem-card.enabled { border-color: #1a4cff; background: #f4f6ff; }
-.demc-top { display: flex; align-items: center; gap: 6px; }
-.demc-check {
-  width: 18px; height: 18px; border-radius: 50%;
+.de-audience-bar:hover {
+  box-shadow: 0 2px 12px rgba(200,150,20,.1);
+  border-color: #e0b030;
+}
+.deab-icon { font-size: 26px; flex-shrink: 0; }
+.deab-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.deab-title { font-size: 14px; font-weight: 700; color: #7c5e00; }
+.deab-sub { font-size: 12px; color: #a68a3c; }
+.deab-action {
+  font-size: 13px; font-weight: 600; color: #b8860b;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+/* ========== 快速配置弹窗 ========== */
+.de-quick-audience {
+  width: 100%;
+  max-width: 760px;
+  background: #f5f7ff; border: 1px solid #b8c8f0; border-radius: 14px;
+  padding: 18px 20px; margin-bottom: 16px;
+}
+.dqa-head { margin-bottom: 12px; }
+.dqah-title { font-size: 15px; font-weight: 700; color: #1a4cff; }
+.dqah-desc { font-size: 12px; color: #6a85c0; margin-left: 8px; }
+.dqa-body { display: flex; gap: 10px; margin-bottom: 10px; }
+.dqa-input {
+  flex: 1; padding: 10px 14px; border: 1px solid #ccd6f0; border-radius: 10px;
+  font-size: 13px; outline: none; background: #fff;
+}
+.dqa-input:focus { border-color: #1a4cff; box-shadow: 0 0 0 3px rgba(26,76,255,.08); }
+.dqa-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.dqa-btn {
+  padding: 10px 20px; border: 1px solid #ccd6f0; border-radius: 10px;
+  background: #fff; color: #5a6ea0; font-size: 13px; cursor: pointer;
+  white-space: nowrap; transition: all .15s;
+}
+.dqa-btn:hover { border-color: #1a4cff; color: #1a4cff; }
+.dqa-btn.primary { background: #1a4cff; color: #fff; border-color: #1a4cff; }
+.dqa-btn.primary:hover { background: #0d3ad6; }
+.dqa-btn:disabled { opacity: .5; cursor: not-allowed; }
+.dqa-foot { font-size: 11px; color: #8a9ec0; }
+
+/* ========== 主卡片 ========== */
+.de-main {
+  width: 100%;
+  max-width: 760px;
+  background: #fff; border-radius: 16px;
+  border: 1px solid #eef1f6;
+  padding: 28px 32px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.02);
+}
+
+/* ========== 顶部栏 ========== */
+.de-top-bar {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 24px; gap: 16px;
+}
+.det-left { display: flex; flex-direction: column; gap: 4px; }
+.det-title { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -.3px; }
+.det-desc { font-size: 13px; color: #94a3b8; }
+.det-tabs { display: flex; gap: 4px; background: #f1f5f9; border-radius: 10px; padding: 3px; flex-shrink: 0; }
+.dett-tab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 16px; border: none; border-radius: 8px;
+  background: transparent; color: #64748b; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .2s;
+}
+.dett-tab:hover { color: #334155; }
+.dett-tab.active { background: #fff; color: #1a4cff; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.dett-icon { font-size: 14px; }
+
+/* ========== 行 ========== */
+.de-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid #f3f4f6;
+}
+.de-row:last-child { border-bottom: none; }
+.der-label {
+  font-size: 13px; font-weight: 600; color: #334155;
+  width: 64px; flex-shrink: 0;
+}
+.de-input {
+  flex: 1; padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; outline: none; background: #fafbfc; transition: all .15s;
+}
+.de-input:focus { border-color: #1a4cff; background: #fff; box-shadow: 0 0 0 3px rgba(26,76,255,.06); }
+.de-input-num { flex: 1; min-width: 0; -moz-appearance: textfield; }
+.de-input-num::-webkit-inner-spin-button,
+.de-input-num::-webkit-outer-spin-button { opacity: 1; }
+.de-select {
+  flex: 1; padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; outline: none; background: #fafbfc; cursor: pointer;
+  transition: all .15s;
+}
+.de-select:focus { border-color: #1a4cff; background: #fff; }
+
+/* 双列行 */
+.de-row-dual { gap: 20px; }
+.derd-item { flex: 1; display: flex; align-items: center; gap: 8px; }
+
+/* ========== 文本块 ========== */
+.de-block { padding: 14px 0; }
+.deb-label { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px; }
+.debl-req { color: #ef4444; }
+.de-textarea {
+  width: 100%; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px;
+  font-size: 13px; line-height: 1.8; outline: none; resize: vertical;
+  background: #fafbfc; font-family: inherit; transition: all .15s;
+  box-sizing: border-box;
+}
+.de-textarea:focus { border-color: #1a4cff; background: #fff; box-shadow: 0 0 0 3px rgba(26,76,255,.06); }
+.deb-foot { display: flex; justify-content: flex-end; font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+/* ========== 多平台开关 ========== */
+.de-switch-row {
+  cursor: pointer; user-select: none; border-bottom: 1px solid #f3f4f6;
+  padding: 14px 0;
+}
+.de-switch-row:hover { opacity: .9; }
+.desw-left { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.desw-label { font-size: 14px; font-weight: 600; color: #334155; }
+.desw-hint { font-size: 12px; color: #94a3b8; }
+.desw-toggle {
+  position: relative; width: 48px; height: 28px;
+  background: #cbd5e1; border-radius: 14px;
+  flex-shrink: 0; transition: background .25s;
+}
+.desw-toggle.on { background: #1a4cff; }
+.deswt-knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 22px; height: 22px; background: #fff; border-radius: 50%;
+  transition: left .25s; box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+.desw-toggle.on .deswt-knob { left: 23px; }
+
+/* ========== 多平台卡片 ========== */
+.de-multi-block { padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
+.demb-head { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 10px; }
+.demb-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.demb-card {
+  border: 1.5px solid #e8ecf2; border-radius: 12px;
+  padding: 12px 14px; background: #fafbfc;
+  cursor: pointer; transition: all .2s;
+}
+.demb-card:hover { border-color: #c4cdd9; background: #fff; }
+.demb-card.active { border-color: #1a4cff; background: #f4f6ff; }
+.dembc-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dembc-check {
+  width: 20px; height: 20px; border-radius: 50%;
   border: 2px solid #cdd4de; display: flex; align-items: center; justify-content: center;
   font-size: 10px; color: transparent; transition: all .2s; flex-shrink: 0;
 }
-.demc-check.on { background: #1a4cff; border-color: #1a4cff; color: #fff; }
-.demc-icon { font-size: 15px; }
-.demc-label { font-size: 12px; font-weight: 500; color: #0b1a30; }
-.dem-card .el-input-number { width: 120px; }
-.dem-card .el-input-number .el-input__inner { text-align: right; padding-right: 28px; }
-
-.de-msg { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-line; word-break: break-word; }
-.de-msg.ok { background: #f0f9eb; color: #52c41a; }
-.de-msg.err { background: #fef0f0; color: #f56c6c; }
-
-/* 模式切换 */
-.de-mode-tabs { display: flex; gap: 0; margin-bottom: 18px; border: 1px solid #e0e4ea; border-radius: 8px; overflow: hidden; width: fit-content; }
-.demt-tab { padding: 6px 18px; font-size: 13px; color: #7a8a9e; cursor: pointer; transition: all .2s; background: #fafbfc; border-right: 1px solid #e0e4ea; }
-.demt-tab:last-child { border-right: none; }
-.demt-tab:hover { color: #1a4cff; }
-.demt-tab.active { background: #1a4cff; color: #fff; }
-
-/* 批量录入 */
-.de-batch { max-width: 600px; }
-.deb-help { background: #f8fafe; border: 1px solid #e0e4f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; color: #4d5a6e; line-height: 1.7; }
-.deb-help code { background: #e8ecf6; padding: 1px 6px; border-radius: 4px; font-size: 11px; }
-.deb-help pre { background: #f0f3f8; padding: 8px 10px; border-radius: 6px; margin-top: 6px; font-size: 11px; color: #303133; white-space: pre-wrap; }
-.deb-hint { font-size: 11px; color: #999; margin-left: 8px; }
-
-.deb-preview { margin-bottom: 14px; }
-.debph { font-size: 12px; color: #606266; margin-bottom: 8px; }
-.debp-item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  background: #fafbfc; border: 1px solid #eef2f6; border-radius: 6px; margin-bottom: 4px;
-  font-size: 12px;
+.dembc-check.on { background: #1a4cff; border-color: #1a4cff; color: #fff; }
+.dembc-icon { font-size: 16px; }
+.dembc-name { font-size: 13px; font-weight: 500; color: #334155; }
+.dembc-data { display: flex; gap: 6px; padding-left: 28px; }
+.dembc-num {
+  flex: 1; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 7px;
+  font-size: 11px; outline: none; text-align: center;
+  -moz-appearance: textfield; min-width: 0;
 }
-.debpi-idx { background: #1a4cff; color: #fff; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
-.debpi-platform { flex-shrink: 0; }
-.debpi-likes { font-weight: 600; color: #e6a23c; flex-shrink: 0; }
-.debpi-text { color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dembc-num::-webkit-inner-spin-button { opacity: 1; }
+.dembc-num:focus { border-color: #1a4cff; }
 
-.deb-progress { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.debp-bar { flex: 1; height: 6px; background: #eef2f6; border-radius: 3px; overflow: hidden; }
-.debp-fill { display: block; height: 100%; background: #1a4cff; border-radius: 3px; transition: width .3s; }
-.debp-label { font-size: 12px; color: #909399; white-space: nowrap; }
+/* ========== 提交按钮 ========== */
+.de-submit-btn {
+  width: 100%; margin-top: 20px; padding: 13px 24px;
+  border: none; border-radius: 12px;
+  background: linear-gradient(135deg, #1a4cff, #2563eb);
+  color: #fff; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.de-submit-btn:hover:not(:disabled) { background: linear-gradient(135deg, #0d3ad6, #1d4ed8); box-shadow: 0 4px 16px rgba(26,76,255,.3); transform: translateY(-1px); }
+.de-submit-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.dsub-loading {
+  width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 消息提示 */
+.de-msg {
+  margin-top: 14px; padding: 12px 16px; border-radius: 10px;
+  font-size: 13px; line-height: 1.5;
+}
+.de-msg.ok { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+.de-msg.err { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+/* ========== 批量录入 ========== */
+.de-batch-help {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 16px;
+}
+.dbh-title { font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+.dbh-body { font-size: 12px; color: #64748b; line-height: 1.6; margin-bottom: 8px; }
+.dbh-body code {
+  background: #eef2f6; padding: 2px 6px; border-radius: 5px;
+  font-size: 11px; font-weight: 600; color: #1a4cff;
+}
+.dbh-example {
+  background: #f1f5f9; padding: 10px 12px; border-radius: 8px;
+  font-size: 11px; color: #475569; white-space: pre-wrap;
+  line-height: 1.6; margin: 0;
+}
+
+/* 批量预览 */
+.de-batch-preview { margin-bottom: 16px; }
+.dbp-head { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 8px; }
+.dbp-head strong { color: #1a4cff; }
+.dbp-list { display: flex; flex-direction: column; gap: 4px; }
+.dbp-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; background: #f8fafc; border: 1px solid #eef2f6;
+  border-radius: 8px; font-size: 12px;
+}
+.dbpi-num {
+  width: 20px; height: 20px; border-radius: 6px; background: #1a4cff;
+  color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.dbpi-plat { flex-shrink: 0; font-size: 14px; }
+.dbpi-data { font-weight: 600; color: #e6a23c; white-space: nowrap; }
+.dbpi-text { color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+/* 批量进度 */
+.de-batch-progress { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.dbp-bar { flex: 1; height: 5px; background: #eef2f6; border-radius: 3px; overflow: hidden; }
+.dbpb-fill { display: block; height: 100%; background: #1a4cff; border-radius: 3px; transition: width .3s; }
+.dbp-label { font-size: 12px; color: #94a3b8; white-space: nowrap; }
 </style>

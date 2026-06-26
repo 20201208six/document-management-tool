@@ -365,14 +365,14 @@
         <p class="empty-title">AI 文案智能助手</p>
         <p class="empty-desc">基于 DeepSeek 大模型，为您提供文案创作建议、内容分析和写作辅助</p>
         <div class="empty-suggestions">
-          <el-tag
+          <button
             v-for="sg in suggestions"
             :key="sg"
             class="suggestion-tag"
             @click="inputText = sg; handleSend()"
           >
             {{ sg }}
-          </el-tag>
+          </button>
         </div>
       </div>
 
@@ -870,7 +870,7 @@ onMounted(() => {
   min-width: 420px;
   height: 100%;
   background: #fff;
-  border-left: 1px solid #e4e7ed;
+  border-left: 1px solid #e8ecf2;
   display: flex;
   flex-direction: column;
   transition: width 0.3s, min-width 0.3s, opacity 0.3s;
@@ -932,13 +932,13 @@ onMounted(() => {
 }
 
 .chat-panel-header {
-  height: 48px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
-  border-bottom: 1px solid #f0f2f5;
-  background: #fafafa;
+  padding: 0 14px;
+  border-bottom: 1px solid #eef1f5;
+  background: #fafbfc;
   flex-shrink: 0;
 }
 
@@ -965,10 +965,11 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-bottom: 1px solid #f0f2f5;
   flex-shrink: 0;
   flex-wrap: wrap;
+  background: #fafbfc;
 }
 
 .toggle-active {
@@ -999,8 +1000,8 @@ onMounted(() => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
-  background: #f0f2f5;
+  padding: 4px 0;
+  background: #fafbfc;
 }
 
 .chat-empty {
@@ -1009,65 +1010,75 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #909399;
+  color: #8899b0;
   text-align: center;
-  gap: 8px;
+  padding: 32px 24px;
 }
 
 .empty-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #606266;
-  margin-top: 12px;
+  font-weight: 700;
+  color: #475569;
+  margin: 14px 0 6px;
 }
 
 .empty-desc {
   font-size: 13px;
   max-width: 280px;
   line-height: 1.6;
+  color: #8899b0;
+  margin-bottom: 8px;
 }
 
 .empty-suggestions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-top: 16px;
   justify-content: center;
-  max-width: 320px;
+  max-width: 340px;
 }
 
 .suggestion-tag {
   cursor: pointer;
   font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid #e8ecf2;
+  border-radius: 10px;
+  background: #fff;
+  color: #5a6a80;
+  transition: all .15s;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.5;
 }
-
 .suggestion-tag:hover {
-  background: #ecf5ff;
-  border-color: #409eff;
-  color: #409eff;
+  border-color: #1a4cff;
+  background: #f4f6ff;
+  color: #1a4cff;
 }
 
 /* 输入区域 */
 .chat-input-area {
-  border-top: 1px solid #e8eaed;
+  border-top: 1px solid #eef1f5;
   padding: 12px 16px 14px;
   background: #fff;
   flex-shrink: 0;
 }
 
 .chat-input-area :deep(.el-textarea__inner) {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.6;
   border-radius: 12px;
-  border-color: #e0e3e8;
-  background: #f5f6f8;
+  border-color: #e2e6ec;
+  background: #f8f9fb;
   padding: 10px 14px;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
 }
-
 .chat-input-area :deep(.el-textarea__inner:focus) {
-  border-color: #409eff;
+  border-color: #1a4cff;
   background: #fff;
+  box-shadow: 0 0 0 3px rgba(26,76,255,.06);
 }
 
 .chat-input-actions {

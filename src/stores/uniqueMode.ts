@@ -1717,7 +1717,6 @@ polish: XX
         ].filter(Boolean),
         generatedAt: new Date().toLocaleString('zh-CN')
       }
-
     } catch (e: any) {
       ElMessage.error('Bump 建议生成失败：' + (e.message || '未知错误'))
     } finally {
@@ -1890,12 +1889,6 @@ polish: XX
             const config = SCORING_DIMENSION_CONFIG.find(d => d.key === key)
             return config?.label || key
           }
-          ElMessage({
-            message: `🔧 自动校准完成！权重变更：\n${changed.join('\n')}`,
-            type: 'success',
-            duration: 6000,
-            showClose: true
-          })
         }
       } catch {} finally {
         // 冷却10分钟，避免频繁校准
@@ -3084,6 +3077,7 @@ ${sampleBlock}
 
       audienceProfile.value = profile
       // watcher 会自动触发 saveAudienceProfile()，无需显式调用
+
       return profile
     } finally {
       audienceLoading.value = false
@@ -3430,8 +3424,8 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
     } finally { isPredicting.value = false }
   }
 
-  /** 复盘：将实际点赞量与历史预测对照，计算偏差，并自动加入样本库 */
-  function retroPrediction(predictionId: string, actualLikes: number, actualViews?: number, note?: string) {
+  /** 复盘：将实际点赞量与历史预测对照，计算偏差，并自动加入样本库。isReRetro 为 true 时仅更新数据不重复入库。 */
+  function retroPrediction(predictionId: string, actualLikes: number, actualViews?: number, note?: string, isReRetro: boolean = false) {
     try {
       const entry = predictionHistory.value.find(e => e.id === predictionId)
       if (!entry) { console.warn('[retro] 未找到预测记录', predictionId); return }
@@ -3444,7 +3438,12 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
       entry.deviation = actualLikes > 0 ? Math.round((actualLikes - predictedMid) / predictedMid * 100) : 0
       savePredictionHistory()
 
-      // 自动将复盘文稿加入样本库
+      // 再复盘：仅更新预测历史中的数据，不重复存入样本库
+      if (isReRetro) {
+        return
+      }
+
+      // ===== 首次复盘：自动将复盘文稿加入样本库 =====
       const now = new Date().toLocaleString('zh-CN')
       const base = defaultScores()
       const s = entry.result.scores || ({} as any)
@@ -3476,6 +3475,11 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
       scriptRecords.value.unshift(script)
       saveScripts()
       console.log('[retro] 完成', { id: script.id, total: scriptRecords.value.length, scores: Object.keys(robustScores) })
+
+      // 偏差过大时额外警告
+      if (entry.deviation && Math.abs(entry.deviation) > 50) {
+        const dir = entry.deviation > 0 ? '低估' : '高估'
+      }
       // 后台静默拆解（不阻塞）
       autoDecomposeScript(script).catch(() => {})
       // 数据入库后异步刷新账号人格画像（不阻塞UI）
