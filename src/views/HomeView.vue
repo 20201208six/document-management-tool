@@ -47,10 +47,10 @@
         </el-button-group>
 
         <div class="toolbar-actions" v-if="fileStore.activeTab === 'editor' && fileStore.selectedFile">
-          <el-button size="small" type="warning" @click="showReplaceDialog = true">
+          <el-button v-if="fileStore.fileType !== 'xlsx'" size="small" type="warning" @click="showReplaceDialog = true">
             <el-icon><Operation /></el-icon> 一键替换
           </el-button>
-          <el-button size="small" type="success" @click="showCantoneseDialog = true">
+          <el-button v-if="fileStore.fileType !== 'xlsx'" size="small" type="success" @click="showCantoneseDialog = true">
             <el-icon><Connection /></el-icon> 普通话转粤语
           </el-button>
           <el-button size="small" @click="toggleFavorite">
@@ -148,7 +148,7 @@
               </el-button>
             </div>
             <div class="editor-wrapper">
-              <div v-if="fileStore.fileType === 'html'" class="rich-toolbar">
+              <div v-if="isHtmlRenderable" class="rich-toolbar">
                 <el-button-group size="small">
                   <el-button @click="execCmd('bold')" title="粗体 Ctrl+B"><strong>B</strong></el-button>
                   <el-button @click="execCmd('italic')" title="斜体 Ctrl+I"><em>I</em></el-button>
@@ -177,7 +177,8 @@
                   <el-button @click="execCmd('redo')" title="重做 Ctrl+Y">↪</el-button>
                 </el-button-group>
               </div>
-              <div v-if="fileStore.fileType === 'html'" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown" @contextmenu.prevent="onEditorContextMenu"></div>
+              <div v-if="isHtmlRenderable" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown" @contextmenu.prevent="onEditorContextMenu"></div>
+              <UniverViewer v-else-if="fileStore.fileType === 'xlsx'" ref="univerViewerRef" :modelValue="excelContent" />
               <div v-else class="edit-area">
                 <textarea
                   ref="textareaRef"
@@ -333,6 +334,7 @@ import BrowserPanel from '@/components/BrowserPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import ModelManager from '@/components/ModelManager.vue'
+import UniverViewer from '@/components/UniverViewer.vue'
 import UniqueModeView from '@/views/UniqueModeView.vue'
 import CreatorModeView from '@/views/CreatorModeView.vue'
 import AutomationModeView from '@/views/AutomationModeView.vue'
@@ -362,6 +364,13 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const richEditorRef = ref<HTMLElement | null>(null)
 const editPlainText = ref('')
 const editorTextContent = ref('')
+const excelContent = ref<string | any[]>('')
+const univerViewerRef = ref<InstanceType<typeof UniverViewer> | null>(null)
+
+/** 是否为可渲染 HTML 的文件类型（仅 docx 转换的 html） */
+const isHtmlRenderable = computed(() => {
+  return fileStore.fileType === 'html'
+})
 
 function htmlToPlain(html: string): string {
   const div = document.createElement('div')
@@ -371,13 +380,15 @@ function htmlToPlain(html: string): string {
 
 function syncPlainToStore() {
   if (!fileStore.activeTabPath) return
-  if (fileStore.fileType === 'html' && richEditorRef.value) {
+  if (isHtmlRenderable.value && richEditorRef.value) {
     // 复制 DOM 并移除高亮标记，获取纯净内容
     const clone = richEditorRef.value.cloneNode(true) as HTMLElement
     clone.querySelectorAll('mark.srch-hl').forEach(el => {
       el.replaceWith(...el.childNodes)
     })
     fileStore.updateTabContent(fileStore.activeTabPath, clone.innerHTML)
+  } else if (fileStore.fileType === 'xlsx' && univerViewerRef.value) {
+    fileStore.updateTabContent(fileStore.activeTabPath, univerViewerRef.value.getContent())
   } else if (fileStore.activeTabPath) {
     fileStore.updateTabContent(fileStore.activeTabPath, editPlainText.value)
   }
@@ -577,7 +588,7 @@ function handleContextAction(action: string) {
 }
 
 const renderedHtml = computed(() => {
-  if (fileStore.fileType !== 'html') return ''
+  if (!isHtmlRenderable.value) return ''
   let html = editorContent.value || '<p style="color:#909399">空文档</p>'
   const kw = fileStore.highlightKeyword || editorSearchKeyword.value
   if (kw) {
@@ -592,8 +603,12 @@ function escapeHtml(str: string): string {
 }
 
 watch(() => fileStore.fileContent, (val) => {
+  if (fileStore.fileType === 'xlsx') {
+    excelContent.value = val || ''
+    return
+  }
   editorContent.value = val || ''
-  editPlainText.value = fileStore.fileType === 'html' ? htmlToPlain(val || '') : (val || '')
+  editPlainText.value = isHtmlRenderable.value ? htmlToPlain(val || '') : (val || '')
   editorTextContent.value = editPlainText.value
   nextTick(() => setRichContent(val || ''))
 })
@@ -607,7 +622,7 @@ watch(richEditorRef, (el) => {
 })
 
 function setRichContent(html: string) {
-  if (fileStore.fileType !== 'html') return
+  if (!isHtmlRenderable.value) return
   if (richEditorRef.value) {
     richEditorRef.value.innerHTML = html
   } else {
@@ -621,7 +636,7 @@ function clearHighlight() {
   fileStore.highlightKeyword = ''
   fileStore.highlightMatchText = ''
   // 恢复 HTML 编辑器的原始内容（移除高亮标记）
-  if (fileStore.fileType === 'html' && richEditorRef.value) {
+  if (isHtmlRenderable.value && richEditorRef.value) {
     const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
     if (tab) {
       richEditorRef.value.innerHTML = tab.content
@@ -691,7 +706,7 @@ function closeEditorSearch() {
   currentEditorMatch.value = 0
   lastSearchedKeyword = ''
   // 恢复 HTML 编辑器的原始内容（移除高亮标记）
-  if (fileStore.fileType === 'html' && richEditorRef.value) {
+  if (isHtmlRenderable.value && richEditorRef.value) {
     const tab = fileStore.openTabs.find(t => t.path === fileStore.activeTabPath)
     if (tab) {
       richEditorRef.value.innerHTML = tab.content
@@ -703,7 +718,7 @@ function closeEditorSearch() {
 function onEditorSearchInput() {
   currentEditorMatch.value = 0
   // 对 HTML 编辑器进行高亮渲染
-  if (fileStore.fileType === 'html' && richEditorRef.value) {
+  if (isHtmlRenderable.value && richEditorRef.value) {
     highlightEditorContent(editorSearchKeyword.value)
   }
   if (editorMatches.value.length > 0) {
@@ -719,7 +734,7 @@ function navigateEditorMatch(direction: number) {
 }
 
 function scrollToEditorMatch(index: number, focusEditor = true) {
-  if (fileStore.fileType === 'html') {
+  if (isHtmlRenderable.value) {
     const el = richEditorRef.value
     if (!el || index >= editorMatches.value.length) return
     const m = editorMatches.value[index]
@@ -791,7 +806,7 @@ function onEditorSearchKeydown(e: KeyboardEvent) {
 
 function onGlobalKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-    if (fileStore.activeTab === 'editor' && fileStore.selectedFile) {
+    if (fileStore.activeTab === 'editor' && fileStore.selectedFile && fileStore.fileType !== 'xlsx') {
       e.preventDefault()
       openEditorSearch()
     }
@@ -832,7 +847,7 @@ watch(() => fileStore.searchJumpId, () => {
     editorSearchKeyword.value = kw
     lastSearchedKeyword = kw
     // 对 HTML 编辑器进行高亮渲染
-    if (fileStore.fileType === 'html' && richEditorRef.value) {
+    if (isHtmlRenderable.value && richEditorRef.value) {
       highlightEditorContent(kw)
     }
     // 轮询等待编辑器内容就绪后再跳转
@@ -878,6 +893,24 @@ function toggleFavorite() {
 }
 
 async function handleSave() {
+  if (fileStore.fileType === 'xlsx') {
+    let content = univerViewerRef.value?.getContent()
+    if (!content) {
+      const raw = fileStore.fileContent
+      content = typeof raw === 'string' ? raw : JSON.stringify(raw)
+    }
+    if (!content) {
+      ElMessage.warning('内容为空')
+      return
+    }
+    const result = await fileStore.saveFile(content)
+    if (result.success) {
+      ElMessage.success('保存成功')
+    } else {
+      ElMessage.error(result.error || '保存失败')
+    }
+    return
+  }
   syncPlainToStore()
   const content = fileStore.fileContent
   if (!content || content === '<p></p>') {
@@ -934,7 +967,8 @@ function resetRules() {
 }
 
 function getPlainText(): string {
-  if (fileStore.fileType === 'html') return richEditorRef.value?.textContent || ''
+  if (fileStore.fileType === 'xlsx') return ''
+  if (isHtmlRenderable.value) return richEditorRef.value?.textContent || ''
   return editPlainText.value
 }
 
@@ -943,7 +977,26 @@ function getCurrentDocText(): string {
   if (!fileStore.selectedFile) return ''
   syncPlainToStore()
   const content = fileStore.fileContent
-  if (fileStore.fileType === 'html') {
+  if (fileStore.fileType === 'xlsx') {
+    try {
+      const sheets = Array.isArray(content) ? content : JSON.parse(content)
+      let text = ''
+      for (const sheet of sheets) {
+        text += `## ${sheet.name}\n`
+        if (sheet.data) {
+          for (const row of sheet.data) {
+            const rowText = row.filter((c: any) => c !== null && c !== '' && c !== undefined).join('\t')
+            if (rowText.trim()) text += rowText + '\n'
+          }
+        }
+        text += '\n'
+      }
+      return text
+    } catch {
+      return typeof content === 'string' ? content : JSON.stringify(content)
+    }
+  }
+  if (isHtmlRenderable.value) {
     const div = document.createElement('div')
     div.innerHTML = content
     return div.textContent || ''
@@ -974,7 +1027,7 @@ function injectDocumentToChat() {
 function executeReplace() {
   const text = getPlainText()
   if (!text) {
-    ElMessage.warning('编辑器内容为空')
+    ElMessage.warning(fileStore.fileType === 'xlsx' ? 'Excel 文件不支持替换功能' : '编辑器内容为空')
     return
   }
   settingsStore.replaceRules = [...replaceRules.value]

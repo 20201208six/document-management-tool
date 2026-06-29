@@ -4,8 +4,8 @@
     <div class="sl-toolbar">
       <span class="sl-toolbar-title">历史样本库</span>
       <div class="sl-toolbar-actions">
-        <label class="sl-filter-toggle" title="仅显示达到各平台高赞门槛的样本">
-          <input type="checkbox" v-model="thresholdFilter" />
+        <label class="sl-filter-toggle" :class="{ on: thresholdFilter }" @click="thresholdFilter = !thresholdFilter" title="仅显示达到各平台高赞门槛的样本">
+          <span class="slft-switch"></span>
           <span class="slft-label">高赞门槛</span>
           <span class="slft-count" v-if="thresholdFilter">({{ store.thresholdFilteredScripts.length }}/{{ store.scriptRecords.length }})</span>
         </label>
@@ -244,7 +244,21 @@ let copyViews: Record<string, number> = reactive({})
 async function confirmCopy(record: any) {
   const targets = platformKeys.filter(k => copyTargets[k])
   if (targets.length === 0) { ElMessage.warning('请至少选择一个平台'); return }
-  for (const p of targets) {
+
+  // 第一个平台正常走 AI 评分
+  const first = await store.addScript({
+    platform: targets[0] as Platform,
+    content: record.content,
+    link: '',
+    actualLikes: copyLikes[targets[0]] || 0,
+    views: copyViews[targets[0]] || undefined,
+    tags: record.tags || []
+  })
+
+  // 后续平台复用同一份 AI 评分，不再重复调用 AI
+  const precomputed = { scores: first.scores, compositeScore: first.compositeScore, analysis: first.analysis, modelVersion: first.modelVersion }
+  for (let i = 1; i < targets.length; i++) {
+    const p = targets[i]
     await store.addScript({
       platform: p as Platform,
       content: record.content,
@@ -252,9 +266,10 @@ async function confirmCopy(record: any) {
       actualLikes: copyLikes[p] || 0,
       views: copyViews[p] || undefined,
       tags: record.tags || []
-    })
+    }, precomputed)
   }
-  ElMessage.success(`已复制到 ${targets.length} 个平台，AI 正在后台评分`)
+
+  ElMessage.success(`已复制到 ${targets.length} 个平台（AI 仅评分一次）`)
   copyingId.value = null
 }
 
@@ -317,15 +332,24 @@ async function handleDelete(id: string) {
 
 /* 高赞门槛过滤开关 */
 .sl-filter-toggle {
-  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   padding: 5px 10px; border-radius: 8px; border: 1px solid #eef2f6;
   background: #fff; font-size: 12px; color: #5a6a80; user-select: none;
   transition: border-color 0.15s, background 0.15s;
 }
 .sl-filter-toggle:hover { border-color: #1a4cff; background: #f5f7ff; }
-.sl-filter-toggle input[type="checkbox"] {
-  accent-color: #1a4cff; width: 14px; height: 14px; margin: 0; cursor: pointer;
+.sl-filter-toggle.on { border-color: #a5b4fc; background: #eef2ff; }
+.slft-switch {
+  width: 28px; height: 16px; border-radius: 8px; background: #d1d5db;
+  position: relative; transition: background 0.25s; flex-shrink: 0;
 }
+.slft-switch::after {
+  content: ''; position: absolute; top: 1.5px; left: 1.5px;
+  width: 13px; height: 13px; border-radius: 50%; background: #fff;
+  transition: transform 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.sl-filter-toggle.on .slft-switch { background: #1a4cff; }
+.sl-filter-toggle.on .slft-switch::after { transform: translateX(12px); }
 .slft-label { font-weight: 500; }
 .slft-count { color: #1a4cff; font-weight: 600; }
 

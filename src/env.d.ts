@@ -37,7 +37,7 @@ export interface FileEntry {
 
 export interface FileContentResult {
   type: string
-  content: string
+  content: string | any[]
 }
 
 export interface SearchResult {
