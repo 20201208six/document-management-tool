@@ -108,16 +108,16 @@ ipcMain.handle('read-file-content', async (_event, filePath: string) => {
       const result = await mammoth.convertToHtml({ buffer })
       return { type: 'html', content: result.value }
     }
-    if (ext === '.xlsx') {
+    if (ext === '.xlsx' || ext === '.xls') {
       const workbook = XLSX.readFile(filePath)
-      let content = ''
-      workbook.SheetNames.forEach((sheetName: string) => {
+      const sheets = workbook.SheetNames.map((sheetName: string) => {
         const sheet = workbook.Sheets[sheetName]
-        content += `--- ${sheetName} ---\n`
-        content += XLSX.utils.sheet_to_csv(sheet)
-        content += '\n\n'
+        const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+        const rowCount = data.length
+        const columnCount = data.reduce((max, row) => Math.max(max, row.length), 0)
+        return { name: sheetName, data, rowCount, columnCount }
       })
-      return { type: 'xlsx', content }
+      return { type: 'xlsx', content: sheets }
     }
     return { type: 'unknown', content: '' }
   } catch (err: any) {
@@ -237,7 +237,11 @@ ipcMain.handle('create-file', async (_event, folderPath: string, fileName: strin
       fs.writeFileSync(fullPath, buffer)
     } else if (fileType === 'xlsx') {
       const wb = XLSX.utils.book_new()
-      const ws = XLSX.utils.aoa_to_sheet([['']])
+      const headers = Array.from({ length: 25 }, (_, i) => `列${String(i + 1).padStart(2, '0')}`)
+      const emptyRow = new Array(25).fill('')
+      const rows = [headers]
+      for (let r = 0; r < 100; r++) rows.push([...emptyRow])
+      const ws = XLSX.utils.aoa_to_sheet(rows)
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
       XLSX.writeFile(wb, fullPath)
     }
@@ -278,7 +282,7 @@ ipcMain.handle('search-in-files', async (_event, folderPath: string, keyword: st
               const buffer = fs.readFileSync(fullPath)
               const result = await mammoth.extractRawText({ buffer })
               content = result.value
-            } else if (ext === '.xlsx') {
+            } else if (ext === '.xlsx' || ext === '.xls') {
               const workbook = XLSX.readFile(fullPath)
               workbook.SheetNames.forEach((sn: string) => {
                 const sheet = workbook.Sheets[sn]
@@ -417,7 +421,7 @@ ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
       const result = await mammoth.extractRawText({ buffer })
       return { success: true, content: result.value }
     }
-    if (ext === '.xlsx') {
+    if (ext === '.xlsx' || ext === '.xls') {
       const workbook = XLSX.readFile(filePath)
       let content = ''
       workbook.SheetNames.forEach((sn: string) => {
@@ -432,12 +436,94 @@ ipcMain.handle('read-file-as-text', async (_event, filePath: string) => {
   }
 })
 
+/** 解析 HTML 表格为二维数组 */
+function parseHtmlTables(html: string): { sheets: Array<{ name: string; rows: string[][] }> } {
+  const result: Array<{ name: string; rows: string[][] }> = []
+  // 匹配 <h3> 标题和紧随其后的 <table>
+  const sectionRegex = /<h3>(.*?)<\/h3>\s*(<table[\s\S]*?<\/table>)/gi
+  let sectionMatch
+  while ((sectionMatch = sectionRegex.exec(html)) !== null) {
+    const sheetName = sectionMatch[1].trim()
+    const tableHtml = sectionMatch[2]
+    const rows = parseSingleTable(tableHtml)
+    if (rows.length > 0) {
+      result.push({ name: sheetName, rows })
+    }
+  }
+  // 如果没有 h3 标题，直接匹配所有 table
+  if (result.length === 0) {
+    const tableRegex = /<table[\s\S]*?<\/table>/gi
+    let tableMatch
+    let idx = 0
+    while ((tableMatch = tableRegex.exec(html)) !== null) {
+      const rows = parseSingleTable(tableMatch[0])
+      if (rows.length > 0) {
+        result.push({ name: `Sheet${idx + 1}`, rows })
+        idx++
+      }
+    }
+  }
+  return { sheets: result }
+}
+
+/** 解析单个 HTML table 为二维数组 */
+function parseSingleTable(tableHtml: string): string[][] {
+  const rows: string[][] = []
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+  let rowMatch
+  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+    const rowContent = rowMatch[1]
+    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi
+    const row: string[] = []
+    let cellMatch
+    while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+      // 去除单元格内的 HTML 标签，只保留文本
+      const text = cellMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()
+      row.push(text)
+    }
+    if (row.length > 0) rows.push(row)
+  }
+  return rows
+}
+
 ipcMain.handle('save-xlsx-file', async (_event, filePath: string, content: string) => {
   try {
-    const rows = content.split('\n').map((line: string) => line.split(','))
-    const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+
+    // 优先解析 Univer / 结构化 JSON 格式
+    try {
+      const sheets = JSON.parse(content)
+      if (Array.isArray(sheets) && sheets.length > 0) {
+        sheets.forEach((s: any) => {
+          const ws = XLSX.utils.aoa_to_sheet(s.data || [[]])
+          XLSX.utils.book_append_sheet(wb, ws, s.name || 'Sheet1')
+        })
+        XLSX.writeFile(wb, filePath)
+        return { success: true }
+      }
+    } catch {
+      // 不是 JSON，尝试其他格式
+    }
+
+    // 兼容旧 HTML 表格格式
+    if (content.includes('<table')) {
+      const { sheets } = parseHtmlTables(content)
+      if (sheets.length > 0) {
+        sheets.forEach(({ name, rows }) => {
+          const ws = XLSX.utils.aoa_to_sheet(rows)
+          XLSX.utils.book_append_sheet(wb, ws, name)
+        })
+      } else {
+        const ws = XLSX.utils.aoa_to_sheet([['']])
+        XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+      }
+    } else {
+      // 纯 CSV 文本内容
+      const rows = content.split('\n').map((line: string) => line.split(','))
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+    }
+
     XLSX.writeFile(wb, filePath)
     return { success: true }
   } catch (err: any) {

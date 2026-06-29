@@ -129,49 +129,49 @@ export const SCORING_DIMENSION_CONFIG: Array<{
   /** Likert 5级锚定描述 */
   rubric: string[]
 }> = [
-  { key: 'hook', label: '困惑命中', desc: '开头是否精准指向受众当前最大困惑', color: '#f56c6c', rubric: [
+  { key: 'hook', label: '开场钩子', desc: '前3秒能否让受众划不走', color: '#f56c6c', rubric: [
     '无具体指向，泛泛而谈，受众没有任何"这是在对我说"的感觉',
     '提到了一个普遍话题但没对准具体困惑，受众可能好奇但不一定被击中',
     '明确指向了某个群体共有的困境，受众产生"这说的是我的事"的识别感',
     '精准命中受众心中正在纠结但还没想清楚的问题，受众感到"你怎么知道我在想这个"',
     '一击命中受众最隐秘的困惑，产生强烈的被看穿感和不可划走的本能反应'
   ]},
-  { key: 'empathy', label: '被理解感', desc: '受众是否感到"这个人比我更了解我自己"', color: '#e6a23c', rubric: [
+  { key: 'empathy', label: '沉浸共鸣', desc: '是否让受众觉得「这说的就是我」', color: '#e6a23c', rubric: [
     '与受众无关的抽象话题，没有任何代入路径',
     '泛泛涉及了可能与受众相关的话题，但停留在表面',
     '说出了受众心里知道但没表达出来的感受，产生"对，就是这样"的认可',
     '不仅说出了受众的感受，还帮他们理清了情绪的来龙去脉，产生被解读的深层满足',
     '受众感到"这个人说出了我一直想说但说不清的东西"，产生强烈的精神连接'
   ]},
-  { key: 'density', label: '解释力密度', desc: '是否每段都在给受众的困惑提供新的理解框架', color: '#9b59b6', rubric: [
+  { key: 'density', label: '干货密度', desc: '每段是否都在提供新知，不注水', color: '#9b59b6', rubric: [
     '翻来覆去讲一个已知道理，没有任何新认知',
     '有1个有价值的角度但展开拖沓，信息稀疏',
     '2-3个递进的解释角度，每个角度都有信息增量',
     '持续提供新的理解框架，每个段落都让受众对问题的理解更进一层',
-    '全程高密度输出，受众感觉"每句话都在刷新我对自己困境的认知"'
+    '全程高密度输出，受众感觉"每句话都在刷新我对这个问题的认知"'
   ]},
-  { key: 'structure', label: '情绪路径', desc: '受众是否经历了「困惑→被命名→被解释→看到希望」', color: '#1abc9c', rubric: [
+  { key: 'structure', label: '节奏掌控', desc: '受众是否经历了「被戳中→被解读→被点醒」', color: '#1abc9c', rubric: [
     '流水账，没有情绪引导，受众看完没有感受变化',
     '有基本的结构但缺乏情绪起伏，受众看完和看完前感觉差不多',
     '有清晰的起承转合，受众经历了从困惑到理解的感受变化',
     '结构精心设计，受众经历了被理解→被解释→被给予希望的完整情绪弧线',
     '情绪路径如大师布局，受众经历多轮"啊！原来是这个原因→那我该怎么做→原来如此"的认知升级'
   ]},
-  { key: 'originality', label: '洞察稀缺度', desc: '这个角度在同赛道是否只有你能讲', color: '#e74c3c', rubric: [
+  { key: 'originality', label: '人设差异', desc: '换个同行来讲，是否就没这个味儿了', color: '#e74c3c', rubric: [
     '重复同赛道常见观点，换个同行也能讲，无差异',
     '有个人经历但不独特，同行用类似角度也能覆盖',
     '有独特的解读角度或案例组合，同行不太容易复制',
     '"只有这个人能讲"的内容，结合了独特的经验/案例/表达方式',
     '开创性洞察，为赛道带来了全新的理解维度，受众从未听过这个角度的解读'
   ]},
-  { key: 'socialResonance', label: '阶段共鸣度', desc: '是否精准命中了某一人生阶段的集体隐痛', color: '#3498db', rubric: [
+  { key: 'socialResonance', label: '传播共鸣', desc: '是否让受众产生「必须转给谁看」的冲动', color: '#3498db', rubric: [
     '纯个人琐事，与任何群体性困境无关',
     '提及了某个社会话题但没有切中痛点，共鸣面窄',
     '触及了一个具体的人群困境，相关群体能对号入座',
     '准确命名了一个"人人都感觉到但没人说清"的人生阶段困境，具备自发传播动力',
     '击中了某一人生阶段核心的未被言说的集体隐痛，让受众产生"终于有人说出来了"的转发冲动'
   ]},
-  { key: 'polish', label: '信任建立', desc: '语言是否让受众感到可靠/有根据/不忽悠', color: '#409eff', rubric: [
+  { key: 'polish', label: '可信背书', desc: '是否让人觉得你说的有根据、不忽悠', color: '#409eff', rubric: [
     '语言粗糙/夸张/无根据，受众感到"这是忽悠"',
     '基本通顺但缺乏可信度背书，受众半信半疑',
     '语言流畅工整，有一定可信度支撑（如引经据典/案例佐证）',
@@ -1595,6 +1595,7 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
     weights: Record<string, number>
     reasoning: string[]
     generatedAt: string
+    _retry?: boolean
   } | null>(null)
 
   const isGeneratingBump = ref(false)
@@ -1826,17 +1827,26 @@ polish: XX
   /** 一键应用 Bump 建议的权重（会先验证） */
   async function applyBumpWeights() {
     if (!bumpSuggestion.value) return
+
+    // 二次点击强制应用（跳过审核）
+    if (bumpSuggestion.value._retry) {
+      updateCustomWeights(bumpSuggestion.value.weights, 'bump', '强制应用（审核未通过但用户确认）')
+      bumpSuggestion.value = null
+      ElMessage.success('已强制应用 Bump 建议权重')
+      return
+    }
+
     const v = validateWeightProposal(bumpSuggestion.value.weights)
     if (!v.passed) {
-      ElMessage.warning(v.recommendation + '，仍然应用请重新点击「应用 Bump 权重」')
-      bumpSuggestion.value = null
+      bumpSuggestion.value._retry = true
+      ElMessage.warning(v.recommendation + '。确认无误请再次点击「接受并升级公式」强制应用')
       return
     }
     // 跨模型审计：外部 LLM 独立审核
     const cross = await crossAuditWeightUpgrade(bumpSuggestion.value.weights, v)
     if (cross && !cross.passed) {
-      ElMessage.warning(`⚠️ 跨模型审计未通过：${cross.verdict}。仍然应用请重新点击「应用 Bump 权重」。`)
-      bumpSuggestion.value = null
+      bumpSuggestion.value._retry = true
+      ElMessage.warning(`⚠️ 跨模型审计未通过：${cross.verdict}。确认无误请再次点击「接受并升级公式」强制应用`)
       return
     }
     const crossNote = cross ? ` | 跨模型审计：${cross.verdict}` : ''
@@ -1925,6 +1935,7 @@ polish: XX
   const crossAuditResult = ref<CrossAuditResult | null>(null)
   const crossAuditWeightResult = ref<CrossAuditWeightResult | null>(null)
   const rewriteComparison = ref<RewriteComparison | null>(null)
+  const pendingGeneratedContent = ref<string | null>(null)
 
   /** 计算 Pearson 相关系数 */
   function pearsonR(xs: number[], ys: number[]): number | null {
@@ -2777,51 +2788,63 @@ ${originalContent}
 
   // ===== 录入文稿并 AI 7维评分 =====
 
-  async function addScript(script: Omit<ScriptRecord, 'id' | 'scores' | 'compositeScore' | 'analysis' | 'createdAt' | 'updatedAt'>): Promise<ScriptRecord> {
+  async function addScript(
+    script: Omit<ScriptRecord, 'id' | 'scores' | 'compositeScore' | 'analysis' | 'createdAt' | 'updatedAt'>,
+    precomputed?: { scores: ScoringDimensions; compositeScore: number; analysis: string; modelVersion?: string }
+  ): Promise<ScriptRecord> {
     const now = new Date().toLocaleString('zh-CN')
     const record: ScriptRecord = {
       id: generateId('script'),
       ...script,
-      scores: defaultScores(),
-      compositeScore: 0,
-      analysis: '',
+      scores: precomputed?.scores ?? defaultScores(),
+      compositeScore: precomputed?.compositeScore ?? 0,
+      analysis: precomputed?.analysis ?? '',
       createdAt: now,
       updatedAt: now
     }
 
-    // 自动 AI 7维评分 + 分析（先评分，成功后再入库）
-    isAnalyzingScript.value = true
-    try {
-      const aiResult = await scoreSingleScript(record)
-      record.scores = parseScores(aiResult)
-      record.modelVersion = getCurrentModelId()
-      record.compositeScore = calcCompositeScore(record.scores, customWeights.value)
-      record.analysis = cleanAnalysisText(aiResult)
+    if (precomputed) {
+      // 已有评分结果，直接入库，跳过 AI 调用
+      record.modelVersion = precomputed.modelVersion ?? getCurrentModelId()
       record.scoredWithProfile = !!audienceProfile.value
-      record.updatedAt = new Date().toLocaleString('zh-CN')
-
-      // AI 评分成功后才写入样本库
       scriptRecords.value.unshift(record)
       saveScripts()
-
-      // 后台静默拆解（不阻塞）
       autoDecomposeScript(record).catch(() => {})
-      // 首次积累足够样本后，提示配置受众画像
-      if (!audienceProfile.value && scriptRecords.value.length >= 3 && !audienceProfileHinted) {
-        audienceProfileHinted = true
-        setTimeout(() => {
-          ElMessageBox.confirm(
-            '已录入 3 条文稿，建议现在配置「受众画像」——让 AI 知道你的视频在跟谁说话，后续评分更准。\n\n配置入口：顶部「当前账号」→「管理账号」→ 滚动到底部「受众画像」',
-            '配置受众画像',
-            { confirmButtonText: '知道了', cancelButtonText: '不再提醒', type: 'info', distinguishCancelAndClose: true }
-          ).catch(() => {})
-        }, 500)
+    } else {
+      // 自动 AI 7维评分 + 分析（先评分，成功后再入库）
+      isAnalyzingScript.value = true
+      try {
+        const aiResult = await scoreSingleScript(record)
+        record.scores = parseScores(aiResult)
+        record.modelVersion = getCurrentModelId()
+        record.compositeScore = calcCompositeScore(record.scores, customWeights.value)
+        record.analysis = cleanAnalysisText(aiResult)
+        record.scoredWithProfile = !!audienceProfile.value
+        record.updatedAt = new Date().toLocaleString('zh-CN')
+
+        // AI 评分成功后才写入样本库
+        scriptRecords.value.unshift(record)
+        saveScripts()
+
+        // 后台静默拆解（不阻塞）
+        autoDecomposeScript(record).catch(() => {})
+        // 首次积累足够样本后，提示配置受众画像
+        if (!audienceProfile.value && scriptRecords.value.length >= 3 && !audienceProfileHinted) {
+          audienceProfileHinted = true
+          setTimeout(() => {
+            ElMessageBox.confirm(
+              '已录入 3 条文稿，建议现在配置「受众画像」——让 AI 知道你的视频在跟谁说话，后续评分更准。\n\n配置入口：顶部「当前账号」→「管理账号」→ 滚动到底部「受众画像」',
+              '配置受众画像',
+              { confirmButtonText: '知道了', cancelButtonText: '不再提醒', type: 'info', distinguishCancelAndClose: true }
+            ).catch(() => {})
+          }, 500)
+        }
+      } catch (e: any) {
+        ElMessage.warning('AI 分析失败: ' + (e.message || '未知错误'))
+        throw e
+      } finally {
+        isAnalyzingScript.value = false
       }
-    } catch (e: any) {
-      ElMessage.warning('AI 分析失败: ' + (e.message || '未知错误'))
-      throw e
-    } finally {
-      isAnalyzingScript.value = false
     }
     return record
   }
@@ -3383,8 +3406,8 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
           const pctMatch = line.match(/(\d+)%/); const labelMatch = line.match(/^[*-]*\s*(.+?)[：:]/)
           if (pctMatch && labelMatch) {
             bucketProbs.push({
-              bucket: labelMatch[1].trim(),
-              label: labelMatch[1].trim(),
+              bucket: labelMatch[1].trim().replace(/\*\*/g, ''),
+              label: labelMatch[1].trim().replace(/\*\*/g, ''),
               probability: parseInt(pctMatch[1], 10),
               isHeadline: /\*\*/.test(line)
             })
@@ -3397,12 +3420,12 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
         scores: newScores,
         compositeScore: newComposite,
         dimensionAnalysis: dimAnalysis,
-        reasons: reasonsSection ? reasonsSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)) : [],
+        reasons: reasonsSection ? reasonsSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)).map(l => l.replace(/^[\s]*[-*]*\s*\d*[\.\、\)]*\s*/, '')) : [],
         referencedSamples: refSamples,
-        suggestions: suggestionsSection ? suggestionsSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)) : [],
+        suggestions: suggestionsSection ? suggestionsSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)).map(l => l.replace(/^[\s]*[-*]*\s*\d*[\.\、\)]*\s*/, '')) : [],
         bucketProbabilities: bucketProbs.length > 0 ? bucketProbs : undefined,
         confidence: confidenceSection?.trim() || undefined,
-        counterfactuals: counterSection ? counterSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)) : undefined,
+        counterfactuals: counterSection ? counterSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)).map(l => l.replace(/^[\s]*[-*]*\s*\d*[\.\、\)]*\s*/, '')) : undefined,
         predictedAt: new Date().toLocaleString('zh-CN')
       }
       lastPrediction.value = result
@@ -3425,7 +3448,14 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
   }
 
   /** 复盘：将实际点赞量与历史预测对照，计算偏差，并自动加入样本库。isReRetro 为 true 时仅更新数据不重复入库。 */
-  function retroPrediction(predictionId: string, actualLikes: number, actualViews?: number, note?: string, isReRetro: boolean = false) {
+  function retroPrediction(
+    predictionId: string,
+    actualLikes: number,
+    actualViews?: number,
+    note?: string,
+    isReRetro: boolean = false,
+    additionalPlatforms?: Array<{ platform: Platform; likes: number; views?: number }>
+  ) {
     try {
       const entry = predictionHistory.value.find(e => e.id === predictionId)
       if (!entry) { console.warn('[retro] 未找到预测记录', predictionId); return }
@@ -3438,8 +3468,23 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
       entry.deviation = actualLikes > 0 ? Math.round((actualLikes - predictedMid) / predictedMid * 100) : 0
       savePredictionHistory()
 
-      // 再复盘：仅更新预测历史中的数据，不重复存入样本库
+      // 再复盘：更新预测历史 + 同步更新样本库中对应样本的数据
       if (isReRetro) {
+        const matches = scriptRecords.value.filter(
+          r => r.content === entry.content && r.platform === entry.platform
+        )
+        if (matches.length > 0) {
+          for (const m of matches) {
+            m.actualLikes = actualLikes
+            if (actualViews !== undefined) {
+              m.views = actualViews
+              m.likeRate = actualViews > 0 ? Math.round(actualLikes / actualViews * 10000) / 100 : undefined
+            }
+            m.updatedAt = new Date().toLocaleString('zh-CN')
+          }
+          saveScripts()
+          console.log('[retro] 同步更新样本库', { count: matches.length, ids: matches.map(m => m.id) })
+        }
         return
       }
 
@@ -3456,32 +3501,50 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
         socialResonance: s.socialResonance ?? base.socialResonance,
         polish: s.polish ?? base.polish
       }
-      const script: ScriptRecord = {
-        id: generateId('script'),
-        content: entry.content,
-        platform: entry.platform,
-        link: '',
-        actualLikes,
-        views: actualViews,
-        likeRate: actualViews && actualViews > 0 ? Math.round(actualLikes / actualViews * 10000) / 100 : undefined,
-        tags: [],
-        scores: robustScores,
-        compositeScore: entry.result.compositeScore ?? 0,
-        modelVersion: getCurrentModelId(),
-        analysis: entry.result.dimensionAnalysis?.join('；') || `复盘录入 | 预估${entry.result.minLikes}-${entry.result.maxLikes} | 实际${actualLikes.toLocaleString()}赞${actualViews ? ' ' + actualViews.toLocaleString() + '播' : ''} | 偏差${entry.deviation}%`,
-        createdAt: now,
-        updatedAt: now
+      const compositeScore = entry.result.compositeScore ?? 0
+
+      function buildSample(platform: Platform, likes: number, views?: number): ScriptRecord {
+        return {
+          id: generateId('script'),
+          content: entry!.content,
+          platform,
+          link: '',
+          actualLikes: likes,
+          views,
+          likeRate: views && views > 0 ? Math.round(likes / views * 10000) / 100 : undefined,
+          tags: [],
+          scores: robustScores,
+          compositeScore,
+          modelVersion: getCurrentModelId(),
+          analysis: entry!.result.dimensionAnalysis?.join('；') || `复盘录入 | 预估${entry!.result.minLikes}-${entry!.result.maxLikes} | 实际${likes.toLocaleString()}赞${views ? ' ' + views.toLocaleString() + '播' : ''}`,
+          createdAt: now,
+          updatedAt: now
+        }
       }
-      scriptRecords.value.unshift(script)
+
+      // 主平台样本
+      const mainScript = buildSample(entry.platform, actualLikes, actualViews)
+      scriptRecords.value.unshift(mainScript)
+      autoDecomposeScript(mainScript).catch(() => {})
+
+      // 额外平台样本（复用同一份评分，不再调用 AI）
+      let additionalCount = 0
+      if (additionalPlatforms && additionalPlatforms.length > 0) {
+        for (const ap of additionalPlatforms) {
+          const extraScript = buildSample(ap.platform, ap.likes, ap.views)
+          scriptRecords.value.unshift(extraScript)
+          autoDecomposeScript(extraScript).catch(() => {})
+          additionalCount++
+        }
+      }
+
       saveScripts()
-      console.log('[retro] 完成', { id: script.id, total: scriptRecords.value.length, scores: Object.keys(robustScores) })
+      console.log('[retro] 完成', { id: mainScript.id, total: scriptRecords.value.length, additionalPlatforms: additionalCount, scores: Object.keys(robustScores) })
 
       // 偏差过大时额外警告
       if (entry.deviation && Math.abs(entry.deviation) > 50) {
         const dir = entry.deviation > 0 ? '低估' : '高估'
       }
-      // 后台静默拆解（不阻塞）
-      autoDecomposeScript(script).catch(() => {})
       // 数据入库后异步刷新账号人格画像（不阻塞UI）
       setTimeout(() => {
         if (scriptRecords.value.filter(r => r.scores && r.compositeScore > 0).length >= 3) {
@@ -3873,7 +3936,7 @@ ${bestRefs ? '参考样本：\n' + bestRefs : ''}
     autoCalibrateEnabled, toggleAutoCalibrate,
     lastAnalysisResult, analyzeCorrelations, generateAIAnalysisReport,
     crossAuditResult, crossAuditWeightResult, crossModelAudit, crossAuditWeightUpgrade, scoringDisagreements, predictDisagreements,
-    rewriteComparison, generateContent, improveContent,
+    rewriteComparison, pendingGeneratedContent, generateContent, improveContent,
     exportJSON, downloadJSON, importJSON, resetToBuiltIn,
     // 数据驱动权重 & 账号人格画像
     accountPersonality, dimensionCorrelationHistory,

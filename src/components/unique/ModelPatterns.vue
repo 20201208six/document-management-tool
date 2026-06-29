@@ -17,8 +17,8 @@
               <div class="mp-section-title">✅ 高赞规律</div>
               <div class="mp-insight-list">
                 <div v-for="(p, i) in store.patternSummary.highLikePatterns" :key="'h' + i" class="mp-insight-item">
-                  <span class="mpii-dot">●</span>
-                  <span class="mpii-text" v-html="fmtText(p)"></span>
+                  <span class="mpii-num">{{ i + 1 }}</span>
+                  <span class="mpii-text" v-html="fmtText(stripBulletPrefix(p))"></span>
                 </div>
               </div>
             </div>
@@ -28,8 +28,8 @@
               <div class="mp-section-title warn">⚠️ 低赞通病</div>
               <div class="mp-insight-list">
                 <div v-for="(p, i) in store.patternSummary.lowLikePatterns" :key="'l' + i" class="mp-insight-item low">
-                  <span class="mpii-dot low">●</span>
-                  <span class="mpii-text" v-html="fmtText(p)"></span>
+                  <span class="mpii-num low">{{ i + 1 }}</span>
+                  <span class="mpii-text" v-html="fmtText(stripBulletPrefix(p))"></span>
                 </div>
               </div>
             </div>
@@ -38,8 +38,9 @@
             <div v-if="store.patternSummary.platformDifferences" class="mp-section">
               <div class="mp-section-title">📱 平台差异 & 权重洞察</div>
               <div class="mp-platform-cards">
-                <div v-for="(line, i) in splitLines(store.patternSummary.platformDifferences)" :key="'pd' + i" class="mppc-item">
-                  <span class="mppc-text" v-html="fmtText(line)"></span>
+                <div v-for="(line, i) in splitLines(store.patternSummary.platformDifferences)" :key="'pd' + i" class="mppc-item" :class="'mppc-' + platformColorClass(line)">
+                  <span class="mppc-label">{{ extractPlatformName(line) }}</span>
+                  <span class="mppc-text" v-html="fmtText(extractPlatformContent(line))"></span>
                 </div>
               </div>
             </div>
@@ -47,22 +48,24 @@
             <!-- 关键词推荐 -->
             <div v-if="store.patternSummary.keywordInsights" class="mp-section">
               <div class="mp-section-title">🔑 关键词推荐</div>
-              <div class="mp-keyword-tags">
+              <div class="mp-kw-grouped">
                 <template v-for="(kw, i) in extractKeywords(store.patternSummary.keywordInsights)" :key="'kw' + i">
-                  <span v-if="kw.type === 'cat'" class="mpkt-cat">{{ kw.text }}</span>
-                  <span v-else-if="kw.type === 'intro'" class="mpkt-intro">{{ kw.text }}</span>
-                  <span v-else class="mpkt-tag">{{ kw.text }}</span>
+                  <span v-if="kw.type === 'cat'" class="mpkw-cat-label">{{ kw.text }}</span>
+                  <span v-else-if="kw.type === 'tag'" class="mpkw-tag">{{ kw.text }}</span>
+                  <span v-else class="mpkw-intro">{{ kw.text }}</span>
                 </template>
               </div>
             </div>
 
             <!-- 统计摘要 -->
             <div class="mp-stats-bar">
-              <span class="mpsb-item">📊 {{ store.patternSummary.totalCount }} 条样本</span>
-              <span class="mpsb-item">📈 平均 {{ fmtNum(store.patternSummary.overallAvgLikes) }} 赞</span>
+              <div class="mpsb-left">
+                <span class="mpsb-item">📊 <b>{{ store.patternSummary.totalCount }}</b> 条样本</span>
+                <span class="mpsb-divider"></span>
+                <span class="mpsb-item">📈 平均 <b>{{ fmtNum(store.patternSummary.overallAvgLikes) }}</b> 赞</span>
+              </div>
+              <span class="mp-time">{{ store.patternSummary.generatedAt }}</span>
             </div>
-
-            <div class="mp-time">生成时间: {{ store.patternSummary.generatedAt }}</div>
           </div>
 
           <div v-else-if="store.isSummarizing" class="mp-loading">AI 正在归纳规律中...</div>
@@ -173,23 +176,27 @@
 
         <!-- 维度列表 -->
         <div class="mpd-list">
-          <div v-for="d in SCORING_DIMENSION_CONFIG" :key="d.key" class="mpd-item">
-            <div class="mpd-left">
-              <div class="mpd-dot" :style="{ background: d.color }"></div>
-              <div class="mpd-info">
+          <div v-for="d in SCORING_DIMENSION_CONFIG" :key="d.key" class="mpd-item" :style="{ borderLeftColor: d.color }">
+            <div class="mpd-body">
+              <div class="mpd-head">
                 <span class="mpd-name">{{ d.label }}</span>
                 <span class="mpd-desc-text">{{ d.desc }}</span>
               </div>
-            </div>
-            <span v-if="!editingWeights" class="mpd-weight">{{ dimWeight(d.key) }}%</span>
-            <div v-else class="mpd-weight-edit">
-              <button class="wt-btn wt-minus" @click="editWeights[d.key] > 0 && (editWeights[d.key]--)">-</button>
-              <input
-                class="wt-input" type="number" min="0" max="100" step="1"
-                v-model.number="editWeights[d.key]"
-              />
-              <span class="wt-pct">%</span>
-              <button class="wt-btn wt-plus" @click="editWeights[d.key] < 100 && (editWeights[d.key]++)">+</button>
+              <div class="mpd-bar-row">
+                <div class="mpd-bar-track">
+                  <div class="mpd-bar-fill" :style="{ width: dimWeight(d.key) + '%', background: d.color }"></div>
+                </div>
+                <span v-if="!editingWeights" class="mpd-weight">{{ dimWeight(d.key) }}%</span>
+                <div v-else class="mpd-weight-edit">
+                  <button class="wt-btn wt-minus" @click="editWeights[d.key] > 0 && (editWeights[d.key]--)">-</button>
+                  <input
+                    class="wt-input" type="number" min="0" max="100" step="1"
+                    v-model.number="editWeights[d.key]"
+                  />
+                  <span class="wt-pct">%</span>
+                  <button class="wt-btn wt-plus" @click="editWeights[d.key] < 100 && (editWeights[d.key]++)">+</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -575,6 +582,33 @@ function fmtText(text: string): string {
     .replace(/\[(.+?)\]\((.+?)\)/g, '<em>$1</em>')
 }
 
+function stripBulletPrefix(text: string): string {
+  if (!text) return ''
+  return text.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*[-•]\s*/, '').trim()
+}
+
+function platformColorClass(line: string): string {
+  const l = line.toLowerCase()
+  if (l.includes('抖音')) return 'douyin'
+  if (l.includes('视频号')) return 'shipin'
+  if (l.includes('小红书')) return 'redbook'
+  if (l.includes('快手')) return 'kuaishou'
+  return 'default'
+}
+
+function extractPlatformName(line: string): string {
+  if (!line) return ''
+  const m = line.match(/^\**(.+?)[：:]\s*(.+)$/s)
+  if (m && m[1]) return m[1].replace(/\*/g, '').trim()
+  return ''
+}
+
+function extractPlatformContent(line: string): string {
+  if (!line) return ''
+  const m = line.match(/^\**(.+?)[：:]\s*(.+)$/s)
+  return m ? m[2].trim() : line.trim()
+}
+
 function splitLines(text: string): string[] {
   if (!text) return []
   return text.split(/\n+/).map(s => s.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
@@ -718,38 +752,79 @@ function splitChineseKeywords(text: string): string[] {
 .mp-badge.generated { background: #e6f7e6; color: #0f7b3a; }
 
 /* 归纳区域 */
-.mp-section { margin-bottom: 14px; }
+.mp-section { margin-bottom: 16px; }
 .mp-section:last-child { margin-bottom: 0; }
-.mp-section-title { font-size: 13px; font-weight: 600; color: #0b1a30; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #eef2f6; }
-.mp-section-title.warn { color: #e6a23c; border-color: #fdf6ec; }
+.mp-section-title {
+  font-size: 13px; font-weight: 600; color: #0b1a30; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 2px solid #eef2f6;
+}
+.mp-section-title.warn { color: #d97706; border-color: #fef3c7; }
 
-/* 规律条目 */
-.mp-insight-list { display: flex; flex-direction: column; gap: 6px; }
-.mp-insight-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: #f8fafe; border-radius: 8px; border: 1px solid #e8ecf6; }
-.mp-insight-item.low { background: #fef9f0; border-color: #fdf0d9; }
-.mpii-dot { color: #52c41a; font-size: 10px; margin-top: 3px; flex-shrink: 0; }
-.mpii-dot.low { color: #e6a23c; }
-.mpii-text { font-size: 12px; line-height: 1.7; color: #3d5068; }
-.mpii-text :deep(b) { color: #0b1a30; }
+/* 规律条目 - 编号卡片 */
+.mp-insight-list { display: flex; flex-direction: column; gap: 8px; }
+.mp-insight-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; background: #f0fdf4; border-radius: 10px; border: 1px solid #bbf7d0;
+}
+.mp-insight-item.low { background: #fff7ed; border-color: #fed7aa; }
+.mpii-num {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+  background: #22c55e;
+}
+.mpii-num.low { background: #f59e0b; }
+.mpii-text { font-size: 12px; line-height: 1.7; color: #374151; flex: 1; }
+.mpii-text :deep(b) { color: #111827; }
 
-/* 平台差异 */
-.mp-platform-cards { display: flex; flex-direction: column; gap: 6px; }
-.mppc-item { padding: 8px 10px; background: #f8fafe; border-radius: 8px; border: 1px solid #e8ecf6; }
-.mppc-text { font-size: 12px; line-height: 1.7; color: #3d5068; }
-.mppc-text :deep(b) { color: #0b1a30; }
+/* 平台差异 - 颜色编码卡片 */
+.mp-platform-cards { display: flex; flex-direction: column; gap: 8px; }
+.mppc-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; border-radius: 10px; background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+}
+.mppc-item.mppc-douyin { background: #eff6ff; border-left-color: #3b82f6; }
+.mppc-item.mppc-shipin { background: #f0fdf4; border-left-color: #22c55e; }
+.mppc-item.mppc-redbook { background: #fef2f2; border-left-color: #ef4444; }
+.mppc-item.mppc-kuaishou { background: #fff7ed; border-left-color: #f97316; }
+.mppc-label {
+  font-size: 12px; font-weight: 700; white-space: nowrap;
+  padding: 2px 8px; border-radius: 5px; background: rgba(0,0,0,0.04);
+}
+.mppc-douyin .mppc-label { color: #2563eb; background: #dbeafe; }
+.mppc-shipin .mppc-label { color: #16a34a; background: #dcfce7; }
+.mppc-redbook .mppc-label { color: #dc2626; background: #fee2e2; }
+.mppc-kuaishou .mppc-label { color: #ea580c; background: #ffedd5; }
+.mppc-text { font-size: 12px; line-height: 1.7; color: #475569; flex: 1; }
+.mppc-text :deep(b) { color: #1e293b; }
 
-/* 关键词标签 */
-.mp-keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.mpkt-tag { font-size: 11px; padding: 3px 10px; background: #eef3ff; color: #1a4cff; border-radius: 12px; font-weight: 500; }
-.mpkt-cat { font-size: 11px; font-weight: 700; color: #4d5a6e; padding: 2px 0; margin-right: 4px; width: 100%; margin-top: 6px; }
-.mpkt-cat:first-child { margin-top: 0; }
-.mpkt-intro { font-size: 11px; color: #8895a7; width: 100%; margin-top: 4px; }
-.mpkt-text { font-size: 12px; color: #3d5068; line-height: 1.7; }
-.mpkt-text :deep(b) { color: #0b1a30; }
+/* 关键词推荐 - 分组标签 */
+.mp-kw-grouped { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mpkw-cat-label {
+  width: 100%; font-size: 12px; font-weight: 700; color: #374151;
+  margin-top: 10px; padding-bottom: 2px;
+}
+.mpkw-cat-label:first-child { margin-top: 0; }
+.mpkw-tag {
+  font-size: 11px; padding: 4px 10px; background: #eef3ff; color: #4338ca;
+  border-radius: 14px; font-weight: 500; transition: background .15s;
+}
+.mpkw-tag:hover { background: #e0e7ff; }
+.mpkw-intro {
+  width: 100%; font-size: 11px; color: #94a3b8; line-height: 1.6;
+}
 
 /* 统计栏 */
-.mp-stats-bar { display: flex; gap: 16px; margin-top: 10px; padding: 8px 10px; background: #f5f7fb; border-radius: 8px; }
-.mpsb-item { font-size: 12px; color: #4d5a6e; }
+.mp-stats-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 16px; padding: 10px 14px; background: #f8fafc; border-radius: 10px;
+}
+.mpsb-left { display: flex; align-items: center; gap: 10px; }
+.mpsb-item { font-size: 12px; color: #64748b; }
+.mpsb-item b { color: #1e293b; font-weight: 700; }
+.mpsb-divider { width: 1px; height: 14px; background: #cbd5e1; }
+.mp-time { font-size: 11px; color: #94a3b8; }
 
 /* 判断标准编辑 */
 .mpc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -772,7 +847,6 @@ function splitChineseKeywords(text: string): string[] {
 
 .mp-card-full { grid-column: 1 / -1; }
 .mp-text { font-size: 12px; color: #3d5068; line-height: 1.6; margin: 0; white-space: pre-wrap; }
-.mp-time { font-size: 11px; color: #b0bfd0; text-align: center; margin-top: 10px; }
 
 .mp-loading, .mp-null { padding: 20px; text-align: center; font-size: 13px; color: #8a9bb0; }
 
@@ -782,15 +856,28 @@ function splitChineseKeywords(text: string): string[] {
 .mp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 评分维度列表 */
-.mpd-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
-.mpd-item { display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; border-radius: 8px; transition: background 0.12s; }
-.mpd-item:hover { background: #fafbfc; }
-.mpd-left { display: flex; align-items: center; gap: 10px; }
-.mpd-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.mpd-info { display: flex; flex-direction: column; gap: 1px; }
-.mpd-name { font-size: 13px; font-weight: 600; color: #303133; }
-.mpd-desc-text { font-size: 11px; color: #909399; }
-.mpd-weight { font-size: 13px; font-weight: 700; color: #1a4cff; background: #eef3ff; padding: 2px 10px; border-radius: 10px; }
+.mpd-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.mpd-item {
+  display: flex; align-items: stretch; padding: 0;
+  border-left: 4px solid transparent; border-radius: 10px;
+  background: #fafbfc; transition: background .12s;
+  overflow: hidden;
+}
+.mpd-item:hover { background: #f4f6f9; }
+.mpd-body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.mpd-head { display: flex; align-items: baseline; gap: 10px; }
+.mpd-name { font-size: 13px; font-weight: 700; color: #1a1a2e; white-space: nowrap; min-width: 64px; }
+.mpd-desc-text { font-size: 11px; color: #6b7280; line-height: 1.4; }
+.mpd-bar-row { display: flex; align-items: center; gap: 10px; }
+.mpd-bar-track {
+  flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px;
+  overflow: hidden;
+}
+.mpd-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width .3s ease;
+}
+.mpd-weight { font-size: 13px; font-weight: 700; color: #1a4cff; min-width: 36px; text-align: right; }
 
 /* 权重编辑 */
 .mpd-weight-edit { display: flex; align-items: center; gap: 4px; }

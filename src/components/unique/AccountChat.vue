@@ -81,16 +81,16 @@
       </button>
     </div>
 
-    <!-- 输入区 -->
-    <div class="ac-input-area">
-      <div class="ac-input-row">
+    <!-- 工具栏 -->
+    <div class="ac-toolbar">
+      <div class="ac-toolbar-left">
         <button
           class="ac-toggle-btn"
           :class="{ active: deepThinkingEnabled }"
           @click="deepThinkingEnabled = !deepThinkingEnabled"
         >
           <span class="actb-icon">🧠</span>
-          <span class="actb-label">{{ deepThinkingEnabled ? '深度' : '' }}</span>
+          <span class="actb-label">深度思考</span>
         </button>
         <button
           class="ac-toggle-btn"
@@ -98,8 +98,14 @@
           @click="store.toggleDecomposeForChat()"
         >
           <span class="actb-icon">📐</span>
-          <span class="actb-label">{{ store.decomposeEnabledForChat ? '拆解' : '' }}</span>
+          <span class="actb-label">内容拆解</span>
         </button>
+      </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="ac-input-area">
+      <div class="ac-input-row">
         <textarea
           v-model="inputText"
           class="ac-textarea"
@@ -489,8 +495,15 @@ function scrollBottom() {
 .ac-hint-bar button:hover:not(:disabled) { background: #3a68ff; }
 .ac-hint-bar button:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ===== 工具栏 ===== */
+.ac-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 20px; border-top: 1px solid #eef2f6;
+}
+.ac-toolbar-left { display: flex; align-items: center; gap: 6px; flex: 1; }
+
 /* ===== 输入区 ===== */
-.ac-input-area { padding: 14px 20px 18px; }
+.ac-input-area { padding: 10px 20px 18px; }
 .ac-input-row {
   display: flex; align-items: flex-end; gap: 8px;
   background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px;

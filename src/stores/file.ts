@@ -6,8 +6,8 @@ interface Tab {
   name: string
   path: string
   type: string
-  content: string
-  savedContent: string
+  content: string | any[]
+  savedContent: string | any[]
 }
 
 interface FolderPath {
@@ -123,19 +123,22 @@ export const useFileStore = defineStore('file', () => {
   function isDirty(path: string): boolean {
     const tab = openTabs.value.find(t => t.path === path)
     if (!tab) return false
-    const strip = (h: string) => {
-      const d = document.createElement('div')
-      d.innerHTML = h
-      return (d.textContent || '').trim()
+    const normalize = (v: string | any[]) => {
+      if (typeof v === 'string') {
+        const d = document.createElement('div')
+        d.innerHTML = v
+        return (d.textContent || '').trim()
+      }
+      return JSON.stringify(v)
     }
-    return strip(tab.content) !== strip(tab.savedContent)
+    return normalize(tab.content) !== normalize(tab.savedContent)
   }
 
   function isActiveDirty(): boolean {
     return isDirty(activeTabPath.value)
   }
 
-  function updateTabContent(path: string, content: string) {
+  function updateTabContent(path: string, content: string | any[]) {
     const tab = openTabs.value.find(t => t.path === path)
     if (tab) tab.content = content
   }
@@ -306,7 +309,7 @@ export const useFileStore = defineStore('file', () => {
     let result
     if (ext === 'docx') {
       result = await window.electronAPI.saveDocxFile(selectedFile.value.path, content)
-    } else if (ext === 'xlsx') {
+    } else if (ext === 'xlsx' || ext === 'xls') {
       result = await window.electronAPI.saveXlsxFile(selectedFile.value.path, content)
     } else {
       result = await window.electronAPI.saveTextFile(selectedFile.value.path, content)

@@ -278,14 +278,23 @@ async function handleSubmit() {
     } else {
       const targets = platformList.filter(k => platformEntries[k].enabled)
       if (targets.length === 0) { ElMessage.warning('请至少选择一个平台'); return }
-      for (const p of targets) {
+
+      // 第一个平台正常走 AI 评分
+      const p0 = targets[0]
+      const pv0 = platformEntries[p0].views > 0 ? platformEntries[p0].views : undefined
+      const first = await store.addScript({ platform: p0, content: form.content.trim(), link: form.link.trim(), actualLikes: platformEntries[p0].likes || 0, views: pv0, tags })
+
+      // 后续平台复用同一份 AI 评分，不再重复调用 AI
+      const precomputed = { scores: first.scores, compositeScore: first.compositeScore, analysis: first.analysis, modelVersion: first.modelVersion }
+      for (let i = 1; i < targets.length; i++) {
+        const p = targets[i]
         const pv = platformEntries[p].views > 0 ? platformEntries[p].views : undefined
-        await store.addScript({ platform: p, content: form.content.trim(), link: form.link.trim(), actualLikes: platformEntries[p].likes || 0, views: pv, tags })
+        await store.addScript({ platform: p, content: form.content.trim(), link: form.link.trim(), actualLikes: platformEntries[p].likes || 0, views: pv, tags }, precomputed)
       }
     }
     form.content = ''; form.link = ''; form.actualLikes = 1000; form.views = 0; form.tagsStr = ''
     for (const k of platformList) platformEntries[k] = { enabled: false, likes: 0, views: 0 }
-    submitMsg.value = multiPlatform.value ? `${activePlatformCount.value} 个平台样本已保存，AI 评分中...` : '样本保存成功，AI 正在后台评分'
+    submitMsg.value = multiPlatform.value ? `${activePlatformCount.value} 个平台样本已保存（AI 仅评分一次）` : '样本保存成功，AI 正在后台评分'
     submitOk.value = true
   } catch (e: any) {
     submitMsg.value = '保存失败: ' + (e.message || '未知错误')

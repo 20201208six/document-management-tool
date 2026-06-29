@@ -22,7 +22,7 @@
 
         <textarea
           v-model="predContent"
-          placeholder="在此粘贴口播文稿全文…&#10;&#10;AI 将逐维度分析困惑命中、被理解感、解释力密度等 7 项指标，&#10;并匹配样本库中最相似的文稿进行点赞量预估"
+          placeholder="在此粘贴口播文稿全文…&#10;&#10;AI 将逐维度分析开场钩子、沉浸共鸣、干货密度等 7 项指标，&#10;并匹配样本库中最相似的文稿进行点赞量预估"
           rows="7"
         ></textarea>
 
@@ -52,237 +52,17 @@
         </div>
       </div>
 
-      <!-- 结果概览 -->
-      <div class="nsp-card nsp-result-card">
-        <div class="nsp-card-title">📊 预测结果</div>
-        <div class="nspr-overview">
-          <div class="nspro-item nspro-likes">
-            <span class="nspro-label">预估点赞区间</span>
-            <span class="nspro-value">{{ fmt(store.lastPrediction.minLikes) }} ~ {{ fmt(store.lastPrediction.maxLikes) }}</span>
-          </div>
-          <div class="nspro-item nspro-score">
-            <span class="nspro-label">综合模型分</span>
-            <span class="nspro-value">{{ store.lastPrediction.compositeScore }}</span>
-            <span class="nspro-tag" :class="scoreTag(store.lastPrediction.compositeScore)">{{ scoreTagText(store.lastPrediction.compositeScore) }}</span>
-          </div>
-          <div class="nspro-item">
-            <span class="nspro-label">最弱维度</span>
-            <span class="nspro-value">{{ weakestDim }}</span>
-          </div>
-          <div class="nspro-item" v-if="store.lastPrediction.confidence">
-            <span class="nspro-label">置信度</span>
-            <span class="nspro-value confidence">{{ store.lastPrediction.confidence }}</span>
-          </div>
-        </div>
-        <div class="nspr-summary" v-if="store.lastPrediction.suggestions.length">
-          <strong>💡 核心建议：</strong>{{ store.lastPrediction.suggestions[0] }}
-        </div>
-      </div>
+      <!-- 统一数据仪表盘 -->
+      <PredictionDashboard
+        :prediction="store.lastPrediction"
+        :platform="predPlatform"
+        :reasons="store.lastPrediction.reasons.map(r => cleanBullet(r))"
+        :ref-samples="store.lastPrediction.referencedSamples"
+        :suggestions="store.lastPrediction.suggestions.map(s => cleanBullet(s))"
+        :counterfactuals="(store.lastPrediction.counterfactuals || []).map(c => cleanBullet(c))"
+        :account-advice-items="accountAdviceItems"
+      />
 
-      <!-- 概率分布 -->
-      <div class="nsp-card" v-if="store.lastPrediction.bucketProbabilities && store.lastPrediction.bucketProbabilities.length">
-        <div class="nsp-card-title">🎲 点赞量概率分布 <span class="nsp-subtitle">（各桶概率之和 ≈ 100%）</span></div>
-        <div class="nsp-prob-chart">
-          <div v-for="bp in store.lastPrediction.bucketProbabilities" :key="bp.bucket" class="nsp-prob-bar-wrap">
-            <div class="nsp-prob-label">{{ bp.label }}</div>
-            <div class="nsp-prob-track">
-              <div
-                class="nsp-prob-fill"
-                :class="{ headline: bp.isHeadline }"
-                :style="{ width: bp.probability + '%' }"
-              ></div>
-            </div>
-            <div class="nsp-prob-pct" :class="{ headline: bp.isHeadline }">{{ bp.probability }}%</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 7维评分 -->
-      <div class="nsp-card">
-        <div class="nsp-card-title">🎯 7 维评分详情</div>
-        <div class="nsp-scores-grid">
-          <div v-for="d in SCORING_DIMENSION_CONFIG" :key="d.key" class="nsps-item">
-            <div class="nsps-header">
-              <span class="nsps-dot" :style="{ background: d.color }"></span>
-              <span class="nsps-label">{{ d.label }}</span>
-              <span class="nsps-val" :style="{ color: d.color }">{{ store.lastPrediction.scores[d.key] }}</span>
-              <span class="nsps-disagree" v-if="store.predictDisagreements.some(dd => dd.key === d.key)" title="AI 3轮评分不一致">⚠</span>
-            </div>
-            <div class="nsps-bar-wrap">
-              <div class="nsps-bar" :style="{ width: store.lastPrediction.scores[d.key] + '%', background: d.color }"></div>
-            </div>
-          </div>
-        </div>
-        <!-- 评分分歧提示 -->
-        <div v-if="store.predictDisagreements.length" class="nsps-disagree-box">
-          <div class="nsps-disagree-title">⚠ AI 评分离散警告</div>
-          <div class="nsps-disagree-item" v-for="dd in store.predictDisagreements" :key="dd.key">
-            <span class="nsps-disagree-dim">{{ dd.label }}</span>
-            <span class="nsps-disagree-vals">
-              3轮分值：<b>{{ dd.runs[0] }}</b> / <b>{{ dd.runs[1] }}</b> / <b>{{ dd.runs[2] }}</b>（极差 {{ dd.range }}）
-              <span class="nsps-disagree-hint">→ 采用中位数</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 账号专属优化建议 -->
-      <div class="nsp-card nsp-account-advice" v-if="store.accountPersonality">
-        <div class="nsp-card-title">🔬 账号专属优化建议</div>
-        <div class="nsaa-subtitle">
-          基于 {{ store.accountPersonality.sampleCount }} 条历史样本分析 · 点赞驱动维度排名
-          <span v-if="store.accountPersonality.personalityShifted" class="nsaa-shifted-tag">画像已更新</span>
-        </div>
-        <div class="nsaa-items">
-          <div
-            v-for="item in accountAdviceItems"
-            :key="item.key"
-            class="nsaa-item"
-            :class="{ 'nsaa-warn': item.isWeak }"
-          >
-            <div class="nsaai-header">
-              <span class="nsaai-dot" :style="{ background: item.color }"></span>
-              <span class="nsaai-dim">{{ item.label }}</span>
-              <span class="nsaai-rank">#{{ item.rank }}</span>
-              <span class="nsaai-correlation">点赞关联度 {{ item.correlationDisplay }}</span>
-            </div>
-            <div class="nsaai-body">
-              <div class="nsaai-score-row">
-                <span class="nsaai-score-label">本稿该维度评分</span>
-                <span class="nsaai-score-val" :class="{ low: item.isWeak }">{{ item.currentScore }} 分</span>
-                <span class="nsaai-grade" :class="{ warn: item.isWeak }">{{ item.grade }}</span>
-              </div>
-              <div class="nsaai-advice" :class="{ warn: item.isWeak }">
-                {{ item.advice }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 预测依据 & 参考样本 双栏 -->
-      <div class="nsp-two-col">
-        <div class="nsp-card" v-if="store.lastPrediction.reasons.length">
-          <div class="nsp-card-title">🔍 预测依据</div>
-          <ul class="nsp-list">
-            <li v-for="(r, i) in store.lastPrediction.reasons" :key="i">{{ r }}</li>
-          </ul>
-        </div>
-
-        <div class="nsp-card" v-if="store.lastPrediction.referencedSamples.length">
-          <div class="nsp-card-title">📋 主要参考样本 <span class="nsp-subtitle">（仅评分匹配，非点赞量对标）</span></div>
-          <div class="nsp-ref-list" v-for="s in store.lastPrediction.referencedSamples" :key="s.scriptId">
-            <div class="nspr-card">
-              <div class="nsprc-platform">{{ PLATFORM_CONFIG[s.platform]?.icon }} {{ s.platform }}</div>
-              <div class="nsprc-snippet">{{ s.snippet }}</div>
-              <div class="nsprc-meta">
-                <span class="nsprc-score">{{ s.compositeScore }} 分</span>
-              </div>
-              <div class="nsprc-reason">{{ s.similarityReason }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 反事实分析 -->
-      <div class="nsp-card" v-if="store.lastPrediction.counterfactuals && store.lastPrediction.counterfactuals.length">
-        <div class="nsp-card-title">🔄 反事实分析</div>
-        <ul class="nsp-list nsp-counter">
-          <li v-for="(c, i) in store.lastPrediction.counterfactuals" :key="i">{{ c }}</li>
-        </ul>
-      </div>
-
-      <!-- 改进建议 -->
-      <div class="nsp-card" v-if="store.lastPrediction.suggestions.length > 1 || (store.lastPrediction.suggestions.length === 1 && !store.lastPrediction.counterfactuals)">
-        <div class="nsp-card-title">✏️ 优化建议</div>
-        <ul class="nsp-list nsp-suggestions">
-          <li v-for="(s, i) in store.lastPrediction.suggestions" :key="i">{{ s }}</li>
-        </ul>
-      </div>
-
-      <!-- ===== 5. 深度工具 + AI复盘 ===== -->
-      <div class="nsp-card">
-        <div class="nsp-card-title">🔧 深度工具</div>
-        <div class="nsp-tools">
-          <el-button type="warning" @click="handleCrossAudit" :loading="auditLoading" :disabled="!store.lastPrediction">
-            🔬 独立校验
-          </el-button>
-          <el-button type="success" @click="handleImprove" :loading="improveLoading" :disabled="!store.lastPrediction">
-            ✨ 灵感改进
-          </el-button>
-        </div>
-
-        <!-- 校验结果 -->
-        <div v-if="store.crossAuditResult" class="nsp-audit-result">
-          <div class="nspar-header">
-            <span>双模型校验</span>
-            <span class="nspar-cred" :class="store.crossAuditResult.credibility">
-              {{ store.crossAuditResult.credibility === 'high' ? '✅ 高可信' : store.crossAuditResult.credibility === 'medium' ? '⚠️ 基本可信' : '❌ 差异大' }}
-            </span>
-          </div>
-          <div class="nspar-note">{{ store.crossAuditResult.note }}</div>
-          <div class="nspar-diffs" v-if="store.crossAuditResult.dimensionDiffs.filter(d=>d.flag!=='ok').length>0">
-            <div v-for="d in store.crossAuditResult.dimensionDiffs.filter(x=>x.flag!=='ok')" :key="d.key" class="nspard-item">
-              <span class="nspard-label">{{ d.label }}</span>
-              <span>{{ d.primary }}</span>
-              <span class="nspard-arrow">vs</span>
-              <span>{{ d.audit }}</span>
-              <span class="nspard-flag" :class="d.flag">{{ d.flag === 'alert' ? '差异大' : '差异中' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 改写对比 -->
-        <div v-if="store.rewriteComparison" class="nsp-rewrite-compare">
-          <div class="nsp-title" style="margin-bottom:10px;font-weight:600">📝 原稿 vs 改进稿</div>
-          <div class="nsprc-grid">
-            <div class="nsprc-col">
-              <div class="nsprcc-label">原稿</div>
-              <div class="nsprcc-content">{{ store.rewriteComparison.originalContent.slice(0, 300) }}...</div>
-              <div class="nsprcc-scores">
-                <div v-for="d in SCORING_DIMENSION_CONFIG" :key="'o-'+d.key" class="nsprcs-row">
-                  <span class="nsprcs-dim">{{ d.label }}</span>
-                  <span class="nsprcs-val">{{ store.rewriteComparison.originalScores[d.key] }}</span>
-                </div>
-              </div>
-              <div class="nsprcc-pred">预估 {{ fmt(store.rewriteComparison.originalPrediction.minLikes) }}~{{ fmt(store.rewriteComparison.originalPrediction.maxLikes) }}</div>
-            </div>
-            <div class="nsprc-col improved">
-              <div class="nsprcc-label">改进稿</div>
-              <div class="nsprcc-content">{{ store.rewriteComparison.improvedContent.slice(0, 300) }}...</div>
-              <div class="nsprcc-scores">
-                <div v-for="d in SCORING_DIMENSION_CONFIG" :key="'i-'+d.key" class="nsprcs-row">
-                  <span class="nsprcs-dim">{{ d.label }}</span>
-                  <span class="nsprcs-val" :class="{ better: store.rewriteComparison.improvedScores[d.key] > store.rewriteComparison.originalScores[d.key] }">
-                    {{ store.rewriteComparison.improvedScores[d.key] }}
-                    <span v-if="store.rewriteComparison.improvedScores[d.key] !== store.rewriteComparison.originalScores[d.key]" class="nsprcs-delta">
-                      {{ store.rewriteComparison.improvedScores[d.key] > store.rewriteComparison.originalScores[d.key] ? '+' : '' }}{{ store.rewriteComparison.improvedScores[d.key] - store.rewriteComparison.originalScores[d.key] }}
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div class="nsprcc-pred improved">预估 {{ fmt(store.rewriteComparison.improvedPrediction.minLikes) }}~{{ fmt(store.rewriteComparison.improvedPrediction.maxLikes) }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- AI 生成文案 -->
-      <div class="nsp-card">
-        <div class="nsp-card-title">🤖 AI 生成文案</div>
-        <div class="nsp-generate">
-          <el-input v-model="genTopic" placeholder="输入话题（如：职场内卷怎么办）" style="margin-bottom:8px" />
-          <el-input-number v-model="genTargetLikes" :min="0" :step="1000" placeholder="目标点赞量（选填）" style="width:100%;margin-bottom:8px" />
-          <el-button type="primary" @click="handleGenerate" :loading="genLoading" :disabled="!genTopic.trim()">
-            {{ genLoading ? 'AI 创作中...' : '🎨 生成文案' }}
-          </el-button>
-          <div v-if="generatedContent" class="nsp-gen-result">
-            <div class="nsp-title" style="margin-bottom:6px;font-weight:600">生成结果</div>
-            <div class="nsp-gen-text">{{ generatedContent }}</div>
-            <el-button size="small" type="success" @click="useGenerated" style="margin-top:8px">📥 使用此文案进行预测</el-button>
-          </div>
-        </div>
-      </div>
     </template>
 
     <!-- 加载中 -->
@@ -364,8 +144,73 @@
 
       </div><!-- /nsp-main -->
 
-      <!-- ===== 右栏：系统进化看板 + 预测历史 ===== -->
+      <!-- ===== 右栏：AI 写稿 + 系统进化看板 + 预测历史 ===== -->
       <div class="nsp-sidebar" v-if="store.evolutionMetrics || store.predictionHistory.length > 0">
+        <!-- AI 写稿 -->
+        <div class="nsp-side-gen">
+          <div class="nsp-sg-toggle" @click="showSideGen = !showSideGen">
+            <span class="nspsbt-toggle" :class="{ open: showSideGen }">▶</span>
+            <span class="nsp-sg-icon">🎨</span>
+            <span class="nsp-sg-title">AI 写稿</span>
+            <span class="nsp-sg-badge">免费</span>
+          </div>
+          <div v-if="showSideGen" class="nsp-sg-panel">
+            <div class="nsp-sg-field">
+              <label class="nsp-sg-label">话题输入</label>
+              <textarea
+                v-model="genTopic"
+                placeholder="输入你想写的口播话题…"
+                rows="2"
+                class="nsp-sg-input"
+              ></textarea>
+            </div>
+            <div class="nsp-sg-field-row">
+              <div class="nsp-sg-field nsp-sg-field-sm">
+                <label class="nsp-sg-label">目标平台</label>
+                <el-select v-model="genPlatform" size="small" class="nsp-sg-select">
+                  <el-option v-for="(c, k) in PLATFORM_CONFIG" :key="k" :label="c.icon + ' ' + c.label" :value="k" />
+                </el-select>
+              </div>
+              <div class="nsp-sg-field nsp-sg-field-sm">
+                <label class="nsp-sg-label">目标点赞</label>
+                <el-input-number v-model="genTargetLikes" :min="0" :step="1000" size="small" placeholder="不限" class="nsp-sg-likes" />
+              </div>
+            </div>
+            <button
+              class="nsp-sg-btn"
+              @click="handleGenerate"
+              :disabled="!genTopic.trim() || genLoading"
+            >
+              <span v-if="genLoading" class="nsp-sg-btn-spin"></span>
+              {{ genLoading ? 'AI 创作中…' : '🎨 生成口播文案' }}
+            </button>
+
+            <div v-if="genLoading" class="nsp-sg-loading">
+              <div class="nsp-sg-loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="nsp-sg-loading-text">AI 正在分析话题并创作中…</span>
+            </div>
+
+            <div v-if="generatedContent && !genLoading" class="nsp-sg-result">
+              <div class="nsp-sg-result-head">
+                <span class="nspsgrh-icon">✨</span>
+                <span class="nspsgrh-title">生成完成</span>
+                <span class="nspsgrh-length">{{ generatedContent.length }} 字</span>
+              </div>
+              <div class="nspsgr-text">{{ generatedContent }}</div>
+              <div class="nspsgr-actions">
+                <button class="nspsgr-use-btn" @click="useGenerated">
+                  <span>📥</span> 填入预测框
+                </button>
+                <button class="nspsgr-copy-btn" @click="copyGenerated">
+                  <span>📋</span> 复制全文
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 偏差趋势警告 -->
       <div class="nsp-deviation-warn-side" v-if="store.deviationTrend" :class="warnClass">
         <div class="nsdw-title-row" @click="showDeviationPanel = !showDeviationPanel">
@@ -538,8 +383,8 @@
 
     </div><!-- /nsp-layout -->
 
-    <!-- 复盘弹窗（保留原有手动录入功能） -->
-    <el-dialog v-model="showRetro" :title="isReRetro ? '🔄 更新数据（不重复入库）' : '📊 复盘录入'" width="420px" :close-on-click-modal="true">
+    <!-- 复盘弹窗 -->
+    <el-dialog v-model="showRetro" :title="isReRetro ? '🔄 更新数据（不重复入库）' : '📊 复盘录入'" width="460px" :close-on-click-modal="true">
       <div class="retro-body" v-if="retroEntry">
         <div class="retro-pred">
           <span class="retro-label">预测区间：</span>
@@ -548,14 +393,43 @@
         </div>
         <div class="retro-content-preview">{{ retroEntry.content.slice(0, 100) }}{{ retroEntry.content.length > 100 ? '...' : '' }}</div>
         <div v-if="isReRetro" class="retro-rero-hint">⚠️ 仅更新预测历史中的数据，不会重复存入样本库</div>
+
+        <!-- 主平台 -->
         <div class="retro-form">
-          <label class="retro-label">实际点赞量：</label>
+          <label class="retro-label">{{ PLATFORM_CONFIG[retroEntry.platform]?.icon }} {{ retroEntry.platform }} · 实际点赞量：</label>
           <el-input-number v-model="retroLikes" :min="0" :step="100" :max="99999999" style="width:100%;margin-top:6px" placeholder="输入发布后的真实点赞量" />
         </div>
         <div class="retro-form" style="margin-top:10px">
           <label class="retro-label">播放量（可选）：</label>
           <el-input-number v-model="retroViews" :min="0" :step="100" :max="999999999" style="width:100%;margin-top:6px" placeholder="内容实际播放观看次数" />
         </div>
+
+        <!-- 多平台开关 -->
+        <div class="retro-form" style="margin-top:14px" v-if="!isReRetro && otherPlatformsForRetro.length > 0">
+          <div class="retro-multi-toggle" @click="retroMultiPlatform = !retroMultiPlatform">
+            <span class="retro-multi-label">多平台发布</span>
+            <span class="retro-multi-hint">{{ retroMultiPlatform ? '已开启 · 可为各平台分别填写数据' : '开启后可为各平台分别填写点赞/播放量' }}</span>
+            <span class="retro-multi-switch" :class="{ on: retroMultiPlatform }"></span>
+          </div>
+        </div>
+
+        <!-- 额外平台输入 -->
+        <template v-if="retroMultiPlatform && !isReRetro">
+          <div class="retro-form" v-for="p in otherPlatformsForRetro" :key="p.key" style="margin-top:10px">
+            <div class="retro-extra-header">
+              <el-checkbox v-model="retroPlatformData[p.key].enabled">
+                {{ PLATFORM_CONFIG[p.key]?.icon }} {{ PLATFORM_CONFIG[p.key]?.label }}
+              </el-checkbox>
+            </div>
+            <template v-if="retroPlatformData[p.key].enabled">
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <el-input-number v-model="retroPlatformData[p.key].likes" :min="0" :max="99999999" :step="100" size="small" style="flex:1" placeholder="点赞量" />
+                <el-input-number v-model="retroPlatformData[p.key].views" :min="0" :max="999999999" :step="100" size="small" style="flex:1" placeholder="播放量（可选）" />
+              </div>
+            </template>
+          </div>
+        </template>
+
         <div class="retro-form" style="margin-top:10px">
           <label class="retro-label">复盘备注（可选）：</label>
           <el-input v-model="retroNote" placeholder="如：发布后被限流、上了热门…" style="margin-top:6px" />
@@ -570,11 +444,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUniqueModeStore, PLATFORM_CONFIG, SCORING_DIMENSION_CONFIG, type Platform, type PredictionLogEntry } from '@/stores/uniqueMode'
+import PredictionDashboard from './PredictionDashboard.vue'
 
 const store = useUniqueModeStore()
+
+/** 去掉文本开头的列表标记符号 (- 1. 等) */
+function cleanBullet(text: string): string {
+  return text.replace(/^[\s]*[-*]*\s*\d*[\.\、\)]*\s*/, '')
+}
 
 /** 权重变更日志维度中文标签 */
 function dimLabel(key: string): string {
@@ -632,13 +512,13 @@ const accountAdviceItems = computed(() => {
 
 function getDimensionAdvice(key: string): string {
   const map: Record<string, string> = {
-    hook: '开头直击受众当前最隐秘的困惑，用"你怎么知道我在想这个"式的提问抓住注意力',
-    empathy: '不仅说出受众心里的感受，更要帮他们理清情绪的来龙去脉，产生被解读的深层满足',
-    density: '持续提供新的理解框架，每个段落都让受众对问题的认知更进一层',
-    structure: '构建「困惑→被命名→被解释→看到希望」的完整情绪路径',
-    originality: '用你独有的解读角度和案例组合，让受众感到"只有你能讲出这个"',
-    socialResonance: '精准命中某一人生阶段的集体隐痛，让受众产生"终于有人说出来了"的转发冲动',
-    polish: '用引经据典/案例佐证建立可信度，每个论断都让受众感到可靠、有根据'
+    hook: '前3秒直击痛点，用"你怎么知道我在想这个"式的钩子抓住注意力',
+    empathy: '不仅说出感受，更帮受众理清情绪的来龙去脉，让他们觉得"这说的就是我"',
+    density: '持续提供新知，每段都给受众的理解框架加一层，拒绝注水',
+    structure: '构建「被戳中→被解读→被点醒」的完整节奏弧线',
+    originality: '用只有你能讲的解读角度和案例组合，让受众觉得"换个号就没这个味儿"',
+    socialResonance: '精准命中群体的集体痛点，让受众产生"必须转给谁看"的冲动',
+    polish: '用引经据典/案例佐证建立可靠感，每个论断都有根据、不忽悠'
   }
   return map[key] || '参考同类优秀文稿的该维度表现进行针对性优化'
 }
@@ -667,6 +547,38 @@ async function handlePredict() {
 }
 
 function handleClear() { predContent.value = ''; viewingHistoryId.value = null; store.lastPrediction = null }
+
+// ===== AI 写稿（侧边栏） =====
+const showSideGen = ref(false)
+const genTopic = ref('')
+const genPlatform = ref<Platform>('抖音')
+const genTargetLikes = ref<number | null>(null)
+const genLoading = ref(false)
+const generatedContent = ref('')
+
+async function handleGenerate() {
+  genLoading.value = true
+  try {
+    generatedContent.value = await store.generateContent(genTopic.value.trim(), genPlatform.value, genTargetLikes.value || undefined)
+  } catch (e: any) { ElMessage.error('生成失败: ' + (e.message || '未知错误')) }
+  finally { genLoading.value = false }
+}
+
+function useGenerated() {
+  if (!generatedContent.value) return
+  predContent.value = generatedContent.value
+  ElMessage.success('文案已填入预测框，点击「开始预测」进行评估')
+}
+
+async function copyGenerated() {
+  if (!generatedContent.value) return
+  try {
+    await navigator.clipboard.writeText(generatedContent.value)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动选中复制')
+  }
+}
 
 // ===== 预测历史 =====
 const viewingHistoryId = ref<string | null>(null)
@@ -718,66 +630,6 @@ const retroEntryForCurrent = computed(() => {
   return store.predictionHistory.find(e => e.id === viewingHistoryId.value) ?? null
 })
 
-// ===== 深度工具 =====
-const auditLoading = ref(false)
-const improveLoading = ref(false)
-
-async function handleCrossAudit() {
-  auditLoading.value = true
-  try { await store.crossModelAudit(predContent.value) }
-  catch (e: any) { ElMessage.error('校验失败: ' + (e.message || '未知错误')) }
-  finally { auditLoading.value = false }
-}
-
-async function handleImprove() {
-  if (!store.lastPrediction) return
-  improveLoading.value = true
-  try {
-    const improved = await store.improveContent(
-      predContent.value || '',
-      predPlatform.value,
-      store.lastPrediction.scores
-    )
-    if (improved) {
-      const oldPred = store.lastPrediction
-      await store.predictLikes(improved, predPlatform.value)
-      const newPred = store.lastPrediction
-      if (oldPred && newPred) {
-        store.rewriteComparison = {
-          originalContent: predContent.value || '',
-          improvedContent: improved,
-          originalScores: oldPred.scores,
-          improvedScores: newPred.scores,
-          originalPrediction: { minLikes: oldPred.minLikes, maxLikes: oldPred.maxLikes } as any,
-          improvedPrediction: { minLikes: newPred.minLikes, maxLikes: newPred.maxLikes } as any,
-          improvements: newPred.suggestions || []
-        }
-      }
-    }
-  } catch (e: any) { ElMessage.error('改进失败: ' + (e.message || '未知错误')) }
-  finally { improveLoading.value = false }
-}
-
-// ===== AI 生成文案 =====
-const genTopic = ref('')
-const genTargetLikes = ref<number | null>(null)
-const genLoading = ref(false)
-const generatedContent = ref('')
-
-async function handleGenerate() {
-  genLoading.value = true
-  try {
-    generatedContent.value = await store.generateContent(genTopic.value.trim(), predPlatform.value, genTargetLikes.value || undefined)
-  } catch (e: any) { ElMessage.error('生成失败: ' + (e.message || '未知错误')) }
-  finally { genLoading.value = false }
-}
-
-function useGenerated() {
-  predContent.value = generatedContent.value
-  generatedContent.value = ''
-  ElMessage.success('已填入预测框，点击「开始预测」进行评估')
-}
-
 // ===== 复盘 =====
 const showRetro = ref(false)
 const isReRetro = ref(false)
@@ -785,6 +637,16 @@ const retroEntry = ref<PredictionLogEntry | null>(null)
 const retroLikes = ref<number | null>(null)
 const retroViews = ref<number | null>(null)
 const retroNote = ref('')
+const retroMultiPlatform = ref(false)
+
+// 多平台数据
+const allPlatformKeys = Object.keys(PLATFORM_CONFIG).filter(k => k !== '全部') as Platform[]
+const retroPlatformData = reactive<Record<string, { enabled: boolean; likes: number; views: number }>>(
+  Object.fromEntries(allPlatformKeys.map(k => [k, { enabled: false, likes: 0, views: 0 }]))
+)
+const otherPlatformsForRetro = computed(() =>
+  retroEntry.value ? allPlatformKeys.filter(k => k !== retroEntry.value!.platform).map(k => ({ key: k })) : []
+)
 
 // 权重变更记录展开状态
 const expandedWLogIds = ref<string[]>([])
@@ -817,15 +679,49 @@ function showRetroDialog(entry: PredictionLogEntry) {
   retroLikes.value = entry.actualLikes ?? null
   retroViews.value = entry.actualViews ?? null
   retroNote.value = entry.retroNote ?? ''
+  retroMultiPlatform.value = false
+  for (const k of allPlatformKeys) {
+    retroPlatformData[k] = { enabled: false, likes: 0, views: 0 }
+  }
   showRetro.value = true
 }
 
 function handleRetro() {
   if (!retroEntry.value || retroLikes.value == null) return
-  store.retroPrediction(retroEntry.value.id, retroLikes.value, retroViews.value || undefined, retroNote.value || undefined, isReRetro.value)
-  ElMessage.success(isReRetro.value ? '更新完成，数据已刷新（未重复入库）' : '复盘数据已保存，文稿已自动加入样本库')
+
+  // 收集额外的平台数据
+  let additionalPlatforms: Array<{ platform: Platform; likes: number; views?: number }> | undefined
+  if (!isReRetro.value && retroMultiPlatform.value) {
+    const extras = allPlatformKeys
+      .filter(k => k !== retroEntry.value!.platform && retroPlatformData[k].enabled && retroPlatformData[k].likes > 0)
+      .map(k => ({
+        platform: k,
+        likes: retroPlatformData[k].likes,
+        views: retroPlatformData[k].views > 0 ? retroPlatformData[k].views : undefined
+      } as { platform: Platform; likes: number; views?: number }))
+    if (extras.length > 0) additionalPlatforms = extras
+  }
+
+  store.retroPrediction(
+    retroEntry.value.id,
+    retroLikes.value,
+    retroViews.value || undefined,
+    retroNote.value || undefined,
+    isReRetro.value,
+    additionalPlatforms
+  )
+
+  const extraCount = additionalPlatforms?.length ?? 0
+  ElMessage.success(
+    isReRetro.value
+      ? '更新完成，数据已刷新（未重复入库）'
+      : extraCount > 0
+        ? `复盘数据已保存 · 主平台 + ${extraCount} 个额外平台样本已入库`
+        : '复盘数据已保存，文稿已自动加入样本库'
+  )
   showRetro.value = false
   retroLikes.value = null; retroViews.value = null; retroNote.value = ''
+  retroMultiPlatform.value = false
   isReRetro.value = false
 }
 
@@ -863,6 +759,15 @@ watch(() => store.bumpSuggestion, (val) => {
       const panel = document.querySelector('.nsp-bump-panel')
       if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 300)
+  }
+})
+
+// 来自「账号沟通」AI 生成的内容自动填入预测框
+watch(() => store.pendingGeneratedContent, (val) => {
+  if (val) {
+    predContent.value = val
+    store.pendingGeneratedContent = null
+    ElMessage.success('文案已从「账号沟通」同步，点击「开始预测」进行评估')
   }
 })
 
@@ -905,6 +810,13 @@ function scoreTagText(s: number): string {
 .nsp-select { width: 150px; }
 .nsp-sample-hint { font-size: 12px; color: #909399; }
 .nsp-sample-hint.warn { color: #e6a23c; }
+.nsp-improve-btn {
+  margin-left: auto; padding: 6px 16px; border-radius: 18px; border: 1px solid #10b981;
+  background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; font-family: inherit; white-space: nowrap;
+}
+.nsp-improve-btn:hover:not(:disabled) { background: #d1fae5; border-color: #059669; }
+.nsp-improve-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .nsp-input textarea { width: 100%; padding: 14px; border: 1px solid #dce2ec; border-radius: 10px; font-size: 14px; line-height: 1.6; resize: vertical; min-height: 100px; font-family: inherit; transition: border 0.2s; box-sizing: border-box; background: #fafbfc; }
 .nsp-input textarea:focus { outline: none; border-color: #1a4cff; box-shadow: 0 0 0 3px rgba(26,76,255,0.08); background: #fff; }
@@ -1000,12 +912,12 @@ function scoreTagText(s: number): string {
 .nsp-hist-actual.under { color: #f56c6c; }
 .nsp-hist-pending { font-size: 11px; color: #909399; background: #f0f2f5; padding: 2px 8px; border-radius: 8px; }
 .nsp-hist-retro-btn {
-  padding: 2px 8px; border: 1px solid #f59e0b; border-radius: 6px; background: #fffbeb;
-  color: #d97706; font-size: 8px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  padding: 2px 8px; border: 1px solid #f59e0b; border-radius: 6px; background: #f59e0b;
+  color: #fff; font-size: 8px; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
-.nsp-hist-retro-btn:hover { background: #fef3c7; border-color: #d97706; }
-.nsp-hist-retro-btn.rero { border-color: #93c5fd; color: #3b82f6; }
-.nsp-hist-retro-btn.rero:hover { background: #eff6ff; border-color: #3b82f6; }
+.nsp-hist-retro-btn:hover { background: #d97706; border-color: #d97706; }
+.nsp-hist-retro-btn.rero { border-color: #bfdbfe; color: #2563eb; background: #eff6ff; }
+.nsp-hist-retro-btn.rero:hover { background: #dbeafe; border-color: #93c5fd; }
 .nsp-hist-time { font-size: 10px; color: #b0bfd0; }
 
 /* ===== 查看历史提示条 ===== */
@@ -1058,7 +970,7 @@ function scoreTagText(s: number): string {
 .nsp-prob-pct.headline { color: #1a4cff; }
 
 /* 7维评分 */
-.nsp-scores-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.nsp-scores-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .nsps-item { display: flex; flex-direction: column; gap: 3px; }
 .nsps-header { display: flex; align-items: center; gap: 5px; }
 .nsps-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -1076,7 +988,9 @@ function scoreTagText(s: number): string {
 .nsps-disagree-hint { font-size: 10px; color: #a16207; }
 
 /* 双栏 */
-.nsp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.nsp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
+.nsp-col-stack { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
+.nsp-col-stack > .nsp-card { flex: none; }
 @media (max-width: 750px) { .nsp-two-col { grid-template-columns: 1fr; } }
 
 .nsp-list { margin: 0; padding-left: 16px; font-size: 13px; color: #3d5068; line-height: 1.7; }
@@ -1086,13 +1000,55 @@ function scoreTagText(s: number): string {
 
 .nsp-ref-list { margin-bottom: 8px; }
 .nsp-ref-list:last-child { margin-bottom: 0; }
-.nspr-card { background: #fafcff; border: 1px solid #eef2f6; border-radius: 10px; padding: 10px 14px; }
-.nsprc-platform { font-size: 12px; color: #909399; margin-bottom: 3px; }
-.nsprc-snippet { font-size: 13px; color: #303133; margin-bottom: 5px; line-height: 1.5; }
-.nsprc-meta { display: flex; gap: 14px; font-size: 12px; margin-bottom: 4px; }
-.nsprc-likes { color: #e6a23c; font-weight: 600; }
-.nsprc-score { color: #1a4cff; font-weight: 600; }
-.nsprc-reason { font-size: 11px; color: #6b7a8f; line-height: 1.4; }
+
+/* 预测依据 — 阶梯式理由卡 */
+.nsp-card--insight { background: #fafcff; border-color: #dce8fb; }
+.nsp-reason-list { display: flex; flex-direction: column; gap: 10px; }
+.nsp-reason-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; background: #fff; border-radius: 10px;
+  border: 1px solid #f0f4fb; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.nsp-reason-item:hover { border-color: #c7d2fe; box-shadow: 0 1px 4px rgba(99,102,241,0.06); }
+.nsp-reason-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  background: linear-gradient(135deg, #818cf8, #6366f1); color: #fff;
+  font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  line-height: 1; margin-top: 1px;
+}
+.nsp-reason-text { font-size: 12px; color: #334155; line-height: 1.65; flex: 1; min-width: 0; }
+
+/* 反事实分析 — 橙色警告调 */
+.nsp-card--counterfact { background: #fffbeb; border-color: #fde68a; }
+.nsp-reason--warn { background: #fff; border-color: #fef3c7; }
+.nsp-reason--warn:hover { border-color: #f59e0b; box-shadow: 0 1px 6px rgba(245,158,11,0.08); }
+.nsp-reason-num--warn { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+/* 优化建议 — 绿色行动调 */
+.nsp-card--suggest { background: #f0fdf4; border-color: #bbf7d0; }
+.nsp-reason--action { background: #fff; border-color: #dcfce7; }
+.nsp-reason--action:hover { border-color: #22c55e; box-shadow: 0 1px 6px rgba(34,197,94,0.08); }
+.nsp-reason-num--action { background: linear-gradient(135deg, #22c55e, #16a34a); }
+
+/* 参考样本 — 紧凑卡 + 得分徽标 */
+.nsp-card--refs { background: #fff; border-color: #eef2f6; }
+.nspr-card {
+  background: #f9fafb; border: 1px solid #e8ecf2; border-radius: 10px; padding: 10px 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.nspr-card:hover { border-color: #bfdbfe; box-shadow: 0 1px 3px rgba(59,130,246,0.04); }
+.nsprc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.nsprc-platform { font-size: 11px; color: #6b7280; font-weight: 500; }
+.nsprc-score-badge {
+  font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #6366f1, #4f46e5);
+  padding: 2px 10px; border-radius: 12px; line-height: 1.4;
+}
+.nsprc-snippet { font-size: 12px; color: #1f2937; margin-bottom: 6px; line-height: 1.55; }
+.nsprc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.nsprc-tag {
+  font-size: 10px; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px;
+  line-height: 1.5; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* ===== 5. 深度工具 + AI复盘 ===== */
 .nsp-tools { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1124,8 +1080,39 @@ function scoreTagText(s: number): string {
 .nsprcs-val { font-weight: 600; }
 .nsprcs-val.better { color: #16a34a; }
 .nsprcs-delta { font-size: 9px; margin-left: 4px; padding: 0 3px; border-radius: 2px; background: #dcfce7; color: #16a34a; }
+.nsprcs-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; }
 .nsprcc-pred { font-size: 11px; color: #6b7280; }
 .nsprcc-pred.improved { color: #16a34a; font-weight: 600; }
+
+/* 改写对比紧凑卡片 */
+.nsprc-compact { display: flex; flex-direction: column; gap: 14px; }
+.nsprcc-summary {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  background: #f8fafc; border-radius: 10px; border: 1px solid #eef2f6;
+  flex-wrap: wrap;
+}
+.nsprccs-item { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.nsprccs-item.improved { flex-direction: row; gap: 6px; }
+.nsprccs-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
+.nsprccs-val { font-size: 14px; font-weight: 700; color: #374151; }
+.nsprccs-item.improved .nsprccs-val { color: #059669; }
+.nsprccs-arrow { font-size: 16px; color: #10b981; font-weight: 700; }
+.nsprccs-delta {
+  font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 8px;
+}
+.nsprccs-delta.up { background: #dcfce7; color: #16a34a; }
+.nsprccs-delta.down { background: #fef2f2; color: #dc2626; }
+
+/* 改进说明 */
+.nsprc-improvements { margin-top: 4px; padding: 12px 14px; background: #fffbeb; border-radius: 10px; border: 1px solid #fde68a; }
+.nsprci-title { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 8px; }
+.nsprci-item { display: flex; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #78350f; line-height: 1.55; }
+.nsprci-item:last-child { margin-bottom: 0; }
+.nsprci-num {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%;
+  background: #f59e0b; color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
 
 .nsp-generate { display: flex; flex-direction: column; }
 .nsp-gen-result { margin-top: 12px; }
@@ -1151,6 +1138,28 @@ function scoreTagText(s: number): string {
 .retro-rero-hint { font-size: 11px; color: #f59e0b; background: #fffbeb; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; }
 .retro-label { font-size: 13px; color: #6b7a8f; font-weight: 500; }
 .retro-form { margin-bottom: 4px; }
+
+/* 复盘多平台开关 */
+.retro-multi-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: #f8fafc; border: 1px solid #eef2f6; border-radius: 10px;
+  cursor: pointer; user-select: none; transition: border-color 0.2s;
+}
+.retro-multi-toggle:hover { border-color: #c7d2fe; }
+.retro-multi-label { font-size: 13px; font-weight: 600; color: #1f2937; }
+.retro-multi-hint { font-size: 11px; color: #9ca3af; flex: 1; }
+.retro-multi-switch {
+  width: 36px; height: 20px; border-radius: 10px; background: #d1d5db;
+  position: relative; transition: background 0.25s; flex-shrink: 0;
+}
+.retro-multi-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.retro-multi-switch.on { background: #4f46e5; }
+.retro-multi-switch.on::after { transform: translateX(16px); }
+.retro-extra-header { display: flex; align-items: center; gap: 6px; }
 
 /* 账号专属优化建议 */
 .nsp-account-advice { background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%); border-color: #bbf7d0; }
@@ -1307,6 +1316,107 @@ function scoreTagText(s: number): string {
 .nspewl-delta { font-size: 10px; padding: 0 4px; border-radius: 3px; }
 .nspewl-delta.up { color: #16a34a; background: #f0fdf4; }
 .nspewl-delta.down { color: #dc2626; background: #fef2f2; }
+
+/* ===== 侧边栏：AI 写稿 ===== */
+.nsp-side-gen {
+  background: #fff; border-radius: 12px; border: 1px solid #eef2f6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden; margin-bottom: 10px;
+}
+.nsp-sg-toggle {
+  display: flex; align-items: center; gap: 8px; padding: 14px 16px;
+  cursor: pointer; user-select: none; transition: background .15s;
+}
+.nsp-sg-toggle:hover { background: #f9fafb; }
+.nsp-sg-icon { font-size: 16px; }
+.nsp-sg-title { font-size: 14px; font-weight: 700; color: #1f2937; }
+.nsp-sg-badge {
+  margin-left: auto; font-size: 10px; font-weight: 600; color: #059669;
+  padding: 2px 8px; background: #ecfdf5; border-radius: 10px;
+}
+.nsp-sg-panel { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nsp-sg-field { display: flex; flex-direction: column; gap: 5px; }
+.nsp-sg-label {
+  font-size: 11px; font-weight: 600; color: #6b7280; text-transform: none;
+  letter-spacing: 0.3px;
+}
+.nsp-sg-input {
+  width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+  font-size: 13px; color: #1f2937; outline: none; resize: vertical;
+  font-family: inherit; line-height: 1.6; box-sizing: border-box;
+  transition: border-color .15s, box-shadow .15s; background: #fafbfc;
+}
+.nsp-sg-input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.08); background: #fff; }
+.nsp-sg-input::placeholder { color: #9ca3af; }
+.nsp-sg-field-row { display: flex; gap: 10px; }
+.nsp-sg-field-sm { flex: 1; min-width: 0; }
+.nsp-sg-select { width: 100%; }
+.nsp-sg-likes { width: 100%; }
+
+.nsp-sg-btn {
+  width: 100%; padding: 10px 16px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #10b981, #059669); color: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  box-shadow: 0 2px 8px rgba(16,185,129,0.25);
+}
+.nsp-sg-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(16,185,129,0.35);
+  transform: translateY(-1px);
+}
+.nsp-sg-btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; transform: none; }
+.nsp-sg-btn-spin {
+  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff; border-radius: 50%; animation: nsp-sg-spin .6s linear infinite;
+}
+@keyframes nsp-sg-spin { to { transform: rotate(360deg); } }
+
+/* 加载状态 */
+.nsp-sg-loading {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 20px 0;
+}
+.nsp-sg-loading-dots { display: flex; gap: 5px; }
+.nsp-sg-loading-dots span {
+  width: 6px; height: 6px; border-radius: 50%; background: #d1d5db;
+  animation: nsp-sg-dot-bounce 1.2s infinite ease-in-out;
+}
+.nsp-sg-loading-dots span:nth-child(2) { animation-delay: .15s; }
+.nsp-sg-loading-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes nsp-sg-dot-bounce {
+  0%, 80%, 100% { transform: scale(.6); opacity: .4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.nsp-sg-loading-text { font-size: 11px; color: #9ca3af; }
+
+/* 生成结果 */
+.nsp-sg-result { display: flex; flex-direction: column; gap: 10px; }
+.nsp-sg-result-head {
+  display: flex; align-items: center; gap: 6px;
+  padding-bottom: 8px; border-bottom: 1px solid #e5e7eb;
+}
+.nspsgrh-icon { font-size: 14px; }
+.nspsgrh-title { font-size: 12px; font-weight: 700; color: #1f2937; }
+.nspsgrh-length { margin-left: auto; font-size: 11px; color: #9ca3af; }
+.nspsgr-text {
+  font-size: 13px; color: #374151; line-height: 1.8; padding: 12px;
+  background: #f9fafb; border-radius: 8px; border: 1px solid #f3f4f6;
+  max-height: 180px; overflow-y: auto; white-space: pre-wrap;
+}
+.nspsgr-actions { display: flex; gap: 8px; }
+.nspsgr-use-btn, .nspsgr-copy-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .15s; border: none;
+}
+.nspsgr-use-btn {
+  background: #6366f1; color: #fff;
+  box-shadow: 0 1px 3px rgba(99,102,241,0.2);
+}
+.nspsgr-use-btn:hover { background: #4f46e5; }
+.nspsgr-copy-btn {
+  background: #fff; color: #4b5563; border: 1px solid #d1d5db;
+}
+.nspsgr-copy-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
 
 /* ===== 侧边栏：系统进化看板 ===== */
 .nspsb-card {
