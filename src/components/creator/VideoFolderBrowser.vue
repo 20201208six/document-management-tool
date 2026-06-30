@@ -459,7 +459,7 @@ function handleVideoDelete(entry: { path: string; name: string }) {
 .browser-header .title {
   font-weight: 600;
   font-size: 13px;
-  color: #303133;
+  color: var(--c-text);
   flex: 1;
 }
 
@@ -479,9 +479,9 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   font-size: 12px;
 }
 
-.path-item:hover { background: #f0f2f5; }
-.path-item.active { background: #e6f0ff; }
-.path-item.invalid .path-label { color: #f56c6c; text-decoration: line-through; }
+.path-item:hover { background: var(--c-bg-hover); }
+.path-item.active { background: var(--c-primary-soft); }
+.path-item.invalid .path-label { color: var(--c-danger); text-decoration: line-through; }
 
 .path-info {
   flex: 1;
@@ -495,33 +495,33 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .path-group {
   font-size: 10px;
   padding: 1px 4px;
   border-radius: 3px;
-  background: #e6f0ff;
-  color: #409eff;
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
   white-space: nowrap;
 }
 
 .path-group.temp {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  color: var(--c-danger);
 }
 
 .path-group.default {
-  background: #f0f9eb;
-  color: #67c23a;
+  background: color-mix(in srgb, var(--c-success) 10%, transparent);
+  color: var(--c-success);
 }
 
 .path-icon { font-size: 14px; flex-shrink: 0; }
 
-.path-item.default .path-label { color: #67c23a; font-weight: 500; }
+.path-item.default .path-label { color: var(--c-success); font-weight: 500; }
 
-.path-invalid { color: #f56c6c; font-size: 11px; }
+.path-invalid { color: var(--c-danger); font-size: 11px; }
 
 .path-actions {
   visibility: hidden;
@@ -536,13 +536,13 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   flex-direction: column;
   align-items: center;
   padding: 20px 0;
-  color: #909399;
+  color: var(--c-text-muted);
   cursor: pointer;
   font-size: 12px;
   gap: 6px;
 }
 
-.no-paths:hover { color: #409eff; }
+.no-paths:hover { color: var(--c-primary); }
 
 /* 面包屑导航 */
 .browse-breadcrumb {
@@ -551,17 +551,17 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   gap: 4px;
   padding: 6px 10px;
   font-size: 12px;
-  background: #f0f5ff;
-  border-bottom: 1px solid #d9ecff;
+  background: var(--c-primary-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent);
 }
 
 .breadcrumb-sep {
-  color: #c0c4cc;
+  color: var(--c-text-muted);
   margin: 0 2px;
 }
 
 .breadcrumb-current {
-  color: #303133;
+  color: var(--c-text);
   font-weight: 500;
 }
 
@@ -581,12 +581,12 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   font-size: 12px;
 }
 
-.file-entry:hover { background: #f0f2f5; }
-.file-entry.selected { background: #e6f0ff; }
+.file-entry:hover { background: var(--c-bg-hover); }
+.file-entry.selected { background: var(--c-primary-soft); }
 
 .file-delete {
   visibility: hidden;
-  color: #f56c6c;
+  color: var(--c-danger);
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -601,21 +601,21 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   flex-shrink: 0;
   margin-right: 4px;
 }
-.asr-dot.asr-idle { background: #dcdfe6; }
-.asr-dot.asr-processing { background: #409eff; animation: asr-pulse 1.2s ease-in-out infinite; }
-.asr-dot.asr-done { background: #67c23a; }
-.asr-dot.asr-error { background: #f56c6c; }
+.asr-dot.asr-idle { background: var(--c-border-light); }
+.asr-dot.asr-processing { background: var(--c-primary); animation: asr-pulse 1.2s ease-in-out infinite; }
+.asr-dot.asr-done { background: var(--c-success); }
+.asr-dot.asr-error { background: var(--c-danger); }
 
 @keyframes asr-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
 
-.file-icon { margin-right: 6px; color: #409eff; }
+.file-icon { margin-right: 6px; color: var(--c-primary); }
 
-.folder-entry { background: #fafbfc; }
-.folder-entry:hover { background: #ecf5ff; }
-.folder-icon { color: #e6a23c !important; }
+.folder-entry { background: var(--c-bg-sec); }
+.folder-entry:hover { background: var(--c-primary-soft); }
+.folder-icon { color: var(--c-warning) !important; }
 
 .file-info {
   flex: 1;
@@ -627,12 +627,12 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .file-folder {
   font-size: 10px;
-  color: #909399;
+  color: var(--c-text-muted);
   display: block;
   min-height: 14px;
   line-height: 14px;
@@ -642,10 +642,10 @@ function handleVideoDelete(entry: { path: string; name: string }) {
 .ctx-menu {
   position: fixed;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid #e4e7ed;
+  background: var(--c-bg-card);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  box-shadow: 0 2px 12px var(--c-shadow-hover);
   padding: 4px 0;
   min-width: 160px;
 }
@@ -656,13 +656,13 @@ function handleVideoDelete(entry: { path: string; name: string }) {
   gap: 8px;
   padding: 8px 14px;
   font-size: 13px;
-  color: #303133;
+  color: var(--c-text);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .ctx-menu-item:hover {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
 }
 </style>

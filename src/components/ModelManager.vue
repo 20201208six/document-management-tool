@@ -29,9 +29,9 @@
       </el-table-column>
       <el-table-column label="API Key" width="150">
         <template #default="{ row }">
-          <span v-if="row.apiKey" style="color:#67c23a;font-size:12px">已设置</span>
-          <span v-else style="color:#f56c6c;font-size:12px">未设置</span>
-          <span v-if="testResults.has(row.id)" :style="{ color: testResults.get(row.id)!.ok ? '#67c23a' : '#f56c6c', fontSize: '11px', marginLeft: '6px' }">
+          <span v-if="row.apiKey" class="status-text status-success">已设置</span>
+          <span v-else class="status-text status-danger">未设置</span>
+          <span v-if="testResults.has(row.id)" class="test-mark" :class="testResults.get(row.id)!.ok ? 'status-success' : 'status-danger'">
             {{ testResults.get(row.id)!.ok ? '✓' : '✗' }}
           </span>
         </template>
@@ -88,7 +88,7 @@
               :value="p.name"
             >
               <span>{{ p.name }}</span>
-              <span style="float:right;color:#909399;font-size:11px">{{ p.providerLabel }}</span>
+              <span class="provider-label">{{ p.providerLabel }}</span>
             </el-option>
             <el-option label="自定义 / 其他..." value="_custom_" />
           </el-select>
@@ -476,13 +476,37 @@ async function testAsrConfig() {
 .form-tip {
   margin-left: 8px;
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
+}
+
+/* 状态文字 */
+.status-text {
+  font-size: 12px;
+}
+
+.test-mark {
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.status-success {
+  color: var(--c-success);
+}
+
+.status-danger {
+  color: var(--c-danger);
+}
+
+.provider-label {
+  float: right;
+  color: var(--c-text-muted);
+  font-size: 11px;
 }
 
 /* ASR 配置 */
 .section-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   margin: 0 0 16px 0;
 }
 
@@ -494,14 +518,14 @@ async function testAsrConfig() {
 }
 
 .asr-test-result.success {
-  background: #f0f9eb;
-  color: #67c23a;
-  border: 1px solid #e1f3d8;
+  background: color-mix(in srgb, var(--c-success) 10%, transparent);
+  color: var(--c-success);
+  border: 1px solid color-mix(in srgb, var(--c-success) 30%, transparent);
 }
 
 .asr-test-result.fail {
-  background: #fef0f0;
-  color: #f56c6c;
-  border: 1px solid #fde2e2;
+  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  color: var(--c-danger);
+  border: 1px solid color-mix(in srgb, var(--c-danger) 30%, transparent);
 }
 </style>

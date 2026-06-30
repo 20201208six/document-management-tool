@@ -47,7 +47,7 @@ const currentTab = computed(() =>
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #f5f6fa;
+  background: var(--c-bg);
   overflow: hidden;
 }
 
@@ -55,8 +55,8 @@ const currentTab = computed(() =>
   display: flex;
   align-items: center;
   padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-header-bg);
+  border-bottom: 1px solid var(--c-border);
   height: 44px;
   min-height: 44px;
   gap: 16px;
@@ -78,12 +78,12 @@ const currentTab = computed(() =>
   font-weight: 500;
   border: none;
   background: transparent;
-  color: #909399;
+  color: var(--c-text-muted);
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s;
 }
 
-.submode-tab:hover { color: #409eff; background: #ecf5ff; }
-.submode-tab.active { color: #409eff; background: #ecf5ff; }
+.submode-tab:hover { color: var(--c-primary); background: var(--c-primary-soft); }
+.submode-tab.active { color: var(--c-primary); background: var(--c-primary-soft); }
 </style>

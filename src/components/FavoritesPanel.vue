@@ -73,7 +73,7 @@ function removeFav(path: string) {
 
 <style scoped>
 .favorites-sidebar {
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--c-border-light);
   max-height: 250px;
   display: flex;
   flex-direction: column;
@@ -93,8 +93,8 @@ function removeFav(path: string) {
 
 .count {
   font-size: 12px;
-  background: #409eff;
-  color: #fff;
+  background: var(--c-primary);
+  color: var(--c-primary-text);
   padding: 1px 8px;
   border-radius: 10px;
 }
@@ -115,7 +115,7 @@ function removeFav(path: string) {
 }
 
 .fav-item:hover {
-  background: #f0f2f5;
+  background: var(--c-bg-hover);
 }
 
 .fav-info {
@@ -126,13 +126,13 @@ function removeFav(path: string) {
 .fav-name {
   display: block;
   font-weight: 500;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .fav-path {
   display: block;
   font-size: 11px;
-  color: #909399;
+  color: var(--c-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -141,7 +141,7 @@ function removeFav(path: string) {
 .empty-favs {
   padding: 16px;
   text-align: center;
-  color: #909399;
+  color: var(--c-text-muted);
   font-size: 13px;
 }
 </style>

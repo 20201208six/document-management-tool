@@ -323,7 +323,7 @@ async function handleCreateFile() {
 .browser-header .title {
   font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  color: var(--c-text);
   flex: 1;
 }
 
@@ -343,9 +343,9 @@ async function handleCreateFile() {
   font-size: 13px;
 }
 
-.path-item:hover { background: #f0f2f5; }
-.path-item.active { background: #e6f0ff; }
-.path-item.invalid .path-label { color: #f56c6c; text-decoration: line-through; }
+.path-item:hover { background: var(--c-bg-hover); }
+.path-item.active { background: var(--c-primary-soft); }
+.path-item.invalid .path-label { color: var(--c-danger); text-decoration: line-through; }
 
 .path-info {
   flex: 1;
@@ -359,24 +359,24 @@ async function handleCreateFile() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .path-group {
   font-size: 11px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: #e6f0ff;
-  color: #409eff;
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
   white-space: nowrap;
 }
 
 .path-group.temp {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  color: var(--c-danger);
 }
 
-.path-invalid { color: #f56c6c; font-size: 12px; }
+.path-invalid { color: var(--c-danger); font-size: 12px; }
 
 .path-actions {
   visibility: hidden;
@@ -391,13 +391,13 @@ async function handleCreateFile() {
   flex-direction: column;
   align-items: center;
   padding: 24px 0;
-  color: #909399;
+  color: var(--c-text-muted);
   cursor: pointer;
   font-size: 13px;
   gap: 8px;
 }
 
-.no-paths:hover { color: #409eff; }
+.no-paths:hover { color: var(--c-primary); }
 
 .quick-search {
   padding: 8px 12px;
@@ -411,7 +411,7 @@ async function handleCreateFile() {
   display: flex;
   align-items: center;
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   margin-bottom: 4px;
 }
 
@@ -427,11 +427,11 @@ async function handleCreateFile() {
   border-radius: 4px;
 }
 
-.search-item:hover { background: #f0f2f5; }
+.search-item:hover { background: var(--c-bg-hover); }
 
-.sr-name { color: #409eff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.sr-folder { color: #909399; font-size: 11px; }
-.sr-count { color: #909399; font-size: 11px; white-space: nowrap; }
+.sr-name { color: var(--c-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sr-folder { color: var(--c-text-muted); font-size: 11px; }
+.sr-count { color: var(--c-text-muted); font-size: 11px; white-space: nowrap; }
 
 /* 面包屑导航 */
 .browse-breadcrumb {
@@ -440,31 +440,31 @@ async function handleCreateFile() {
   gap: 4px;
   padding: 8px 12px;
   font-size: 13px;
-  background: #f0f5ff;
-  border-bottom: 1px solid #d9ecff;
+  background: var(--c-primary-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent);
 }
 
 .breadcrumb-sep {
-  color: #c0c4cc;
+  color: var(--c-text-muted);
   margin: 0 2px;
 }
 
 .breadcrumb-current {
-  color: #303133;
+  color: var(--c-text);
   font-weight: 500;
 }
 
 /* 文件夹条目样式 */
 .folder-entry {
-  background: #fafbfc;
+  background: var(--c-bg-sec);
 }
 
 .folder-entry:hover {
-  background: #ecf5ff;
+  background: var(--c-primary-soft);
 }
 
 .folder-icon {
-  color: #e6a23c !important;
+  color: var(--c-warning) !important;
 }
 
 .file-list {
@@ -482,10 +482,10 @@ async function handleCreateFile() {
   font-size: 13px;
 }
 
-.file-entry:hover { background: #f0f2f5; }
-.file-entry.selected { background: #e6f0ff; }
+.file-entry:hover { background: var(--c-bg-hover); }
+.file-entry.selected { background: var(--c-primary-soft); }
 
-.file-icon { margin-right: 6px; color: #409eff; }
+.file-icon { margin-right: 6px; color: var(--c-primary); }
 
 .file-info {
   flex: 1;
@@ -497,12 +497,12 @@ async function handleCreateFile() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .file-folder {
   font-size: 11px;
-  color: #909399;
+  color: var(--c-text-muted);
 }
 
 .file-actions {

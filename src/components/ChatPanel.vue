@@ -4,49 +4,48 @@
     :class="{ collapsed: !chatStore.isPanelOpen, resizing: isResizing }"
     :style="chatStore.isPanelOpen ? { width: chatStore.panelWidth + 'px', minWidth: chatStore.panelWidth + 'px' } : {}"
   >
-    <!-- 拖拽调整宽度的手柄 -->
     <div class="resize-handle" @mousedown="startResize" v-if="chatStore.isPanelOpen"></div>
 
-    <!-- 面板头部 -->
+    <!-- 面板头部 - 全新设计 -->
     <div class="chat-panel-header">
       <div class="chat-panel-title">
-        <el-icon><ChatDotRound /></el-icon>
-        <span>智能对话</span>
-        <el-tag v-if="chatStore.currentModel" size="small" type="success" class="model-tag">
-          {{ chatStore.currentModel.name }}
-        </el-tag>
+        <div class="chat-title-avatar">
+          <el-icon :size="20"><ChatDotRound /></el-icon>
+        </div>
+        <div class="chat-title-text">
+          <span class="chat-title-main">AI 智能助手</span>
+          <span class="chat-title-sub" v-if="chatStore.currentModel">
+            {{ chatStore.currentModel.name }}
+          </span>
+        </div>
       </div>
 
       <div class="chat-panel-header-actions">
-        <!-- 新建对话 -->
-        <el-button size="small" circle title="新建对话" @click="handleNewSession">
-          <el-icon><Plus /></el-icon>
-        </el-button>
+        <button class="header-action-btn" title="新建对话" @click="handleNewSession">
+          <el-icon><EditPen /></el-icon>
+        </button>
 
-        <!-- 历史对话 -->
         <el-popover
-          placement="bottom"
-          :width="340"
+          placement="bottom-end"
+          :width="320"
           trigger="click"
           v-model:visible="showHistoryPopover"
         >
           <template #reference>
-            <el-button size="small" circle title="历史对话">
+            <button class="header-action-btn" title="历史对话">
               <el-icon><Clock /></el-icon>
-            </el-button>
+            </button>
           </template>
           <div class="history-panel">
-            <!-- 搜索栏 -->
             <div class="history-search">
               <el-input
                 v-model="historySearchKeyword"
                 size="small"
-                placeholder="搜索对话内容..."
+                placeholder="搜索对话..."
                 clearable
                 :prefix-icon="Search"
               />
             </div>
-            <!-- 工具栏 -->
             <div class="history-toolbar">
               <span class="history-toolbar-title">历史对话</span>
               <el-button size="small" text @click="handleAddFolder">
@@ -54,10 +53,9 @@
               </el-button>
             </div>
 
-            <!-- 搜索结果 -->
             <div v-if="historySearchKeyword.trim()" class="history-search-results">
               <div v-if="searchResults.length === 0" class="history-empty">
-                未找到包含「{{ historySearchKeyword }}」的对话
+                未找到「{{ historySearchKeyword }}」
               </div>
               <div
                 v-for="(result, idx) in searchResults"
@@ -70,17 +68,10 @@
               </div>
             </div>
 
-            <!-- 正常列表 -->
-            <div v-else>
-
-            <div v-if="allSessions.length === 0" class="history-empty">
-              暂无历史对话
-            </div>
             <div v-else class="history-list">
-              <!-- 置顶 -->
               <div v-if="pinnedSessions.length > 0" class="history-section">
                 <div class="history-section-header">
-                  <el-icon :size="14"><Top /></el-icon>
+                  <el-icon :size="12"><Top /></el-icon>
                   <span>置顶</span>
                 </div>
                 <div
@@ -94,31 +85,30 @@
                   <div class="history-color-bar"></div>
                   <div class="history-item-main">
                     <span class="history-title">{{ session.title }}</span>
-                    <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                    <span class="history-meta">{{ session.messages.length }} 条 · {{ formatSessionTime(session.updatedAt) }}</span>
                   </div>
-                  <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
-                    <el-icon :size="14"><Top /></el-icon>
-                  </el-button>
-                  <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
-                    <el-icon :size="14"><Delete /></el-icon>
-                  </el-button>
+                  <button class="history-mini-btn" :class="{warn:session.pinned}" @click.stop="chatStore.togglePinSession(session.id)">
+                    <el-icon :size="12"><Top /></el-icon>
+                  </button>
+                  <button class="history-mini-btn danger" @click.stop="handleDeleteSession(session.id)">
+                    <el-icon :size="12"><Delete /></el-icon>
+                  </button>
                 </div>
               </div>
 
-              <!-- 文件夹 -->
               <div v-for="folder in chatStore.folders" :key="folder.id" class="history-section">
                 <div
                   class="history-section-header folder-header"
                   :class="{ collapsed: collapsedFolders.has(folder.id) }"
                   @click="toggleFolder(folder.id)"
                 >
-                  <el-icon :size="12"><ArrowRight /></el-icon>
-                  <el-icon :size="14"><Folder /></el-icon>
+                  <el-icon :size="12" class="folder-arrow"><ArrowRight /></el-icon>
+                  <el-icon :size="13"><Folder /></el-icon>
                   <span class="folder-name" @dblclick.stop="handleRenameFolder(folder)">{{ folder.name }}</span>
                   <span class="folder-count">{{ chatStore.getFolderCount(folder.id) }}</span>
-                  <el-button size="small" text type="danger" class="folder-delete" @click.stop="handleDeleteFolder(folder.id)">
-                    <el-icon :size="12"><Delete /></el-icon>
-                  </el-button>
+                  <button class="history-mini-btn danger folder-delete" @click.stop="handleDeleteFolder(folder.id)">
+                    <el-icon :size="11"><Delete /></el-icon>
+                  </button>
                 </div>
                 <div v-show="!collapsedFolders.has(folder.id)"
                   class="folder-drop-zone"
@@ -140,26 +130,25 @@
                     <div class="history-color-bar"></div>
                     <div class="history-item-main">
                       <span class="history-title">{{ session.title }}</span>
-                      <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                      <span class="history-meta">{{ session.messages.length }} 条 · {{ formatSessionTime(session.updatedAt) }}</span>
                     </div>
-                    <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
-                      <el-icon :size="14"><Top /></el-icon>
-                    </el-button>
-                    <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
-                      <el-icon :size="14"><Delete /></el-icon>
-                    </el-button>
+                    <button class="history-mini-btn" :class="{warn:session.pinned}" @click.stop="chatStore.togglePinSession(session.id)">
+                      <el-icon :size="12"><Top /></el-icon>
+                    </button>
+                    <button class="history-mini-btn danger" @click.stop="handleDeleteSession(session.id)">
+                      <el-icon :size="12"><Delete /></el-icon>
+                    </button>
                   </div>
                   <div v-if="getFolderSessions(folder.id).length === 0" class="folder-empty">
-                    拖拽对话到此处
+                    拖拽对话到此
                   </div>
                 </div>
               </div>
 
-              <!-- 未分类 -->
               <div v-if="uncategorizedSessions.length > 0" class="history-section">
                 <div class="history-section-header">
-                  <el-icon :size="14"><ChatLineSquare /></el-icon>
-                  <span>未分类</span>
+                  <el-icon :size="13"><ChatLineSquare /></el-icon>
+                  <span>对话</span>
                 </div>
                 <div
                   v-for="session in uncategorizedSessions"
@@ -174,170 +163,87 @@
                   <div class="history-color-bar"></div>
                   <div class="history-item-main">
                     <span class="history-title">{{ session.title }}</span>
-                    <span class="history-meta">{{ session.messages.length }} 条消息 · {{ formatSessionTime(session.updatedAt) }}</span>
+                    <span class="history-meta">{{ session.messages.length }} 条 · {{ formatSessionTime(session.updatedAt) }}</span>
                   </div>
-                  <el-button size="small" text class="history-pin" :type="session.pinned ? 'warning' : 'default'" @click.stop="chatStore.togglePinSession(session.id)" title="置顶">
-                    <el-icon :size="14"><Top /></el-icon>
-                  </el-button>
-                  <el-button size="small" text type="danger" class="history-delete" @click.stop="handleDeleteSession(session.id)">
-                    <el-icon :size="14"><Delete /></el-icon>
-                  </el-button>
+                  <button class="history-mini-btn" :class="{warn:session.pinned}" @click.stop="chatStore.togglePinSession(session.id)">
+                    <el-icon :size="12"><Top /></el-icon>
+                  </button>
+                  <button class="history-mini-btn danger" @click.stop="handleDeleteSession(session.id)">
+                    <el-icon :size="12"><Delete /></el-icon>
+                  </button>
                 </div>
               </div>
+
+              <div v-if="allSessions.length === 0" class="history-empty">暂无对话记录</div>
             </div>
-            </div> <!-- v-else 闭合 -->
           </div>
         </el-popover>
 
-        <!-- 对话收藏 -->
-        <el-tooltip placement="bottom">
-          <template #content>
-            <span>对话收藏 ({{ chatFavoritesStore.count }})</span>
-          </template>
-          <el-badge :value="chatFavoritesStore.count" :hidden="chatFavoritesStore.count === 0">
-            <el-button size="small" circle @click="showFavoritesDialog = true">
-              <el-icon><Star /></el-icon>
-            </el-button>
+        <button class="header-action-btn" :class="{active: showFavoritesDialog}" @click="showFavoritesDialog = true" title="对话收藏">
+          <el-badge :value="chatFavoritesStore.count" :hidden="chatFavoritesStore.count === 0" :max="99">
+            <el-icon><Star /></el-icon>
           </el-badge>
-        </el-tooltip>
+        </button>
 
-        <!-- 显示设置 -->
-        <el-popover
-          placement="bottom-end"
-          :width="240"
-          trigger="click"
-          v-model:visible="showDisplayPopover"
-        >
+        <el-popover placement="bottom-end" :width="200" trigger="click" v-model:visible="showDisplayPopover">
           <template #reference>
-            <el-button size="small" circle title="显示设置">
-              <el-icon><Operation /></el-icon>
-            </el-button>
+            <button class="header-action-btn" title="显示设置">
+              <el-icon><Setting /></el-icon>
+            </button>
           </template>
           <div class="display-settings">
+            <div class="ds-title">显示设置</div>
             <div class="setting-item">
               <label>字号</label>
-              <el-slider
-                v-model="display.fontSize"
-                :min="13"
-                :max="18"
-                :step="1"
-                show-input
-                size="small"
-                @change="onDisplayChange"
-              />
+              <el-slider v-model="display.fontSize" :min="13" :max="18" :step="1" size="small" @change="onDisplayChange" />
             </div>
             <div class="setting-item">
               <label>行高</label>
-              <el-slider
-                v-model="display.lineHeight"
-                :min="1.4"
-                :max="2.2"
-                :step="0.1"
-                show-input
-                size="small"
-                @change="onDisplayChange"
-              />
+              <el-slider v-model="display.lineHeight" :min="1.4" :max="2.2" :step="0.1" size="small" @change="onDisplayChange" />
             </div>
             <div class="setting-item">
               <label>段落间距</label>
-              <el-slider
-                v-model="display.paragraphSpacing"
-                :min="4"
-                :max="20"
-                :step="1"
-                show-input
-                size="small"
-                @change="onDisplayChange"
-              />
-            </div>
-            <div class="setting-item">
-              <label>内边距</label>
-              <el-slider
-                v-model="display.contentPadding"
-                :min="8"
-                :max="24"
-                :step="1"
-                show-input
-                size="small"
-                @change="onDisplayChange"
-              />
-            </div>
-            <div class="setting-item">
-              <label>字体</label>
-              <el-select
-                v-model="display.fontFamily"
-                size="small"
-                style="width:100%"
-                @change="onDisplayChange"
-              >
-                <el-option label="微软雅黑（默认）" value="default" />
-                <el-option label="宋体" value="SimSun, serif" />
-                <el-option label="黑体" value="SimHei, sans-serif" />
-                <el-option label="楷体" value="KaiTi, serif" />
-                <el-option label="等线" value="DengXian, sans-serif" />
-                <el-option label="Consolas" value="Consolas, monospace" />
-              </el-select>
+              <el-slider v-model="display.paragraphSpacing" :min="4" :max="20" :step="1" size="small" @change="onDisplayChange" />
             </div>
           </div>
         </el-popover>
 
-        <!-- 收起面板 -->
-        <el-tooltip content="收起面板" placement="bottom">
-          <el-button size="small" circle @click="chatStore.closePanel()">
-            <el-icon><DArrowRight /></el-icon>
-          </el-button>
-        </el-tooltip>
+        <button class="header-action-btn close-btn" title="收起面板" @click="chatStore.closePanel()">
+          <el-icon><DArrowRight /></el-icon>
+        </button>
       </div>
     </div>
 
     <!-- 功能开关栏 -->
-    <div class="chat-toggle-bar">
-      <el-tooltip :content="chatStore.deepThinkingEnabled ? '关闭深度思考' : '开启深度思考'" placement="bottom">
-        <el-button
-          size="small"
-          :type="chatStore.deepThinkingEnabled ? 'primary' : 'default'"
-          :class="{ 'toggle-active': chatStore.deepThinkingEnabled }"
-          @click="chatStore.toggleDeepThinking()"
-        >
-          <el-icon><MagicStick /></el-icon>
-          深度思考
-        </el-button>
-      </el-tooltip>
-
-      <el-tooltip content="联网搜索最新信息" placement="bottom">
-        <el-button
-          size="small"
-          :type="chatStore.webSearchEnabled ? 'primary' : 'default'"
-          :class="{ 'toggle-active': chatStore.webSearchEnabled }"
-          @click="chatStore.toggleWebSearch()"
-          :loading="chatStore.isSearching"
-        >
-          <el-icon><Link /></el-icon>
-          联网
-        </el-button>
-      </el-tooltip>
-
-      <el-tooltip content="上传文件进行分析" placement="bottom">
-        <el-button size="small" @click="handleFileUpload" :disabled="isUploading">
-          <el-icon><UploadFilled /></el-icon>
-        </el-button>
-      </el-tooltip>
-
-      <!-- 文档引用指示 -->
-      <el-tooltip v-if="chatStore.documentContext" placement="bottom">
-        <template #content>
-          <div style="max-width:300px">
-            <p><strong>引用文档段落：</strong></p>
-            <p style="font-size:12px;color:#909399">{{ chatStore.documentContext.description }}</p>
-          </div>
-        </template>
-        <el-tag size="small" type="warning" closable @close="chatStore.clearDocumentContext()">
-          已引用文档
-        </el-tag>
-      </el-tooltip>
+    <div class="chat-feature-bar">
+      <button
+        class="feature-chip"
+        :class="{ active: chatStore.deepThinkingEnabled }"
+        @click="chatStore.toggleDeepThinking()"
+        title="深度思考"
+      >
+        <el-icon :size="13"><MagicStick /></el-icon>
+        <span>深度思考</span>
+      </button>
+      <button
+        class="feature-chip"
+        :class="{ active: chatStore.webSearchEnabled }"
+        @click="chatStore.toggleWebSearch()"
+        :disabled="chatStore.isSearching"
+        title="联网搜索"
+      >
+        <el-icon :size="13"><Link /></el-icon>
+        <span>联网</span>
+      </button>
+      <button class="feature-chip" @click="handleFileUpload" :disabled="isUploading" title="上传文件">
+        <el-icon :size="13"><UploadFilled /></el-icon>
+        <span>文件</span>
+      </button>
+      <el-tag v-if="chatStore.documentContext" size="small" type="warning" closable class="doc-tag" @close="chatStore.clearDocumentContext()">
+        已引用文档
+      </el-tag>
     </div>
 
-    <!-- 上传文件提示 -->
     <div v-if="uploadedFile" class="uploaded-file-bar">
       <el-icon><Document /></el-icon>
       <span class="uploaded-file-name">{{ uploadedFile.name }}</span>
@@ -354,24 +260,19 @@
         '--msg-font-size': display.fontSize + 'px',
         '--msg-line-height': display.lineHeight,
         '--msg-paragraph-spacing': display.paragraphSpacing + 'px',
-        '--msg-font-family': display.fontFamily === 'default'
-          ? '\'Microsoft YaHei\', \'PingFang SC\', sans-serif'
-          : display.fontFamily,
-        '--msg-padding': display.contentPadding + 'px'
+        '--msg-padding': '16px'
       }"
     >
-      <div v-if="chatStore.messages.length === 0" class="chat-empty">
-        <el-icon :size="48"><ChatDotSquare /></el-icon>
-        <p class="empty-title">AI 文案智能助手</p>
-        <p class="empty-desc">基于 DeepSeek 大模型，为您提供文案创作建议、内容分析和写作辅助</p>
-        <div class="empty-suggestions">
-          <button
-            v-for="sg in suggestions"
-            :key="sg"
-            class="suggestion-tag"
-            @click="inputText = sg; handleSend()"
-          >
-            {{ sg }}
+      <div v-if="chatStore.messages.length === 0" class="chat-welcome">
+        <div class="welcome-icon-wrap">
+          <el-icon :size="36"><ChatDotRound /></el-icon>
+        </div>
+        <h3 class="welcome-title">你好，我是 AI 文案助手</h3>
+        <p class="welcome-desc">我可以帮你分析文案、优化表达、创作内容、解答疑问</p>
+        <div class="welcome-suggestions">
+          <button v-for="sg in suggestions" :key="sg" class="suggestion-card" @click="inputText = sg; handleSend()">
+            <el-icon :size="14"><Promotion /></el-icon>
+            <span>{{ sg }}</span>
           </button>
         </div>
       </div>
@@ -384,90 +285,69 @@
         @favorite="chatStore.favoriteMessage($event)"
         @unfavorite="chatStore.unfavoriteMessage($event)"
         @delete="handleDeleteMessage"
+        @copy="handleCopyMessage"
       />
 
-      <!-- 自动滚动到底部的锚点 -->
       <div ref="scrollAnchorRef"></div>
     </div>
 
-    <!-- 输入区域 -->
+    <!-- 输入区域 - 全新设计 -->
     <div class="chat-input-area">
-      <el-input
-        v-model="inputText"
-        type="textarea"
-        :rows="2"
-        placeholder="输入您的问题，AI 助手将为您解答..."
-        resize="none"
-        @keydown="handleInputKeydown"
-        :disabled="isStreaming"
-      />
-
-      <div class="chat-input-actions">
-        <span v-if="isStreaming" class="streaming-hint">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          正在生成回复...
-        </span>
-        <el-button
-          v-if="isStreaming"
-          size="small"
-          type="danger"
-          @click="handleStop"
-        >
-          停止生成
-        </el-button>
-        <el-button
-          v-else
-          size="small"
-          type="primary"
-          @click="handleSend"
-          :disabled="!inputText.trim() && !uploadedFile"
-          :loading="isStreaming"
-        >
-          <el-icon><Promotion /></el-icon>
-          发送
-        </el-button>
+      <div class="input-wrapper">
+        <textarea
+          ref="textareaRef"
+          v-model="inputText"
+          class="chat-textarea"
+          placeholder="输入你的问题... (Enter发送，Shift+Enter换行)"
+          rows="1"
+          @keydown="handleInputKeydown"
+          @input="autoResize"
+          :disabled="isStreaming"
+        ></textarea>
+        <div class="input-toolbar">
+          <div class="input-toolbar-left">
+            <span v-if="isStreaming" class="streaming-hint">
+              <span class="typing-dots"><span></span><span></span><span></span></span>
+              正在生成...
+            </span>
+          </div>
+          <div class="input-toolbar-right">
+            <button v-if="isStreaming" class="send-btn stop-btn" @click="handleStop">
+              <el-icon :size="14"><VideoPause /></el-icon>
+              <span>停止</span>
+            </button>
+            <button
+              v-else
+              class="send-btn"
+              :class="{ active: inputText.trim() || uploadedFile }"
+              @click="handleSend"
+              :disabled="!inputText.trim() && !uploadedFile"
+            >
+              <el-icon :size="16"><Promotion /></el-icon>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- 对话收藏对话框 -->
-    <el-dialog v-model="showFavoritesDialog" title="对话收藏" width="680px" destroy-on-close>
+    <!-- 收藏对话框 -->
+    <el-dialog v-model="showFavoritesDialog" title="对话收藏" width="640px" destroy-on-close>
       <div class="favorites-search">
-        <el-input
-          v-model="favoritesSearchKeyword"
-          placeholder="搜索收藏内容..."
-          clearable
-          size="small"
-          :prefix-icon="Search"
-        />
+        <el-input v-model="favoritesSearchKeyword" placeholder="搜索收藏..." clearable size="small" :prefix-icon="Search" />
       </div>
       <div v-if="filteredFavorites.length === 0" class="favorites-empty">
-        <p v-if="chatFavoritesStore.count === 0">暂无收藏的对话内容</p>
-        <p v-else>未找到匹配的收藏内容</p>
+        <p v-if="chatFavoritesStore.count === 0">暂无收藏</p>
+        <p v-else>未找到匹配内容</p>
       </div>
       <div v-else class="favorites-list">
-        <div
-          v-for="fav in filteredFavorites"
-          :key="fav.id"
-          class="favorite-item"
-        >
+        <div v-for="fav in filteredFavorites" :key="fav.id" class="favorite-item">
           <div class="favorite-header">
-            <span class="favorite-model">{{ fav.modelName }}</span>
-            <span class="favorite-time">{{ fav.addedAt }}</span>
-            <el-tag v-if="fav.filePath" size="small" type="info" class="favorite-file">
-              {{ fav.filePath.split(/[/\\]/).pop() }}
-            </el-tag>
+            <span class="favorite-q">Q: {{ fav.question.substring(0, 100) }}{{ fav.question.length > 100 ? '...' : '' }}</span>
+            <button class="fav-del-btn" @click="chatFavoritesStore.removeFavorite(fav.messageId)">
+              <el-icon :size="12"><Delete /></el-icon>
+            </button>
           </div>
-          <div class="favorite-question">
-            <strong>Q:</strong> {{ fav.question.substring(0, 150) }}{{ fav.question.length > 150 ? '...' : '' }}
-          </div>
-          <div class="favorite-answer">
-            <strong>A:</strong> {{ fav.answer.substring(0, 300) }}{{ fav.answer.length > 300 ? '...' : '' }}
-          </div>
-          <div class="favorite-actions">
-            <el-button size="small" text type="danger" @click="chatFavoritesStore.removeFavorite(fav.messageId)">
-              <el-icon><Delete /></el-icon> 取消收藏
-            </el-button>
-          </div>
+          <div class="favorite-a">A: {{ fav.answer.substring(0, 200) }}{{ fav.answer.length > 200 ? '...' : '' }}</div>
         </div>
       </div>
     </el-dialog>
@@ -475,7 +355,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import ChatMessage from '@/components/ChatMessage.vue'
@@ -485,29 +365,23 @@ import { useChatFavoritesStore } from '@/stores/chatFavorites'
 const chatStore = useChatStore()
 const chatFavoritesStore = useChatFavoritesStore()
 
-// 输入状态
 const inputText = ref('')
-const isStreaming = computed(() => {
-  return chatStore.messages.some(m => m.isStreaming)
-})
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const isStreaming = computed(() => chatStore.messages.some(m => m.isStreaming))
 
-// 文件上传状态
 const uploadedFile = ref<{ name: string; content: string } | null>(null)
 const isUploading = ref(false)
 
-// 对话框状态
 const showFavoritesDialog = ref(false)
 const showDisplayPopover = ref(false)
 const showHistoryPopover = ref(false)
 const favoritesSearchKeyword = ref('')
 
-// 历史对话 — 文件夹折叠状态
 const collapsedFolders = ref(new Set<string>())
 const dragOverFolder = ref<string | null>(null)
 const dragSessionId = ref<string | null>(null)
 const historySearchKeyword = ref('')
 
-// 搜索
 const searchResults = computed(() => {
   const kw = historySearchKeyword.value.trim().toLowerCase()
   if (!kw) return []
@@ -517,17 +391,15 @@ const searchResults = computed(() => {
       const content = m.content.toLowerCase()
       const idx = content.indexOf(kw)
       if (idx === -1) continue
-      // 截取关键词周围 60 字的上下文并高亮
       const start = Math.max(0, idx - 20)
       const end = Math.min(m.content.length, idx + kw.length + 40)
       let preview = escapeHtml(m.content.substring(start, end))
-      // 高亮所有匹配
       const escapedKw = escapeHtml(kw)
       preview = preview.replace(new RegExp(escapedKw, 'gi'), m => `<mark>${m}</mark>`)
       if (start > 0) preview = '…' + preview
       if (end < m.content.length) preview = preview + '…'
       results.push({ sessionId: s.id, messageId: m.id, highlight: preview })
-      break // 每个会话只取第一条匹配
+      break
     }
   }
   return results.slice(0, 20)
@@ -544,7 +416,6 @@ function escapeHtml(s: string): string {
 function jumpToMessage(sessionId: string, messageId: string) {
   chatStore.switchSession(sessionId)
   showHistoryPopover.value = false
-  // 轮询直到 DOM 出现，然后滚动
   const tryScroll = () => {
     const el = document.querySelector(`[data-msg-id="${messageId}"]`)
     if (el) {
@@ -558,16 +429,9 @@ function jumpToMessage(sessionId: string, messageId: string) {
   nextTick(() => setTimeout(tryScroll, 50))
 }
 
-// 计算属性
 const allSessions = computed(() => chatStore.sessions)
-
-const pinnedSessions = computed(() =>
-  allSessions.value.filter(s => s.pinned && !s.folderId)
-)
-
-const uncategorizedSessions = computed(() =>
-  allSessions.value.filter(s => !s.pinned && !s.folderId)
-)
+const pinnedSessions = computed(() => allSessions.value.filter(s => s.pinned && !s.folderId))
+const uncategorizedSessions = computed(() => allSessions.value.filter(s => !s.pinned && !s.folderId))
 
 function getFolderSessions(folderId: string) {
   return allSessions.value.filter(s => s.folderId === folderId && !s.pinned)
@@ -576,11 +440,9 @@ function getFolderSessions(folderId: string) {
 function toggleFolder(folderId: string) {
   const s = collapsedFolders.value
   if (s.has(folderId)) s.delete(folderId); else s.add(folderId)
-  // 触发响应式
   collapsedFolders.value = new Set(s)
 }
 
-// 拖拽
 function handleDragStart(e: DragEvent, sessionId: string) {
   dragSessionId.value = sessionId
   e.dataTransfer!.effectAllowed = 'move'
@@ -594,13 +456,9 @@ function handleDropToFolder(e: DragEvent, folderId: string) {
   }
 }
 
-// 文件夹操作
 function handleAddFolder() {
   ElMessageBox.prompt('请输入文件夹名称', '新建文件夹', {
-    confirmButtonText: '创建',
-    cancelButtonText: '取消',
-    inputPattern: /.+/,
-    inputErrorMessage: '名称不能为空'
+    confirmButtonText: '创建', cancelButtonText: '取消', inputPattern: /.+/, inputErrorMessage: '名称不能为空'
   }).then(({ value }) => {
     const name = (value || '').trim()
     if (name) chatStore.createFolder(name)
@@ -609,33 +467,23 @@ function handleAddFolder() {
 
 function handleDeleteFolder(folderId: string) {
   const count = chatStore.getFolderCount(folderId)
-  ElMessageBox.confirm(
-    `删除后文件夹内的 ${count} 个对话将移至「未分类」。`,
-    '删除文件夹',
+  ElMessageBox.confirm(`删除后 ${count} 个对话将移至「未分类」。`, '删除文件夹',
     { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
   ).then(() => chatStore.deleteFolder(folderId)).catch(() => {})
 }
 
 function handleRenameFolder(folder: { id: string; name: string }) {
-  ElMessageBox.prompt('请输入新名称', '重命名文件夹', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    inputValue: folder.name,
-    inputPattern: /.+/,
-    inputErrorMessage: '名称不能为空'
+  ElMessageBox.prompt('请输入新名称', '重命名', {
+    confirmButtonText: '确定', cancelButtonText: '取消', inputValue: folder.name, inputPattern: /.+/, inputErrorMessage: '不能为空'
   }).then(({ value }) => {
-    const name = (value || '').trim()
-    if (name) chatStore.renameFolder(folder.id, name)
+    if (value) chatStore.renameFolder(folder.id, value.trim())
   }).catch(() => {})
 }
 
-// 显示设置本地状态（v-model 不能直接绑定 store 深层属性）
 const display = reactive({
   fontSize: chatStore.displaySettings.fontSize,
   lineHeight: chatStore.displaySettings.lineHeight,
   paragraphSpacing: chatStore.displaySettings.paragraphSpacing,
-  contentPadding: chatStore.displaySettings.contentPadding,
-  fontFamily: chatStore.displaySettings.fontFamily
 })
 
 watch(() => chatStore.displaySettings, (val) => {
@@ -643,54 +491,45 @@ watch(() => chatStore.displaySettings, (val) => {
     display.fontSize = val.fontSize
     display.lineHeight = val.lineHeight
     display.paragraphSpacing = val.paragraphSpacing
-    display.contentPadding = val.contentPadding
-    display.fontFamily = val.fontFamily
   }
 }, { deep: true })
 
-// DOM 引用
 const messagesContainerRef = ref<HTMLElement | null>(null)
 const scrollAnchorRef = ref<HTMLElement | null>(null)
 
-// 建议话题
 const suggestions = [
-  '帮我分析当前文档的结构和逻辑',
-  '如何优化这段文案的表达风格？',
-  '为这个主题写一个吸引人的开头',
-  '帮我检查这段文案中的语法问题',
-  '针对目标受众给出改写建议'
+  '帮我写一段吸引人的视频开头文案',
+  '分析这段文案的问题并优化',
+  '生成一个爆款短视频脚本',
+  '帮我提炼这个文档的核心观点'
 ]
 
-// 收藏搜索过滤
-const filteredFavorites = computed(() => {
-  return chatFavoritesStore.searchFavorites(favoritesSearchKeyword.value)
-})
+const filteredFavorites = computed(() => chatFavoritesStore.searchFavorites(favoritesSearchKeyword.value))
 
-// 自动滚动到底部
 function scrollToBottom() {
-  nextTick(() => {
-    scrollAnchorRef.value?.scrollIntoView({ behavior: 'smooth' })
-  })
+  nextTick(() => { scrollAnchorRef.value?.scrollIntoView({ behavior: 'smooth' }) })
 }
 
-// 监听消息变化自动滚动
 watch(() => chatStore.messages.length, () => scrollToBottom())
 watch(() => chatStore.messages.map(m => m.content).join(''), () => scrollToBottom())
 
-// 发送消息
+function autoResize() {
+  const ta = textareaRef.value
+  if (!ta) return
+  ta.style.height = 'auto'
+  ta.style.height = Math.min(ta.scrollHeight, 150) + 'px'
+}
+
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text && !uploadedFile.value) return
-
   if (isStreaming.value) return
-
   const content = text || (uploadedFile.value ? '请分析以上文件内容' : '')
   inputText.value = ''
-
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
   const fileContent = uploadedFile.value?.content
   const fileName = uploadedFile.value?.name
   uploadedFile.value = null
-
   try {
     await chatStore.sendMessage(content, null, fileContent, fileName)
   } catch (e: any) {
@@ -698,12 +537,10 @@ async function handleSend() {
   }
 }
 
-// 追问
 async function handleFollowUp(messageId: string) {
   if (isStreaming.value) return
   const text = inputText.value.trim() || '请进一步说明'
   inputText.value = ''
-
   try {
     await chatStore.sendMessage(text, messageId)
   } catch (e: any) {
@@ -711,35 +548,31 @@ async function handleFollowUp(messageId: string) {
   }
 }
 
-// 停止生成
-function handleStop() {
-  chatStore.cancelStream()
-}
+function handleStop() { chatStore.cancelStream() }
 
-// 删除消息
 function handleDeleteMessage(messageId: string) {
-  ElMessageBox.confirm('确定要删除这条消息吗？相关追问也会一并删除。', '确认删除', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    chatStore.deleteMessage(messageId)
-    ElMessage.success('消息已删除')
-  }).catch(() => {})
+  ElMessageBox.confirm('确定删除这条消息？追问也会一起删除。', '确认', {
+    confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+  }).then(() => { chatStore.deleteMessage(messageId) }).catch(() => {})
 }
 
-// 新建对话
+function handleCopyMessage(content: string) {
+  navigator.clipboard.writeText(content).then(() => {
+    ElMessage.success('已复制')
+  }).catch(() => {
+    document.execCommand('copy')
+    ElMessage.success('已复制')
+  })
+}
+
 function handleNewSession() {
   if (chatStore.messages.length === 0) {
-    // 空对话直接创建新的
     chatStore.currentSessionId = null
     chatStore.getOrCreateSession(null)
     return
   }
-  ElMessageBox.confirm('确定要新建对话吗？当前对话将被保存，可随时查看。', '新建对话', {
-    confirmButtonText: '新建',
-    cancelButtonText: '取消',
-    type: 'info'
+  ElMessageBox.confirm('确定新建对话？当前对话将被保存。', '新建对话', {
+    confirmButtonText: '新建', cancelButtonText: '取消', type: 'info'
   }).then(() => {
     chatStore.currentSessionId = null
     chatStore.getOrCreateSession(null)
@@ -749,60 +582,46 @@ function handleNewSession() {
   }).catch(() => {})
 }
 
-// 删除历史会话
 function handleDeleteSession(sessionId: string) {
   const session = chatStore.sessions.find(s => s.id === sessionId)
   if (!session) return
-  ElMessageBox.confirm(`确定要删除「${session.title}」吗？删除后不可恢复。`, '删除对话', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    chatStore.deleteSession(sessionId)
-    ElMessage.success('对话已删除')
-  }).catch(() => {})
+  ElMessageBox.confirm(`确定删除「${session.title}」？此操作不可恢复。`, '删除', {
+    confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+  }).then(() => { chatStore.deleteSession(sessionId) }).catch(() => {})
 }
 
-// 格式化时间
 function formatSessionTime(isoStr: string): string {
   try {
     const d = new Date(isoStr)
     const now = new Date()
     const diff = now.getTime() - d.getTime()
     if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
     return d.toLocaleDateString('zh-CN')
-  } catch {
-    return ''
-  }
+  } catch { return '' }
 }
 
-// 根据 session ID 生成唯一主题色
 const COLORS = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#7c5cfc', '#00bcd4', '#ff9800', '#9c27b0', '#4caf50']
 function sessionColor(id: string): string {
   let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
-  }
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
   return COLORS[Math.abs(hash) % COLORS.length]
 }
 
-// 文件上传
 async function handleFileUpload() {
   try {
     const filePath = await window.electronAPI.selectFile()
     if (!filePath) return
-
     isUploading.value = true
     const result = await window.electronAPI.readFileAsText(filePath)
     if (result.success && result.content) {
       const fileName = filePath.split(/[/\\]/).pop() || '未知文件'
       uploadedFile.value = { name: fileName, content: result.content }
-      ElMessage.success(`已加载文件：${fileName}`)
+      ElMessage.success(`已加载：${fileName}`)
     } else {
-      ElMessage.error(result.error || '读取文件失败')
+      ElMessage.error(result.error || '读取失败')
     }
   } catch (e: any) {
     ElMessage.error(e.message || '上传失败')
@@ -811,12 +630,8 @@ async function handleFileUpload() {
   }
 }
 
-// 清除上传文件
-function clearUploadedFile() {
-  uploadedFile.value = null
-}
+function clearUploadedFile() { uploadedFile.value = null }
 
-// 键盘事件
 function handleInputKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
@@ -824,25 +639,22 @@ function handleInputKeydown(e: KeyboardEvent) {
   }
 }
 
-// 显示设置变更
 function onDisplayChange() {
-  chatStore.updateDisplaySettings({ ...display })
+  chatStore.updateDisplaySettings({
+    fontSize: display.fontSize,
+    lineHeight: display.lineHeight,
+    paragraphSpacing: display.paragraphSpacing,
+    contentPadding: 16,
+    fontFamily: 'default'
+  })
 }
 
-// ===== 面板拖拽调整宽度 =====
 const isResizing = ref(false)
-
 function startResize(e: MouseEvent) {
   isResizing.value = true
   const startX = e.clientX
   const startWidth = chatStore.panelWidth
-
-  function onMouseMove(ev: MouseEvent) {
-    // 面板在右侧，向左拖拽 = clientX 变小 = 面板变宽
-    const delta = startX - ev.clientX
-    chatStore.setPanelWidth(startWidth + delta)
-  }
-
+  function onMouseMove(ev: MouseEvent) { chatStore.setPanelWidth(startWidth + (startX - ev.clientX)) }
   function onMouseUp() {
     isResizing.value = false
     document.removeEventListener('mousemove', onMouseMove)
@@ -850,7 +662,6 @@ function startResize(e: MouseEvent) {
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
   }
-
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
   document.body.style.cursor = 'col-resize'
@@ -858,137 +669,191 @@ function startResize(e: MouseEvent) {
   e.preventDefault()
 }
 
-// 初始化会话
-onMounted(() => {
-  chatStore.getOrCreateSession(null)
-})
+onMounted(() => { chatStore.getOrCreateSession(null) })
 </script>
 
 <style scoped>
 .chat-panel {
-  width: 420px;
-  min-width: 420px;
+  width: 400px;
+  min-width: 320px;
   height: 100%;
-  background: #fff;
-  border-left: 1px solid #e8ecf2;
+  background: var(--c-bg-card);
+  border-left: 1px solid var(--c-border-light);
   display: flex;
   flex-direction: column;
-  transition: width 0.3s, min-width 0.3s, opacity 0.3s;
+  transition: width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1), opacity 0.25s;
   overflow: hidden;
   position: relative;
 }
 
-/* 拖拽手柄 */
 .resize-handle {
   position: absolute;
-  left: -3px;
-  top: 0;
-  bottom: 0;
-  width: 8px;
+  left: -3px; top: 0; bottom: 0;
+  width: 6px;
   cursor: col-resize;
   z-index: 100;
   background: transparent;
-  transition: background 0.2s;
 }
-
 .resize-handle::after {
   content: '';
   position: absolute;
-  left: 3px;
-  top: 0;
-  bottom: 0;
+  left: 2px; top: 0; bottom: 0;
   width: 2px;
-  background: #e4e7ed;
+  background: var(--c-border);
   transition: background 0.2s, width 0.2s;
 }
+.resize-handle:hover::after { background: var(--c-primary); width: 3px; }
 
-.resize-handle:hover {
-  background: rgba(64, 158, 255, 0.08);
-}
+.chat-panel.resizing { transition: none !important; user-select: none; }
+.chat-panel.collapsed { width: 0; min-width: 0; border-left: none; opacity: 0; }
 
-.resize-handle:hover::after {
-  background: #409eff;
-  width: 3px;
-}
-
-.resize-handle:active {
-  background: rgba(64, 158, 255, 0.12);
-}
-
-.resize-handle:active::after {
-  background: #409eff;
-  width: 3px;
-}
-
-.chat-panel.resizing {
-  transition: none !important;
-  user-select: none;
-}
-
-.chat-panel.collapsed {
-  width: 0;
-  min-width: 0;
-  border-left: none;
-}
-
+/* Header */
 .chat-panel-header {
-  height: 46px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  border-bottom: 1px solid #eef1f5;
-  background: #fafbfc;
+  padding: 0 16px;
+  background: var(--c-bg-card);
+  border-bottom: 1px solid var(--c-border-light);
   flex-shrink: 0;
 }
 
 .chat-panel-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: 14px;
-  color: #303133;
+  gap: 10px;
 }
 
-.model-tag {
+.chat-title-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--c-primary), var(--c-accent));
+  color: var(--c-primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 30%, transparent);
+}
+
+.chat-title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-title-main {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--c-text);
+  line-height: 1.3;
+}
+
+.chat-title-sub {
   font-size: 11px;
+  color: var(--c-text-muted);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  align-self: flex-start;
+  font-weight: 500;
 }
 
 .chat-panel-header-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  align-items: center;
 }
 
-/* 功能开关栏 */
-.chat-toggle-bar {
+.header-action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  font-size: 16px;
+}
+.header-action-btn:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-text);
+}
+.header-action-btn.active {
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+.header-action-btn.close-btn:hover {
+  color: var(--c-danger);
+  background: color-mix(in srgb, var(--c-danger) 8%, transparent);
+}
+
+/* Feature bar */
+.chat-feature-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  border-bottom: 1px solid #f0f2f5;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-border-light);
   flex-shrink: 0;
   flex-wrap: wrap;
-  background: #fafbfc;
+  background: var(--c-bg-card);
 }
 
-.toggle-active {
-  border-color: #409eff;
+.feature-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-card);
+  color: var(--c-text-sec);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+.feature-chip:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+.feature-chip.active {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: var(--c-primary-text);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 25%, transparent);
+}
+.feature-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* 上传文件提示 */
+.doc-tag {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+/* Uploaded file */
 .uploaded-file-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: #f0f9eb;
-  border-bottom: 1px solid #e1f3d8;
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--c-success) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-success) 20%, transparent);
   font-size: 12px;
-  color: #67c23a;
+  color: var(--c-success);
   flex-shrink: 0;
 }
-
 .uploaded-file-name {
   flex: 1;
   overflow: hidden;
@@ -996,427 +861,332 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-/* 消息列表 */
+/* Messages */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
-  background: #fafbfc;
+  padding: 0;
+  background: var(--c-bg);
+  scroll-behavior: smooth;
 }
 
-.chat-empty {
+/* Welcome */
+.chat-welcome {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: #8899b0;
+  min-height: 100%;
+  padding: 40px 24px;
   text-align: center;
-  padding: 32px 24px;
 }
-
-.empty-title {
-  font-size: 16px;
+.welcome-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--c-primary), var(--c-accent));
+  color: var(--c-primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--c-primary) 25%, transparent);
+}
+.welcome-title {
+  font-size: 18px;
   font-weight: 700;
-  color: #475569;
-  margin: 14px 0 6px;
+  color: var(--c-text);
+  margin: 0 0 8px;
 }
-
-.empty-desc {
+.welcome-desc {
   font-size: 13px;
+  color: var(--c-text-muted);
+  margin: 0 0 24px;
   max-width: 280px;
   line-height: 1.6;
-  color: #8899b0;
-  margin-bottom: 8px;
 }
-
-.empty-suggestions {
+.welcome-suggestions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 16px;
-  justify-content: center;
-  max-width: 340px;
+  width: 100%;
+  max-width: 320px;
 }
-
-.suggestion-tag {
+.suggestion-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  background: var(--c-bg-card);
+  color: var(--c-text-sec);
   cursor: pointer;
-  font-size: 12px;
-  padding: 6px 12px;
-  border: 1px solid #e8ecf2;
-  border-radius: 10px;
-  background: #fff;
-  color: #5a6a80;
-  transition: all .15s;
-  white-space: normal;
+  font-size: 13px;
   text-align: left;
-  line-height: 1.5;
+  font-family: inherit;
+  transition: all var(--transition-fast);
 }
-.suggestion-tag:hover {
-  border-color: #1a4cff;
-  background: #f4f6ff;
-  color: #1a4cff;
+.suggestion-card:hover {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  transform: translateX(2px);
 }
 
-/* 输入区域 */
+/* Input area */
 .chat-input-area {
-  border-top: 1px solid #eef1f5;
-  padding: 12px 16px 14px;
-  background: #fff;
+  padding: 12px;
+  background: var(--c-bg-card);
+  border-top: 1px solid var(--c-border-light);
   flex-shrink: 0;
 }
 
-.chat-input-area :deep(.el-textarea__inner) {
-  font-size: 13px;
-  line-height: 1.6;
-  border-radius: 12px;
-  border-color: #e2e6ec;
-  background: #f8f9fb;
-  padding: 10px 14px;
-  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+.input-wrapper {
+  border: 1.5px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--c-bg-sec);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  overflow: hidden;
 }
-.chat-input-area :deep(.el-textarea__inner:focus) {
-  border-color: #1a4cff;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(26,76,255,.06);
+.input-wrapper:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 12%, transparent);
+  background: var(--c-bg-card);
 }
 
-.chat-input-actions {
+.chat-textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  padding: 12px 14px 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--c-text);
+  font-family: inherit;
+  max-height: 150px;
+  min-height: 24px;
+}
+.chat-textarea::placeholder {
+  color: var(--c-text-muted);
+}
+
+.input-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  margin-top: 8px;
-  gap: 10px;
-  padding: 0 2px;
-}
-
-.chat-input-actions .el-button {
-  border-radius: 8px;
-  font-weight: 500;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
 }
 
 .streaming-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
-/* 收藏对话框 */
-.favorites-search {
-  margin-bottom: 12px;
-}
-
-.favorites-empty {
-  text-align: center;
-  padding: 40px 0;
-  color: #909399;
-}
-
-.favorites-list {
-  max-height: 480px;
-  overflow-y: auto;
-}
-
-.favorite-item {
-  padding: 12px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  margin-bottom: 10px;
-  background: #fafafa;
-}
-
-.favorite-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.favorite-model {
-  font-size: 12px;
-  color: #409eff;
-  font-weight: 600;
-}
-
-.favorite-time {
-  font-size: 11px;
-  color: #c0c4cc;
-  margin-left: auto;
-}
-
-.favorite-file {
-  font-size: 11px;
-}
-
-.favorite-question,
-.favorite-answer {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #606266;
-  margin-bottom: 4px;
-}
-
-.favorite-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-/* 显示设置弹窗 */
-.display-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.display-settings .setting-item {
-  display: flex;
-  flex-direction: column;
+.typing-dots {
+  display: inline-flex;
   gap: 2px;
 }
-
-.display-settings .setting-item label {
-  font-size: 12px;
-  color: #606266;
-  font-weight: 500;
+.typing-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
-/* 历史对话列表 */
-.history-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.history-search {
-  padding: 0 4px 8px;
-  border-bottom: 1px solid #ebeef5;
-  margin-bottom: 8px;
-}
-
-.history-search-results {
-  max-height: 360px;
-  overflow-y: auto;
-  margin-bottom: 8px;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 8px;
-}
-
-.history-search-item {
-  padding: 8px 10px;
-  border-radius: 6px;
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--c-border);
+  color: var(--c-text-muted);
   cursor: pointer;
-  margin-bottom: 4px;
-  transition: background 0.15s;
-}
-
-.history-search-item:hover {
-  background: #f0f5ff;
-}
-
-.history-search-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #409eff;
-  margin-bottom: 4px;
-}
-
-.history-search-preview {
-  font-size: 12px;
-  color: #606266;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-search-preview :deep(mark) {
-  background: #fff3cd;
-  color: #856404;
-  padding: 1px 2px;
-  border-radius: 2px;
-}
-
-.history-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 8px;
-  border-bottom: 1px solid #ebeef5;
-  margin-bottom: 8px;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  font-size: 16px;
+}
+.send-btn.active {
+  background: linear-gradient(135deg, var(--c-primary), var(--c-accent));
+  color: var(--c-primary-text);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 30%, transparent);
+}
+.send-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.send-btn.stop-btn {
+  width: auto;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: var(--c-danger);
+  color: var(--c-primary-text);
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
 }
 
-.history-toolbar-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+/* History panel */
+.history-panel { display: flex; flex-direction: column; }
+.history-search { padding: 0 4px 8px; border-bottom: 1px solid var(--c-border-light); margin-bottom: 8px; }
+.history-search-results { max-height: 360px; overflow-y: auto; margin-bottom: 8px; }
+.history-search-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background var(--transition-fast);
 }
+.history-search-item:hover { background: var(--c-bg-hover); }
+.history-search-title { font-size: 12px; font-weight: 600; color: var(--c-primary); margin-bottom: 4px; }
+.history-search-preview { font-size: 12px; color: var(--c-text-sec); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-search-preview :deep(mark) { background: color-mix(in srgb, var(--c-warning) 30%, transparent); color: var(--c-text); padding: 0 2px; border-radius: 2px; }
 
-.history-list {
-  max-height: 420px;
-  overflow-y: auto;
-}
+.history-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px; border-bottom: 1px solid var(--c-border-light); margin-bottom: 8px; }
+.history-toolbar-title { font-size: 13px; font-weight: 600; color: var(--c-text); }
+.history-list { max-height: 400px; overflow-y: auto; }
+.history-empty { text-align: center; padding: 24px 0; color: var(--c-text-muted); font-size: 12px; }
 
-.history-empty {
-  text-align: center;
-  padding: 24px 0;
-  color: #909399;
-  font-size: 13px;
-}
-
-.history-section {
-  margin-bottom: 2px;
-}
-
+.history-section { margin-bottom: 2px; }
 .history-section-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  font-size: 12px;
-  color: #909399;
-  font-weight: 500;
-  border-radius: 4px;
-}
-
-.folder-header {
-  cursor: pointer;
-  user-select: none;
-}
-
-.folder-header:hover {
-  background: #f5f7fa;
-}
-
-.folder-header .el-icon:first-child {
-  transition: transform 0.2s;
-}
-
-.folder-header.collapsed .el-icon:first-child {
-  transform: rotate(-90deg);
-}
-
-.folder-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: #606266;
-}
-
-.folder-count {
   font-size: 11px;
-  color: #c0c4cc;
-  background: #f5f7fa;
-  padding: 0 6px;
-  border-radius: 10px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-
-.folder-delete {
-  visibility: hidden;
-  padding: 0;
-}
-
-.folder-header:hover .folder-delete {
-  visibility: visible;
-}
+.folder-header { cursor: pointer; user-select: none; text-transform: none; font-weight: 500; font-size: 12px; }
+.folder-header:hover { background: var(--c-bg-hover); }
+.folder-arrow { transition: transform 0.2s; }
+.folder-header.collapsed .folder-arrow { transform: rotate(-90deg); }
+.folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-sec); }
+.folder-count { font-size: 10px; color: var(--c-text-muted); background: var(--c-bg-hover); padding: 0 6px; border-radius: 10px; }
+.folder-delete { visibility: hidden; padding: 0; }
+.folder-header:hover .folder-delete { visibility: visible; }
 
 .folder-drop-zone {
-  min-height: 28px;
+  min-height: 20px;
   transition: background 0.2s;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px dashed transparent;
 }
-
 .folder-drop-zone.drag-over {
-  background: #ecf5ff;
-  border-color: #409eff;
+  background: var(--c-primary-soft);
+  border-color: var(--c-primary);
 }
-
-.folder-empty {
-  text-align: center;
-  font-size: 11px;
-  color: #c0c4cc;
-  padding: 8px 0;
-}
+.folder-empty { text-align: center; font-size: 11px; color: var(--c-text-muted); padding: 8px 0; }
 
 .history-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
-
-.history-item:hover {
-  background: #f5f7fa;
-}
-
-.history-item.active {
-  background: #ecf5ff;
-}
-
-.history-item.active .history-title {
-  color: #409eff;
-}
+.history-item:hover { background: var(--c-bg-hover); }
+.history-item.active { background: var(--c-primary-soft); }
+.history-item.active .history-title { color: var(--c-primary); font-weight: 600; }
 
 .history-color-bar {
   flex-shrink: 0;
   width: 3px;
-  height: 28px;
+  height: 24px;
   border-radius: 2px;
   background: var(--session-color);
 }
+.history-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.history-title { font-size: 12px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { font-size: 10px; color: var(--c-text-muted); }
 
-.history-item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.history-title {
-  font-size: 13px;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-meta {
-  font-size: 11px;
-  color: #909399;
-}
-
-.history-pin,
-.history-delete {
+.history-mini-btn {
   visibility: hidden;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
+  transition: all var(--transition-fast);
 }
+.history-item:hover .history-mini-btn { visibility: visible; }
+.history-mini-btn:hover { background: var(--c-bg-hover); color: var(--c-text); }
+.history-mini-btn.warn { color: var(--c-warning); }
+.history-mini-btn.danger:hover { color: var(--c-danger); background: color-mix(in srgb, var(--c-danger) 10%, transparent); }
 
-.history-item:hover .history-pin,
-.history-item:hover .history-delete {
-  visibility: visible;
-}
+/* Display settings */
+.display-settings { display: flex; flex-direction: column; gap: 8px; }
+.ds-title { font-size: 13px; font-weight: 600; color: var(--c-text); margin-bottom: 4px; }
+.display-settings .setting-item { display: flex; flex-direction: column; gap: 2px; }
+.display-settings .setting-item label { font-size: 11px; color: var(--c-text-sec); font-weight: 500; }
 
-.history-delete:hover {
-  color: #f56c6c !important;
+/* Favorites */
+.favorites-search { margin-bottom: 12px; }
+.favorites-empty { text-align: center; padding: 32px 0; color: var(--c-text-muted); }
+.favorites-list { max-height: 420px; overflow-y: auto; }
+.favorite-item {
+  padding: 12px;
+  border: 1px solid var(--c-border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  background: var(--c-bg-sec);
+  transition: border-color var(--transition-fast);
 }
+.favorite-item:hover { border-color: var(--c-primary); }
+.favorite-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.favorite-q {
+  font-size: 13px;
+  color: var(--c-text);
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.5;
+}
+.fav-del-btn {
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.fav-del-btn:hover { color: var(--c-danger); background: color-mix(in srgb, var(--c-danger) 8%, transparent); }
+.favorite-a { font-size: 12px; line-height: 1.6; color: var(--c-text-sec); }
 </style>
 
 <style>
-/* 搜索跳转高亮闪烁 */
 .msg-highlight-flash {
   animation: msg-flash 0.5s ease-in-out 3;
 }
-
 @keyframes msg-flash {
   0%, 100% { background-color: transparent; }
-  50% { background-color: #fff3cd; border-radius: 8px; }
+  50% { background-color: color-mix(in srgb, var(--c-primary) 20%, transparent); border-radius: 8px; }
 }
 </style>

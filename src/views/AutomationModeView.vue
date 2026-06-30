@@ -21,7 +21,7 @@ import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #f5f6fa;
+  background: var(--c-bg);
   overflow: hidden;
 }
 
@@ -30,8 +30,8 @@ import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-header-bg);
+  border-bottom: 1px solid var(--c-border);
   height: 44px;
   min-height: 44px;
   gap: 12px;
@@ -47,13 +47,13 @@ import InfiniteCanvas from '@/components/creator/InfiniteCanvas.vue'
 .header-title {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--c-text);
   white-space: nowrap;
 }
 
 .header-desc {
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--c-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

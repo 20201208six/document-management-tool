@@ -39,10 +39,13 @@ export interface TimelineTrack {
   label: string
 }
 
+/** 工作流节点类别 */
+export type NodeCategory = 'trigger' | 'source' | 'process-ai' | 'process-local' | 'quality' | 'output'
+
 /** 工作流节点 */
 export interface WorkflowNode {
   id: string
-  type: 'trigger' | 'source' | 'process' | 'output'
+  type: NodeCategory
   label: string
   x: number
   y: number
@@ -70,15 +73,17 @@ export interface NodeExecResult {
 
 /** 节点配置类型（根据节点 label 不同） */
 export interface NodeConfig {
-  // 定时触发
+  // 计划执行（原定时触发）
   cron?: string
   interval?: number
+  schedule?: string   // 执行频率说明
   // 读取视频/文件
   filePath?: string
   fileType?: string
-  // 读取文件夹
+  // 批量读取（原读取文件夹）
   folderPath?: string
   fileFilter?: string
+  fileTypes?: string   // 文件类型过滤 (视频/文本/字幕/全部)
   recursive?: boolean
   // 新建文档
   docFileName?: string
@@ -89,11 +94,20 @@ export interface NodeConfig {
   prompt?: string
   modelId?: string
   // 文本处理
-  operation?: 'replace' | 'format' | 'summarize'
+  operation?: 'replace' | 'format' | 'summarize' | 'dedup' | 'keywords' | 'abstract' | 'wordcount'
   pattern?: string
   replacement?: string
-  // 格式转换
-  targetFormat?: 'srt' | 'txt' | 'json' | 'md'
+  // 重复度检查
+  dupThreshold?: number        // 相似度阈值 0-100
+  dupMode?: 'exact' | 'semantic' | 'clickbait'  // 检查模式
+  // 文案润色
+  polishPlatform?: 'douyin' | 'xiaohongshu' | 'shipinhao' | 'kuaishou'
+  polishIntensity?: 'low' | 'medium' | 'high'
+  // 字幕生成
+  speechRate?: number   // 字/分钟
+  // 爆款标题生成
+  titlePlatform?: 'douyin' | 'xiaohongshu' | 'shipinhao' | 'kuaishou'
+  titleCount?: number   // 标题数量 3-10
   // 保存文件
   outputPath?: string
   fileName?: string
@@ -106,6 +120,275 @@ export interface NodeConfig {
 
 /** 创作者模式子模式 */
 export type CreatorSubMode = 'work-state' | 'workflow'
+
+// ===== 节点目录定义（调色板） =====
+export interface NodePaletteItem {
+  label: string
+  type: NodeCategory
+  icon: string
+  desc?: string
+}
+
+/** 调色板分类顺序 */
+export const PALETTE_CATEGORIES: Array<{ key: NodeCategory; label: string; color: string }> = [
+  { key: 'trigger', label: '触发', color: '#e6a23c' },
+  { key: 'source', label: '输入', color: '#67c23a' },
+  { key: 'process-ai', label: '处理·AI', color: '#9b59b6' },
+  { key: 'process-local', label: '处理·本地', color: '#409eff' },
+  { key: 'quality', label: '质检', color: '#f56c6c' },
+  { key: 'output', label: '输出', color: '#ff6b35' }
+]
+
+/** 节点调色板 */
+export const NODE_PALETTE: NodePaletteItem[] = [
+  // 触发
+  { label: '计划执行', type: 'trigger', icon: '⏰', desc: '定时/计划触发工作流' },
+  // 输入
+  { label: '读取视频', type: 'source', icon: '📹' },
+  { label: '读取文件', type: 'source', icon: '📄' },
+  { label: '批量读取', type: 'source', icon: '📁', desc: '批量读取文件夹（支持类型过滤）' },
+  { label: '新建文档', type: 'source', icon: '📝' },
+  { label: '读取字幕', type: 'source', icon: '💬' },
+  // 处理·AI
+  { label: 'AI文案生成', type: 'process-ai', icon: '🤖' },
+  { label: '文案润色', type: 'process-ai', icon: '✨', desc: '自媒体网感化润色' },
+  { label: '爆款标题生成', type: 'process-ai', icon: '🔥', desc: '生成多个爆款标题选项' },
+  // 处理·本地
+  { label: '文本处理', type: 'process-local', icon: '📝', desc: '替换/整理/去重/关键词/摘要/字数' },
+  { label: '字幕生成', type: 'process-local', icon: '🎞️', desc: '按语速从文本生成 SRT 字幕' },
+  // 质检
+  { label: '重复度检查', type: 'quality', icon: '🔍', desc: '检测重复/语义近似/标题党' },
+  // 输出
+  { label: '保存文件', type: 'output', icon: '💾' },
+  { label: '导出剪映', type: 'output', icon: '🎬' }
+]
+
+// ===== 重复度检查（本地算法） =====
+const CLICKBAIT_KEYWORDS = [
+  '震惊', '必看', '绝了', '惊呆', '史上最', '笑死', '太可怕了',
+  '速看', '紧急', '轰动', '爆料', '逆天', '疯传', '99%', '百分之百',
+  '不看后悔', '看哭了', '看傻了', '吓尿了', '吓傻了', '哭晕',
+  '血的教训', '不转不是', '刚刚曝光', '央视曝光', '真相了',
+  '居然', '竟然', '万万没想到', '一定要看', '所有人', '赶紧看',
+  '不看亏大了', '内幕', '秘密', '真相', '揭秘', '曝光', '重磅'
+]
+
+/** 标题党检测：返回匹配到的关键词列表 */
+export function detectClickbait(text: string): string[] {
+  const found: string[] = []
+  for (const kw of CLICKBAIT_KEYWORDS) {
+    if (text.includes(kw)) found.push(kw)
+  }
+  return Array.from(new Set(found))
+}
+
+/** 将文本按句号/问号/感叹号/换行/分号分句，过滤掉太短的片段 */
+export function splitSentences(text: string, minLen = 4): string[] {
+  if (!text) return []
+  // 在句末标点处拆分，保留标点
+  const parts = text
+    .replace(/\r\n/g, '\n')
+    .split(/(?<=[。！？!?；;\n])/)
+    .map(s => s.trim())
+    .filter(s => s.length >= minLen)
+  return parts
+}
+
+/** 字符级 Jaccard 相似度（用字符 bigram 集合） */
+export function jaccardSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  const setA = new Set<string>()
+  const setB = new Set<string>()
+  for (let i = 0; i < a.length - 1; i++) setA.add(a.slice(i, i + 2))
+  for (let i = 0; i < b.length - 1; i++) setB.add(b.slice(i, i + 2))
+  if (setA.size === 0 || setB.size === 0) {
+    // 单字符退化
+    for (const ch of a) setA.add(ch)
+    for (const ch of b) setB.add(ch)
+  }
+  let inter = 0
+  for (const x of setA) if (setB.has(x)) inter++
+  const union = setA.size + setB.size - inter
+  return union === 0 ? 0 : inter / union
+}
+
+/** 语义近似：启发式——对长句（>=20 字）计算相似度阈值降低，作为"疑似重复" */
+export function isSemanticSimilar(a: string, b: string): boolean {
+  if (a.length < 10 || b.length < 10) return false
+  // 长度接近（0.6~1.5倍）且共享高频非停用词比例高
+  const lenRatio = Math.min(a.length, b.length) / Math.max(a.length, b.length)
+  if (lenRatio < 0.5) return false
+  // 简单关键词交集
+  const tokenize = (s: string) => new Set(s.replace(/[的了是在和与及或不也都就会能要我你他她它这那啊吧吗呢哦]/g, '').split('').filter(ch => /[\u4e00-\u9fa5a-zA-Z0-9]/.test(ch)))
+  const ta = tokenize(a), tb = tokenize(b)
+  let inter = 0
+  for (const x of ta) if (tb.has(x)) inter++
+  const union = ta.size + tb.size - inter
+  return union > 0 && inter / union > 0.55
+}
+
+export interface DuplicatePair {
+  seg1: string
+  seg2: string
+  similarity: number
+  kind: 'exact' | 'semantic'
+}
+
+export interface DuplicationReport {
+  rate: number        // 重复率百分比 0-100
+  duplicates: DuplicatePair[]
+  clickbaitWords: string[]
+  status: 'pass' | 'warn' | 'fail'
+  segmentCount: number
+  duplicatedSegmentCount: number
+  summary: string
+}
+
+/**
+ * 重复度检查核心函数
+ * @param text 输入文本
+ * @param threshold 相似度阈值 0-100
+ * @param mode 检查模式
+ */
+export function checkDuplication(
+  text: string,
+  threshold: number = 70,
+  mode: 'exact' | 'semantic' | 'clickbait' = 'exact'
+): DuplicationReport {
+  const segs = splitSentences(text)
+  const duplicates: DuplicatePair[] = []
+  const dupSegIndices = new Set<number>()
+  const threshold01 = Math.max(0, Math.min(1, threshold / 100))
+
+  if (mode === 'exact' || mode === 'semantic') {
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const a = segs[i], b = segs[j]
+        // 跳过过短句
+        if (a.length < 4 || b.length < 4) continue
+        const sim = jaccardSimilarity(a, b)
+        if (mode === 'exact' && sim >= threshold01) {
+          duplicates.push({ seg1: a, seg2: b, similarity: sim, kind: 'exact' })
+          dupSegIndices.add(i); dupSegIndices.add(j)
+        } else if (mode === 'semantic') {
+          // 语义模式下：先按较低阈值查相似
+          const semanticThreshold = Math.max(0.4, threshold01 - 0.2)
+          if (sim >= semanticThreshold || isSemanticSimilar(a, b)) {
+            const kind: 'exact' | 'semantic' = sim >= threshold01 ? 'exact' : 'semantic'
+            duplicates.push({ seg1: a, seg2: b, similarity: sim, kind })
+            dupSegIndices.add(i); dupSegIndices.add(j)
+          }
+        }
+      }
+    }
+  }
+
+  const clickbaitWords = (mode === 'clickbait' || mode === 'semantic') ? detectClickbait(text) : []
+
+  const rate = segs.length === 0 ? 0 : Math.round((dupSegIndices.size / segs.length) * 100)
+  let status: 'pass' | 'warn' | 'fail' = 'pass'
+  if (rate >= threshold || (mode === 'clickbait' && clickbaitWords.length > 0)) status = 'warn'
+  if (rate >= Math.min(threshold + 20, 90) || duplicates.some(d => d.similarity >= 0.9 && d.kind === 'exact')) status = 'fail'
+
+  const issues: string[] = []
+  if (rate > 0) issues.push(`重复率 ${rate}%`)
+  if (duplicates.length > 0) issues.push(`${duplicates.length} 处疑似重复`)
+  if (clickbaitWords.length > 0) issues.push(`标题党词 ${clickbaitWords.length} 个`)
+  const summary = issues.length === 0 ? '✅ 通过：未检测到明显问题' : `⚠️ ${issues.join('；')}`
+
+  return {
+    rate,
+    duplicates: duplicates.slice(0, 50), // 防止过多
+    clickbaitWords,
+    status,
+    segmentCount: segs.length,
+    duplicatedSegmentCount: dupSegIndices.size,
+    summary
+  }
+}
+
+// ===== SRT 字幕生成（本地） =====
+export interface SrtCue {
+  index: number
+  start: string
+  end: string
+  text: string
+}
+
+export function srtTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.floor((seconds - Math.floor(seconds)) * 1000)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+/** 从纯文本按标点分句 + 语速估算时间戳，生成 SRT */
+export function generateSrtFromText(text: string, speechRate: number = 250): { srt: string; cues: SrtCue[]; duration: number } {
+  const clean = (text || '').replace(/\r\n/g, '\n').trim()
+  // 按换行/句号/问号/感叹号/分号分句
+  const sentences = clean
+    .split(/(?<=[。！？!?；;])|\n+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+
+  const cps = Math.max(1, speechRate) / 60  // 字/秒
+  let t = 0
+  const cues: SrtCue[] = []
+  sentences.forEach((s, i) => {
+    const dur = Math.max(1.0, s.length / cps) // 每条至少 1 秒
+    cues.push({
+      index: i + 1,
+      start: srtTime(t),
+      end: srtTime(t + dur),
+      text: s
+    })
+    t += dur + 0.15 // 句间 150ms 间隔
+  })
+  const srt = cues.map(c => `${c.index}\n${c.start} --> ${c.end}\n${c.text}\n`).join('\n')
+  return { srt, cues, duration: t }
+}
+
+/** 从上游结果中拼接输入文本 */
+export function collectInputText(upstreamResults: NodeExecResult[]): string {
+  let text = ''
+  for (const r of upstreamResults) {
+    if (r.data?.outputText) text += r.data.outputText + '\n'
+    else if (r.data?.aiResponse) text += r.data.aiResponse + '\n'
+    else if (r.data?.polishedText) text += r.data.polishedText + '\n'
+    else if (r.data?.srt && typeof r.data?.srt === 'string') text += r.data.srt + '\n'
+    else if (r.data?.content) text += r.data.content + '\n'
+    else if (r.data?.titles && Array.isArray(r.data.titles)) text += r.data.titles.join('\n') + '\n'
+    else if (r.output) text += r.output + '\n'
+  }
+  return text
+}
+
+// ===== AI 调用公共辅助 =====
+async function callAI(prompt: string, modelId?: string): Promise<string> {
+  const { sendChatMessage } = await import('@/services/deepseek')
+  const { useChatStore } = await import('@/stores/chat')
+  const chatStore = useChatStore()
+  let model: any = null
+  if (modelId) model = chatStore.models.find((m: any) => m.id === modelId)
+  if (!model) model = chatStore.currentModel
+  if (!model) {
+    model = {
+      id: 'deepseek-default',
+      name: 'DeepSeek V4 Pro',
+      provider: 'deepseek',
+      apiUrl: 'https://api.deepseek.com/chat/completions',
+      apiKey: '',
+      supportDeepThinking: true,
+      isDefault: true,
+      modelParam: 'deepseek-v4-pro'
+    }
+  }
+  const response = await sendChatMessage(model, [
+    { id: 'wf_' + Date.now(), role: 'user', content: prompt, deepThinking: false, reasoningContent: '', timestamp: '', followUpTo: null, followUpIds: [], isFavorited: false, isStreaming: false }
+  ])
+  return response
+}
 
 // ===== 本地存储 Key =====
 const CLIPS_KEY = 'creator-clips-v2'
@@ -516,8 +799,32 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     localStorage.setItem(WORKFLOW_KEY + '_edges', JSON.stringify(workflowEdges.value))
   }
 
-  function addNode(type: WorkflowNode['type'], label: string, x: number, y: number): WorkflowNode {
+  function addNode(type: NodeCategory, label: string, x: number, y: number): WorkflowNode {
     const node: WorkflowNode = { id: 'node_' + Date.now(), type, label, x, y, config: {} }
+    // 为节点设置默认配置
+    switch (label) {
+      case '计划执行':
+        node.config = { interval: 60, schedule: '每60秒执行一次' }
+        break
+      case '批量读取':
+        node.config = { fileTypes: 'all', fileFilter: '', recursive: false }
+        break
+      case '重复度检查':
+        node.config = { dupThreshold: 70, dupMode: 'exact' }
+        break
+      case '文案润色':
+        node.config = { polishPlatform: 'douyin', polishIntensity: 'medium' }
+        break
+      case '字幕生成':
+        node.config = { speechRate: 250 }
+        break
+      case '爆款标题生成':
+        node.config = { titlePlatform: 'douyin', titleCount: 5 }
+        break
+      case '文本处理':
+        node.config = { operation: 'format' }
+        break
+    }
     workflowNodes.value.push(node)
     saveWorkflow()
     return node
@@ -702,11 +1009,22 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   ): Promise<{ output: string; data?: any }> {
     const cfg = node.config
     const api = (window as any).electronAPI
+    const inputText = collectInputText(upstreamResults)
 
     switch (node.label) {
       // ===== 触发器 =====
-      case '定时触发':
-        return { output: '触发信号已发出', data: { triggered: true, timestamp: Date.now() } }
+      case '计划执行':
+      case '定时触发': {
+        // 兼容旧节点
+        return {
+          output: '触发信号已发出',
+          data: {
+            triggered: true,
+            timestamp: Date.now(),
+            schedule: cfg.schedule || `每 ${cfg.interval || 60} 秒执行一次`
+          }
+        }
+      }
 
       // ===== 数据源 =====
       case '读取视频': {
@@ -735,6 +1053,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         }
       }
 
+      case '批量读取':
       case '读取文件夹': {
         const folderPath = cfg.folderPath
         if (!folderPath) throw new Error('未配置文件夹路径')
@@ -742,7 +1061,13 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
 
         const fileFilter = cfg.fileFilter || ''
         const recursive = cfg.recursive || false
-        const filters = fileFilter.split(',').map(f => f.trim()).filter(Boolean)
+        const fileTypes = (cfg.fileTypes || 'all').toLowerCase()
+        // 类型过滤扩展名
+        const typeExtMap: Record<string, string[]> = {
+          video: ['.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.webm', '.m4v'],
+          text:  ['.txt', '.md', '.doc', '.docx', '.pdf'],
+          subtitle: ['.srt', '.vtt', '.ass', '.ssa', '.lrc']
+        }
 
         async function listRecursive(dirPath: string): Promise<any[]> {
           const results: any[] = []
@@ -750,12 +1075,20 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
             const entries = await api!.listDirectory(dirPath)
             for (const entry of entries) {
               if (entry.isFile) {
-                const ext = '.' + entry.name.split('.').pop()?.toLowerCase()
-                const match = filters.length === 0 || filters.some(f => {
-                  if (f.startsWith('*.')) return ext === f.slice(1)
-                  return entry.name.includes(f)
-                })
-                if (match) results.push({ name: entry.name, path: entry.path, type: 'file' })
+                const ext = '.' + (entry.name.split('.').pop() || '').toLowerCase()
+                let typeMatch = true
+                if (fileTypes !== 'all' && typeExtMap[fileTypes]) {
+                  typeMatch = typeExtMap[fileTypes].includes(ext)
+                }
+                let filterMatch = true
+                if (fileFilter.trim()) {
+                  const filters = fileFilter.split(',').map(f => f.trim()).filter(Boolean)
+                  filterMatch = filters.some(f => {
+                    if (f.startsWith('*.')) return ext === f.slice(1)
+                    return entry.name.includes(f)
+                  })
+                }
+                if (typeMatch && filterMatch) results.push({ name: entry.name, path: entry.path, type: 'file', ext })
               } else if (entry.isDirectory && recursive) {
                 const sub = await listRecursive(entry.path)
                 results.push(...sub)
@@ -768,10 +1101,22 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         const files = await listRecursive(folderPath)
         const folderName = folderPath.split(/[\\/]/).pop() || folderPath
         const fileList = files.map(f => f.name).join(', ')
+        // 拼接所有文本类文件内容
+        let combinedContent = ''
+        if (fileTypes === 'text' || fileTypes === 'all') {
+          for (const f of files) {
+            if (['.txt', '.md', '.srt', '.vtt', '.ass'].includes(f.ext)) {
+              try {
+                const r = await api.readFileAsText(f.path)
+                if (r.success) combinedContent += `\n--- ${f.name} ---\n${r.content}\n`
+              } catch {}
+            }
+          }
+        }
 
         return {
-          output: `已读取文件夹: ${folderName} (${files.length} 个文件)`,
-          data: { folderPath, folderName, files, fileList, fileCount: files.length }
+          output: `已批量读取: ${folderName} (${files.length} 个文件)`,
+          data: { folderPath, folderName, files, fileList, fileCount: files.length, content: combinedContent }
         }
       }
 
@@ -779,7 +1124,6 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         const allVideos = importedVideos.value.filter(v => v.subtitles.length > 0)
         if (allVideos.length === 0) throw new Error('没有可用的字幕数据，请先在「工作状态」中为视频进行语音识别')
 
-        // 汇总所有视频的字幕
         const allSubs: Array<{ videoId: string; videoName: string; text: string; startTime: number; endTime: number }> = []
         for (const video of allVideos) {
           for (const seg of video.subtitles) {
@@ -793,12 +1137,8 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
           }
         }
 
-        // 按视频名 + 时间排序
         allSubs.sort((a, b) => a.videoName.localeCompare(b.videoName) || a.startTime - b.startTime)
-
         const fullText = allSubs.map(s => `[${s.videoName}] ${s.text}`).join('\n')
-
-        // 生成 SRT 格式（跨视频合并）
         const srtContent = allSubs.map((s, i) => {
           const sTime = formatTimeMs(s.startTime)
           const eTime = formatTimeMs(s.endTime)
@@ -827,10 +1167,8 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         if (!docOutputPath) throw new Error('未配置输出目录')
         if (!api?.writeFile || !api?.createDirectory) throw new Error('文件系统 API 不可用')
 
-        // 确保目录存在
         await api.createDirectory(docOutputPath)
 
-        // 根据类型生成默认模板内容
         let content = docContent
         if (!content.trim()) {
           switch (docFileType) {
@@ -851,7 +1189,6 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
           }
         }
 
-        // 确保文件名有正确的扩展名
         const ext = `.${docFileType}`
         const finalName = docFileName.endsWith(ext) ? docFileName : docFileName + ext
         const fullPath = `${docOutputPath.replace(/\\/g, '/')}/${finalName}`
@@ -863,61 +1200,77 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         }
       }
 
-      // ===== 处理节点 =====
+      // ===== 处理·AI =====
       case 'AI文案生成': {
         const prompt = cfg.prompt
         if (!prompt) throw new Error('未配置 AI 提示词')
-        // 收集上游内容作为上下文
-        let context = ''
-        for (const r of upstreamResults) {
-          if (r.data?.content) context += `\n---\n${r.data.content}`
-          else if (r.output) context += `\n${r.output}`
-        }
-
-        // 动态导入 DeepSeek 服务和 chat store
-        const { sendChatMessage } = await import('@/services/deepseek')
-        const { useChatStore } = await import('@/stores/chat')
-        const chatStore = useChatStore()
-        const modelKey = cfg.modelId || 'deepseek-default'
-         let model: any = chatStore.models.find(m => m.id === modelKey)
-        if (!model) {
-          model = chatStore.currentModel
-        }
-        if (!model) {
-          // fallback: 使用默认的 deepseek-v4-pro
-          model = {
-            id: 'deepseek-default',
-            name: 'DeepSeek V4 Pro',
-            provider: 'deepseek',
-            apiUrl: 'https://api.deepseek.com/chat/completions',
-            apiKey: '',
-            supportDeepThinking: true,
-            isDefault: true,
-            modelParam: 'deepseek-v4-pro'
-          }
-        }
-
-        const fullPrompt = context
+        let context = inputText
+        const fullPrompt = context.trim()
           ? `基于以下内容，${prompt}\n\n内容：\n${context}`
           : prompt
-
-        const response = await sendChatMessage(model, [
-          { id: 'temp', role: 'user', content: fullPrompt, deepThinking: false, reasoningContent: '', timestamp: '', followUpTo: null, followUpIds: [], isFavorited: false, isStreaming: false }
-        ])
-        return { output: response, data: { prompt: fullPrompt, aiResponse: response } }
+        const response = await callAI(fullPrompt, cfg.modelId)
+        return { output: truncateForOutput(response, 80), data: { prompt: fullPrompt, aiResponse: response, content: response } }
       }
 
-      case '文本处理': {
-        const operation = cfg.operation || 'replace'
-        let outputText = ''
-        // 从上游获取文本内容
-        let inputText = ''
-        for (const r of upstreamResults) {
-          if (r.data?.content) inputText += r.data.content + '\n'
-          else if (r.data?.aiResponse) inputText += r.data.aiResponse + '\n'
-          else if (r.output) inputText += r.output + '\n'
+      case '文案润色': {
+        if (!inputText.trim()) throw new Error('没有可润色的输入文本，请先连接上游文本节点')
+        const platformMap: Record<string, string> = {
+          douyin: '抖音', xiaohongshu: '小红书', shipinhao: '视频号', kuaishou: '快手'
         }
+        const intensityMap: Record<string, string> = {
+          low: '轻度（保留原味，仅修正错字语病）',
+          medium: '中度（增加网感金句，适合大众）',
+          high: '重度（爆梗密集，强情绪钩子，极致网感）'
+        }
+        const platform = platformMap[cfg.polishPlatform || 'douyin']
+        const intensity = intensityMap[cfg.polishIntensity || 'medium']
+        const prompt = `你是一位资深自媒体文案编辑，擅长${platform}平台的爆款文案。请将以下文案进行润色，要求：
+1. 目标平台：${platform}（符合该平台语气、话题、emoji使用习惯）
+2. 网感强度：${intensity}
+3. 保留原文核心信息，不要凭空捏造事实
+4. 语言口语化、有节奏感，适当使用 emoji 和话题标签
+5. 直接输出润色后的文案，不要加解释说明。
+
+原文：
+${inputText}`
+        const response = await callAI(prompt, cfg.modelId)
+        return {
+          output: truncateForOutput(response, 80),
+          data: { polishedText: response, aiResponse: response, content: response, platform: cfg.polishPlatform, intensity: cfg.polishIntensity }
+        }
+      }
+
+      case '爆款标题生成': {
+        if (!inputText.trim()) throw new Error('没有可生成标题的输入文本，请先连接上游内容节点')
+        const platformMap: Record<string, string> = {
+          douyin: '抖音', xiaohongshu: '小红书', shipinhao: '视频号', kuaishou: '快手'
+        }
+        const platform = platformMap[cfg.titlePlatform || 'douyin']
+        const count = Math.max(3, Math.min(10, cfg.titleCount || 5))
+        const prompt = `你是一位资深${platform}爆款标题策划师。请根据以下文案内容，生成 ${count} 个${platform}平台风格的爆款标题。
+要求：
+1. 标题要有强钩子、数字/反差/悬念/利益点
+2. 符合${platform}平台的调性，长度适合该平台（抖音 15-25 字、小红书 15-20 字+emoji）
+3. 每条标题单独一行，以"1. ""2. "…编号
+4. 不要加解释说明。
+
+文案内容：
+${inputText.slice(0, 3000)}`
+        const response = await callAI(prompt, cfg.modelId)
+        // 解析编号标题
+        const titles = response.split(/\n+/).map(l => l.replace(/^\s*\d+[\.、\)]\s*/, '').trim()).filter(Boolean)
+        return {
+          output: `已生成 ${titles.length} 个${platform}爆款标题`,
+          data: { titles, aiResponse: response, content: titles.join('\n'), titleCount: titles.length, platform: cfg.titlePlatform }
+        }
+      }
+
+      // ===== 处理·本地 =====
+      case '文本处理': {
+        const operation = cfg.operation || 'format'
         if (!inputText.trim()) throw new Error('没有可处理的输入文本')
+        let outputText = ''
+        let summary = ''
 
         switch (operation) {
           case 'replace': {
@@ -925,77 +1278,160 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
             const replacement = cfg.replacement || ''
             if (!pattern) throw new Error('未配置替换模式')
             outputText = inputText.replace(new RegExp(pattern, 'g'), replacement)
-            return {
-              output: `文本替换完成 (匹配 ${pattern})`,
-              data: { inputText, outputText, operation: 'replace' }
-            }
+            summary = `文本替换完成 (匹配 ${pattern})`
+            break
           }
           case 'format': {
             outputText = inputText.trim().split('\n').filter(l => l.trim()).map(l => l.trim()).join('\n')
-            return {
-              output: '文本格式化完成',
-              data: { inputText, outputText, operation: 'format' }
-            }
+            summary = '文本格式化完成'
+            break
           }
           case 'summarize': {
-            // 简单截断摘要
             const lines = inputText.trim().split('\n').filter(l => l.trim())
             outputText = lines.slice(0, 5).join('\n') + (lines.length > 5 ? '\n...(已截断)' : '')
-            return {
-              output: `文本摘要完成 (${lines.length} 行 → ${Math.min(lines.length, 5)} 行)`,
-              data: { inputText, outputText, operation: 'summarize' }
+            summary = `文本摘要完成 (${lines.length} 行 → ${Math.min(lines.length, 5)} 行)`
+            break
+          }
+          case 'dedup': {
+            // 行级去重（去除完全重复行，保留首次出现）
+            const lines = inputText.split('\n')
+            const seen = new Set<string>()
+            const out: string[] = []
+            for (const l of lines) {
+              const k = l.trim()
+              if (!k) { out.push(l); continue }
+              if (!seen.has(k)) { seen.add(k); out.push(l) }
             }
+            outputText = out.join('\n')
+            summary = `去重完成 (原 ${lines.length} 行 → ${out.length} 行)`
+            break
+          }
+          case 'keywords': {
+            // 简易关键词提取：按词频统计中文 2-4 字片段
+            const text = inputText.replace(/\s+/g, '')
+            const stop = new Set(['的','了','是','在','我','你','他','她','它','这','那','和','与','或','不','也','都','就','会','能','要','有','一','个','上','下','里','中','把','被','让','给','对','到','去','说','着','过','吗','呢','啊','吧','呀','哦','很','最','又','再'])
+            const freq = new Map<string, number>()
+            for (let n = 2; n <= 4; n++) {
+              for (let i = 0; i <= text.length - n; i++) {
+                const w = text.slice(i, i + n)
+                if (/^[\u4e00-\u9fa5]+$/.test(w) && ![...w].some(c => stop.has(c))) {
+                  freq.set(w, (freq.get(w) || 0) + 1)
+                }
+              }
+            }
+            const kws = [...freq.entries()].filter(([,c]) => c >= 2).sort((a,b) => b[1]-a[1]).slice(0, 20).map(([w]) => w)
+            outputText = kws.join('、')
+            summary = `关键词提取完成 (${kws.length} 个)`
+            break
+          }
+          case 'abstract': {
+            // 简易摘要：取分数最高的若干句（基于词频）
+            const sents = splitSentences(inputText, 6)
+            const text = inputText.replace(/\s+/g, '')
+            const freq = new Map<string, number>()
+            for (let i = 0; i < text.length - 1; i++) {
+              const ch = text[i]
+              if (/[\u4e00-\u9fa5]/.test(ch)) freq.set(ch, (freq.get(ch)||0)+1)
+            }
+            const scored = sents.map(s => {
+              let score = 0
+              for (const ch of s) if (freq.has(ch)) score += freq.get(ch)!
+              return { s, score: score / Math.max(s.length, 1) }
+            }).sort((a,b) => b.score - a.score)
+            const topCount = Math.max(3, Math.min(6, Math.ceil(sents.length * 0.2)))
+            outputText = scored.slice(0, topCount).map(x => x.s).join('\n')
+            summary = `摘要生成完成 (${sents.length} 句 → ${topCount} 句)`
+            break
+          }
+          case 'wordcount': {
+            const chars = inputText.replace(/\s/g, '').length
+            const cnChars = (inputText.match(/[\u4e00-\u9fa5]/g) || []).length
+            const words = inputText.trim().split(/\s+/).filter(Boolean).length
+            const lines = inputText.split('\n').length
+            outputText = `字数统计：
+  总字符数（不含空格）：${chars}
+  中文字符数：${cnChars}
+  分词数（空白分隔）：${words}
+  段落/行数：${lines}
+  预估阅读时长：${Math.max(1, Math.ceil(chars / 400))} 分钟
+
+===== 原文 =====
+${inputText}`
+            summary = `字数统计：约 ${chars} 字`
+            break
           }
           default:
             throw new Error(`未知的文本操作: ${operation}`)
         }
-      }
-
-      case '格式转换': {
-        const targetFormat = cfg.targetFormat || 'txt'
-        let inputText = ''
-        for (const r of upstreamResults) {
-          if (r.data?.content) inputText += r.data.content + '\n'
-          else if (r.data?.outputText) inputText += r.data.outputText + '\n'
-          else if (r.data?.aiResponse) inputText += r.data.aiResponse + '\n'
-          else if (r.output) inputText += r.output + '\n'
-        }
-        if (!inputText.trim()) throw new Error('没有可转换的输入内容')
-
-        let outputText = ''
-        switch (targetFormat) {
-          case 'txt':
-            outputText = inputText
-            break
-          case 'json':
-            outputText = JSON.stringify({ content: inputText.trim(), timestamp: Date.now() }, null, 2)
-            break
-          case 'md':
-            outputText = inputText.trim().split('\n').map(l => l.trim() ? `- ${l.trim()}` : '').join('\n')
-            break
-          case 'srt': {
-            const lines = inputText.trim().split('\n').filter(l => l.trim())
-            outputText = lines.map((l, i) => `${i + 1}\n00:00:${String(i).padStart(2, '0')},000 --> 00:00:${String(i + 1).padStart(2, '0')},000\n${l}\n`).join('\n')
-            break
-          }
-          default:
-            throw new Error(`不支持的格式: ${targetFormat}`)
-        }
         return {
-          output: `已转换为 ${targetFormat.toUpperCase()} 格式`,
-          data: { inputText, outputText, targetFormat }
+          output: summary,
+          data: { inputText, outputText, operation, content: outputText }
         }
       }
 
-      // ===== 输出节点 =====
+      case '字幕生成': {
+        if (!inputText.trim()) throw new Error('没有可生成字幕的输入文本')
+        const rate = cfg.speechRate || 250
+        const { srt, cues, duration } = generateSrtFromText(inputText, rate)
+        return {
+          output: `字幕已生成：${cues.length} 条，总时长 ${duration.toFixed(1)} 秒（语速 ${rate} 字/分钟）`,
+          data: { srt, cues, duration, speechRate: rate, content: srt, outputText: srt }
+        }
+      }
+
+      // ===== 质检 =====
+      case '重复度检查': {
+        if (!inputText.trim()) throw new Error('没有可检查的输入文本')
+        const threshold = typeof cfg.dupThreshold === 'number' ? cfg.dupThreshold : 70
+        const mode = cfg.dupMode || 'exact'
+        const report = checkDuplication(inputText, threshold, mode)
+        // 构造可读报告
+        const lines: string[] = []
+        lines.push(`=== 重复度检查报告 ===`)
+        lines.push(`模式：${mode === 'exact' ? '精确重复' : mode === 'semantic' ? '语义近似' : '标题党检测'}`)
+        lines.push(`重复率：${report.rate}% (阈值 ${threshold}%)`)
+        lines.push(`分句数：${report.segmentCount}，疑似重复段：${report.duplicatedSegmentCount}`)
+        lines.push(`结果：${report.summary}`)
+        if (report.clickbaitWords.length > 0) {
+          lines.push(`\n⚠️ 检测到标题党词汇：${report.clickbaitWords.join('、')}`)
+        }
+        if (report.duplicates.length > 0) {
+          lines.push(`\n疑似重复片段（前 10 条）：`)
+          report.duplicates.slice(0, 10).forEach((d, i) => {
+            lines.push(`${i + 1}. [${d.kind === 'exact' ? '精确' : '语义'} ${(d.similarity * 100).toFixed(0)}%]`)
+            lines.push(`   A: ${truncateForOutput(d.seg1, 60)}`)
+            lines.push(`   B: ${truncateForOutput(d.seg2, 60)}`)
+          })
+        }
+        const reportText = lines.join('\n')
+        // 质检状态：warn/fail 也作为 success 节点返回（不中断流程），通过 data 暴露问题
+        return {
+          output: report.summary,
+          data: {
+            report: reportText,
+            content: reportText,
+            outputText: reportText,
+            ...report,
+            // 明确标记质检结果供后续节点/UI 使用
+            qualityPassed: report.status === 'pass',
+            qualityStatus: report.status,
+            duplicates: report.duplicates,
+            clickbaitWords: report.clickbaitWords
+          }
+        }
+      }
+
+      // ===== 输出 =====
       case '保存文件': {
         const outputPath = cfg.outputPath
         const fileName = cfg.fileName || 'output.txt'
         if (!outputPath) throw new Error('未配置输出路径')
-        // 收集上游内容
         let content = ''
         for (const r of upstreamResults) {
           if (r.data?.outputText) content += r.data.outputText
+          else if (r.data?.srt) content += r.data.srt
+          else if (r.data?.polishedText) content += r.data.polishedText
+          else if (r.data?.titles && Array.isArray(r.data.titles)) content += r.data.titles.join('\n') + '\n'
           else if (r.data?.aiResponse) content += r.data.aiResponse
           else if (r.data?.content) content += r.data.content
           else if (r.output) content += r.output
@@ -1014,14 +1450,17 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       case '导出剪映': {
         const projectName = cfg.projectName || '草稿项目'
         const draftPath = cfg.draftPath
-        // 从上游收集字幕和视频信息
         let subtitleText = ''
         let videoFiles: string[] = []
         for (const r of upstreamResults) {
-          if (r.data?.content || r.data?.outputText || r.data?.aiResponse) {
-            subtitleText += (r.data?.outputText || r.data?.aiResponse || r.data?.content || '') + '\n'
-          }
+          if (r.data?.srt) subtitleText += r.data.srt + '\n'
+          else if (r.data?.outputText) subtitleText += r.data.outputText + '\n'
+          else if (r.data?.aiResponse) subtitleText += r.data.aiResponse + '\n'
+          else if (r.data?.content) subtitleText += r.data.content + '\n'
           if (r.data?.filePath) videoFiles.push(r.data.filePath)
+          if (r.data?.files && Array.isArray(r.data.files)) {
+            for (const f of r.data.files) if (f.path && (f.ext === '.mp4' || f.ext === '.mov')) videoFiles.push(f.path)
+          }
         }
 
         const { exportJianyingProject, buildProject } = await import('@/services/jianying')
@@ -1050,9 +1489,37 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
         }
       }
 
+      // ===== 兼容：旧"格式转换"节点（如有残留画布数据）=====
+      case '格式转换': {
+        const targetFormat = (cfg.targetFormat || 'txt') as string
+        if (!inputText.trim()) throw new Error('没有可转换的输入内容')
+        let outputText = ''
+        switch (targetFormat) {
+          case 'txt': outputText = inputText; break
+          case 'json': outputText = JSON.stringify({ content: inputText.trim(), timestamp: Date.now() }, null, 2); break
+          case 'md': outputText = inputText.trim().split('\n').map(l => l.trim() ? `- ${l.trim()}` : '').join('\n'); break
+          case 'srt': {
+            const { srt } = generateSrtFromText(inputText, 250)
+            outputText = srt
+            break
+          }
+          default: outputText = inputText
+        }
+        return {
+          output: `已转换为 ${targetFormat.toUpperCase()} 格式（该节点已合并至"文本处理/字幕生成"）`,
+          data: { inputText, outputText, targetFormat, content: outputText }
+        }
+      }
+
       default:
         throw new Error(`未知的节点类型: ${node.label}`)
     }
+  }
+
+  function truncateForOutput(text: string, max: number): string {
+    if (!text) return ''
+    const oneLine = text.replace(/\s+/g, ' ').trim()
+    return oneLine.length > max ? oneLine.slice(0, max) + '…' : oneLine
   }
 
   function stopWorkflow() {
@@ -1266,6 +1733,11 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
   return {
     // 子模式
     subMode, switchSubMode,
+
+    // 节点调色板
+    NODE_PALETTE, PALETTE_CATEGORIES,
+    checkDuplication, generateSrtFromText, splitSentences, jaccardSimilarity, detectClickbait,
+    collectInputText,
 
     // 视频源管理
     importedVideos, activeVideoId, activeVideo,

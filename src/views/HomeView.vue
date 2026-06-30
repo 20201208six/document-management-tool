@@ -15,6 +15,7 @@
         </button>
       </div>
       <div class="mode-separator"></div>
+      <ThemeSwitcher />
       <button class="mode-btn mode-settings" @click="showGlobalModelManager = true" title="全局模型管理">
         <el-icon><Setting /></el-icon>
       </button>
@@ -117,6 +118,15 @@
             <div class="editor-header">
               <span class="file-name">{{ fileStore.selectedFile.name }}</span>
               <span class="file-type">{{ fileStore.fileType.toUpperCase() }}</span>
+              <el-button
+                v-if="isHtmlRenderable"
+                size="small"
+                :type="htmlEditMode ? 'warning' : 'primary'"
+                @click="toggleHtmlEditMode"
+                class="html-edit-toggle"
+              >
+                <el-icon><Edit /></el-icon>{{ htmlEditMode ? '预览模式' : '编辑模式' }}
+              </el-button>
               <span v-if="fileStore.highlightKeyword" class="highlight-badge">
                 关键词: {{ fileStore.highlightKeyword }}
                 <el-button size="small" text @click="clearHighlight">✕</el-button>
@@ -148,7 +158,16 @@
               </el-button>
             </div>
             <div class="editor-wrapper">
-              <div v-if="isHtmlRenderable" class="rich-toolbar">
+              <!-- DocsViewer: 只读预览模式 -->
+              <DocsViewer
+                v-if="isHtmlRenderable && !htmlEditMode"
+                ref="docsViewerRef"
+                :modelValue="editorContent"
+                class="docs-renderer"
+              />
+              <!-- HTML 编辑模式：contenteditable + 工具栏 -->
+              <template v-if="isHtmlRenderable && htmlEditMode">
+              <div class="rich-toolbar">
                 <el-button-group size="small">
                   <el-button @click="execCmd('bold')" title="粗体 Ctrl+B"><strong>B</strong></el-button>
                   <el-button @click="execCmd('italic')" title="斜体 Ctrl+I"><em>I</em></el-button>
@@ -177,7 +196,8 @@
                   <el-button @click="execCmd('redo')" title="重做 Ctrl+Y">↪</el-button>
                 </el-button-group>
               </div>
-              <div v-if="isHtmlRenderable" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown" @contextmenu.prevent="onEditorContextMenu"></div>
+              <div v-if="isHtmlRenderable && htmlEditMode" class="rich-editor" ref="richEditorRef" contenteditable="true" @input="onRichEdit" @keydown="onRichKeydown" @contextmenu.prevent="onEditorContextMenu"></div>
+              </template>
               <UniverViewer v-else-if="fileStore.fileType === 'xlsx'" ref="univerViewerRef" :modelValue="excelContent" />
               <div v-else class="edit-area">
                 <textarea
@@ -264,7 +284,7 @@
             >
               <template #append>
                 <el-tooltip content="前往 DeepSeek 官网获取 API Key">
-                  <el-button @click="window.electronAPI.openExternal('https://platform.deepseek.com/api_keys')">
+                  <el-button @click="openExternalLink('https://platform.deepseek.com/api_keys')">
                     获取
                   </el-button>
                 </el-tooltip>
@@ -283,7 +303,7 @@
 
     <el-dialog v-model="showSavePrompt" title="提示" width="380px" :close-on-click-modal="false">
       <p style="font-size:15px;margin-bottom:12px">当前文档已修改，是否保存更改？</p>
-      <p style="color:#909399;font-size:13px">{{ pendingFileName }}</p>
+      <p class="pending-file-name" style="font-size:13px">{{ pendingFileName }}</p>
       <template #footer>
         <el-button @click="handleSavePrompt('cancel')">取消</el-button>
         <el-button @click="handleSavePrompt('no')">不保存</el-button>
@@ -333,8 +353,12 @@ import DocFavoritesPanel from '@/components/DocFavoritesPanel.vue'
 import BrowserPanel from '@/components/BrowserPanel.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import ModelManager from '@/components/ModelManager.vue'
 import UniverViewer from '@/components/UniverViewer.vue'
+import { defineAsyncComponent } from 'vue'
+// DocsViewer (UniverJS) 改为异步组件，避免影响首屏加载
+const DocsViewer = defineAsyncComponent(() => import('@/components/DocsViewer.vue'))
 import UniqueModeView from '@/views/UniqueModeView.vue'
 import CreatorModeView from '@/views/CreatorModeView.vue'
 import AutomationModeView from '@/views/AutomationModeView.vue'
@@ -355,6 +379,10 @@ const docFavStore = useDocFavoritesStore()
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
 
+function openExternalLink(url: string) {
+  window.electronAPI?.openExternal(url)
+}
+
 // 全局模型管理
 const showGlobalModelManager = ref(false)
 provide('showGlobalModelManager', showGlobalModelManager)
@@ -362,6 +390,19 @@ provide('showGlobalModelManager', showGlobalModelManager)
 const editorContent = ref('')
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const richEditorRef = ref<HTMLElement | null>(null)
+const docsViewerRef = ref<InstanceType<typeof DocsViewer> | null>(null)
+const htmlEditMode = ref(false)
+
+function toggleHtmlEditMode() {
+  if (htmlEditMode.value) {
+    // 从编辑模式退出 → 预览模式，先同步内容
+    syncPlainToStore()
+    htmlEditMode.value = false
+  } else {
+    htmlEditMode.value = true
+    nextTick(() => setRichContent(editorContent.value || ''))
+  }
+}
 const editPlainText = ref('')
 const editorTextContent = ref('')
 const excelContent = ref<string | any[]>('')
@@ -380,13 +421,16 @@ function htmlToPlain(html: string): string {
 
 function syncPlainToStore() {
   if (!fileStore.activeTabPath) return
-  if (isHtmlRenderable.value && richEditorRef.value) {
-    // 复制 DOM 并移除高亮标记，获取纯净内容
+  if (isHtmlRenderable.value && htmlEditMode.value && richEditorRef.value) {
+    // 编辑模式：复制 DOM 并移除高亮标记，获取纯净内容
     const clone = richEditorRef.value.cloneNode(true) as HTMLElement
     clone.querySelectorAll('mark.srch-hl').forEach(el => {
       el.replaceWith(...el.childNodes)
     })
     fileStore.updateTabContent(fileStore.activeTabPath, clone.innerHTML)
+  } else if (isHtmlRenderable.value && !htmlEditMode.value) {
+    // 预览模式（DocsViewer 只读展示）：HTML 内容保持 editorContent 不变
+    fileStore.updateTabContent(fileStore.activeTabPath, editorContent.value)
   } else if (fileStore.fileType === 'xlsx' && univerViewerRef.value) {
     fileStore.updateTabContent(fileStore.activeTabPath, univerViewerRef.value.getContent())
   } else if (fileStore.activeTabPath) {
@@ -589,7 +633,7 @@ function handleContextAction(action: string) {
 
 const renderedHtml = computed(() => {
   if (!isHtmlRenderable.value) return ''
-  let html = editorContent.value || '<p style="color:#909399">空文档</p>'
+  let html = editorContent.value || '<p style="color:var(--c-text-muted)">空文档</p>'
   const kw = fileStore.highlightKeyword || editorSearchKeyword.value
   if (kw) {
     const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -607,6 +651,8 @@ watch(() => fileStore.fileContent, (val) => {
     excelContent.value = val || ''
     return
   }
+  // 切换到新文件时重置编辑模式为预览（DocsViewer 展示）
+  htmlEditMode.value = false
   editorContent.value = val || ''
   editPlainText.value = isHtmlRenderable.value ? htmlToPlain(val || '') : (val || '')
   editorTextContent.value = editPlainText.value
@@ -1113,7 +1159,7 @@ async function executeCantoneseTranslate() {
   display: flex;
   width: 100%;
   height: 100vh;
-  background: #f5f6fa;
+  background: var(--c-bg);
   overflow: hidden;
 }
 
@@ -1124,16 +1170,18 @@ async function executeCantoneseTranslate() {
   align-items: center;
   width: 56px;
   min-width: 56px;
-  background: #f5f6fa;
+  background: var(--c-sidebar-bg);
   padding: 16px 0;
   z-index: 100;
   user-select: none;
+  border-right: 1px solid var(--c-border-light);
+  transition: background var(--transition-normal);
 }
 
 .mode-buttons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -1145,38 +1193,38 @@ async function executeCantoneseTranslate() {
   height: 40px;
   border: none;
   background: transparent;
-  color: #a8abb2;
+  color: var(--c-text-muted);
   cursor: pointer;
   border-radius: 12px;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
   font-size: 20px;
 }
 
 .mode-btn:hover {
-  color: #606266;
-  background: #e8eaed;
+  color: var(--c-text-sec);
+  background: var(--c-bg-hover);
 }
 
 .mode-btn.active {
-  color: #409eff;
-  background: #e8f4ff;
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
 }
 
 .mode-separator {
   width: 24px;
   height: 1px;
-  background: #dcdfe6;
+  background: var(--c-border);
   margin: 10px 0;
 }
 
 .mode-btn.mode-settings {
-  color: #c0c4cc;
+  color: var(--c-text-muted);
   font-size: 18px;
   margin-top: 2px;
 }
 
 .mode-btn.mode-settings:hover {
-  color: #606266;
+  color: var(--c-text-sec);
 }
 
 /* 内容区域 */
@@ -1193,18 +1241,18 @@ async function executeCantoneseTranslate() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f6fa;
+  background: var(--c-bg);
 }
 
 .placeholder-content {
   text-align: center;
-  color: #909399;
+  color: var(--c-text-muted);
 }
 
 .placeholder-content h2 {
   margin: 16px 0 8px;
   font-size: 22px;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .placeholder-content p {
@@ -1215,15 +1263,15 @@ async function executeCantoneseTranslate() {
 .placeholder-hint {
   margin-top: 20px !important;
   font-size: 12px !important;
-  color: #c0c4cc !important;
+  color: var(--c-text-muted) !important;
 }
 
 .sidebar {
   width: 300px;
   min-width: 300px;
   height: 100%;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
+  background: var(--c-bg-card);
+  border-right: 1px solid var(--c-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1241,8 +1289,8 @@ async function executeCantoneseTranslate() {
   display: flex;
   align-items: center;
   padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-header-bg);
+  border-bottom: 1px solid var(--c-border);
   gap: 12px;
 }
 
@@ -1262,6 +1310,7 @@ async function executeCantoneseTranslate() {
   flex: 1;
   overflow: auto;
   padding: 16px;
+  background: var(--c-bg);
 }
 
 .tab-content {
@@ -1279,7 +1328,7 @@ async function executeCantoneseTranslate() {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #909399;
+  color: var(--c-text-muted);
   gap: 16px;
 }
 
@@ -1287,14 +1336,15 @@ async function executeCantoneseTranslate() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
-  border-radius: 8px;
+  background: var(--c-bg-card);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--c-shadow);
 }
 
 .editor-header {
   padding: 12px 16px;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid var(--c-border);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1303,24 +1353,24 @@ async function executeCantoneseTranslate() {
 .file-name {
   font-weight: 600;
   font-size: 15px;
-  color: #303133;
+  color: var(--c-text);
 }
 
 .file-type {
   font-size: 12px;
-  color: #909399;
-  background: #f0f2f5;
+  color: var(--c-text-muted);
+  background: var(--c-bg-sec);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .highlight-badge {
   margin-left: auto;
   font-size: 12px;
-  color: #e6a23c;
-  background: #fdf6ec;
+  color: var(--c-warning);
+  background: color-mix(in srgb, var(--c-warning) 12%, transparent);
   padding: 2px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1331,8 +1381,8 @@ async function executeCantoneseTranslate() {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #fafafa;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-bg-sec);
+  border-bottom: 1px solid var(--c-border);
 }
 
 .editor-search-bar .el-input {
@@ -1341,7 +1391,7 @@ async function executeCantoneseTranslate() {
 
 .search-match-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   min-width: 40px;
   text-align: center;
 }
@@ -1357,8 +1407,8 @@ async function executeCantoneseTranslate() {
   display: flex;
   align-items: center;
   padding: 6px 12px;
-  border-bottom: 1px solid #e4e7ed;
-  background: #fafafa;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg-sec);
   gap: 6px;
   flex-wrap: wrap;
 }
@@ -1366,18 +1416,18 @@ async function executeCantoneseTranslate() {
 .toolbar-divider {
   width: 1px;
   height: 22px;
-  background: #dcdfe6;
+  background: var(--c-border);
   margin: 0 4px;
 }
 
 .color-picker {
   width: 28px;
   height: 28px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
   padding: 2px;
   cursor: pointer;
-  background: #fff;
+  background: var(--c-bg-card);
 }
 
 .rich-editor {
@@ -1386,24 +1436,34 @@ async function executeCantoneseTranslate() {
   padding: 16px 20px;
   font-size: 15px;
   line-height: 1.8;
-  font-family: 'Microsoft YaHei', sans-serif;
-  color: #303133;
+  font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+  color: var(--c-text);
   outline: none;
   min-height: 300px;
 }
 
-.rich-editor h1 { font-size: 24px; font-weight: 700; margin: 20px 0 10px; line-height: 1.3; }
-.rich-editor h2 { font-size: 20px; font-weight: 600; margin: 16px 0 8px; line-height: 1.35; }
-.rich-editor h3 { font-size: 17px; font-weight: 600; margin: 14px 0 6px; }
-.rich-editor p { margin: 0 0 6px; }
-.rich-editor strong { font-weight: 700; }
+.rich-editor h1 { font-size: 24px; font-weight: 700; margin: 20px 0 10px; line-height: 1.3; color: var(--c-text); }
+.rich-editor h2 { font-size: 20px; font-weight: 600; margin: 16px 0 8px; line-height: 1.35; color: var(--c-text); }
+.rich-editor h3 { font-size: 17px; font-weight: 600; margin: 14px 0 6px; color: var(--c-text); }
+.rich-editor p { margin: 0 0 6px; color: var(--c-text-sec); }
+.rich-editor strong { font-weight: 700; color: var(--c-text); }
 .rich-editor em { font-style: italic; }
 .rich-editor ul, .rich-editor ol { margin: 4px 0 6px 0; padding-left: 24px; }
-.rich-editor li { margin-bottom: 2px; }
-.rich-editor blockquote { margin: 8px 0; padding: 6px 16px; border-left: 3px solid #409eff; background: #f5f7fa; }
+.rich-editor li { margin-bottom: 2px; color: var(--c-text-sec); }
+.rich-editor blockquote { margin: 8px 0; padding: 6px 16px; border-left: 3px solid var(--c-primary); background: var(--c-bg-sec); color: var(--c-text-sec); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .rich-editor table { border-collapse: collapse; margin: 8px 0; width: 100%; }
-.rich-editor td, .rich-editor th { border: 1px solid #e4e7ed; padding: 6px 10px; }
-.rich-editor mark.srch-hl { background: #fef08a; padding: 1px 2px; border-radius: 2px; }
+.rich-editor td, .rich-editor th { border: 1px solid var(--c-border); padding: 6px 10px; }
+.rich-editor mark.srch-hl { background: color-mix(in srgb, var(--c-warning) 30%, transparent); color: var(--c-text); padding: 1px 2px; border-radius: 2px; }
+
+.html-edit-toggle {
+  margin-left: 12px;
+}
+
+.docs-renderer {
+  flex: 1;
+  overflow: hidden;
+  background: var(--c-bg, #fff);
+}
 
 .editor-mode-bar {
   display: none;
@@ -1411,8 +1471,8 @@ async function executeCantoneseTranslate() {
 
 .tab-bar {
   display: flex;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-bg-sec);
+  border-bottom: 1px solid var(--c-border);
   overflow-x: auto;
   white-space: nowrap;
 }
@@ -1424,15 +1484,16 @@ async function executeCantoneseTranslate() {
   padding: 6px 10px 6px 14px;
   font-size: 13px;
   cursor: pointer;
-  border-right: 1px solid #e4e7ed;
-  background: #f0f2f5;
-  color: #606266;
+  border-right: 1px solid var(--c-border);
+  background: var(--c-bg-hover);
+  color: var(--c-text-sec);
   min-width: 0;
   max-width: 200px;
+  transition: all var(--transition-fast);
 }
 
-.tab-item:hover { background: #e8eaed; }
-.tab-item.active { background: #fff; color: #303133; border-bottom: 2px solid #409eff; margin-bottom: -1px; }
+.tab-item:hover { background: var(--c-primary-soft); }
+.tab-item.active { background: var(--c-bg-card); color: var(--c-text); border-bottom: 2px solid var(--c-primary); margin-bottom: -1px; }
 .tab-item.dirty .tab-name { font-style: italic; }
 
 .tab-name {
@@ -1442,7 +1503,7 @@ async function executeCantoneseTranslate() {
 }
 
 .tab-dirty {
-  color: #e6a23c;
+  color: var(--c-warning);
   font-size: 14px;
   line-height: 1;
 }
@@ -1451,21 +1512,21 @@ async function executeCantoneseTranslate() {
   visibility: hidden;
   padding: 0 2px;
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   min-height: auto;
 }
 
 .tab-item:hover .tab-close { visibility: visible; }
-.tab-close:hover { color: #f56c6c; }
+.tab-close:hover { color: var(--c-danger); }
 
 .tab-context-menu,
 .selection-context-menu {
   position: fixed;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  background: var(--c-bg-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   padding: 4px 0;
   min-width: 120px;
 }
@@ -1474,10 +1535,11 @@ async function executeCantoneseTranslate() {
   padding: 7px 16px;
   font-size: 13px;
   cursor: pointer;
-  color: #303133;
+  color: var(--c-text);
+  transition: background var(--transition-fast);
 }
 
-.menu-item:hover { background: #f0f2f5; }
+.menu-item:hover { background: var(--c-bg-hover); }
 
 .edit-area, .preview-area {
   flex: 1;
@@ -1492,9 +1554,10 @@ async function executeCantoneseTranslate() {
   resize: none;
   font-size: 15px;
   line-height: 26px;
-  font-family: 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
   padding: 16px 20px;
-  color: #303133;
+  color: var(--c-text);
+  background: var(--c-bg-card);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -1503,27 +1566,27 @@ async function executeCantoneseTranslate() {
   padding: 16px 20px;
   font-size: 15px;
   line-height: 1.8;
-  font-family: 'Microsoft YaHei', sans-serif;
-  color: #303133;
+  font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
+  color: var(--c-text);
 }
 
-.preview-area :deep(h1) { font-size: 24px; font-weight: 700; margin: 20px 0 10px; line-height: 1.3; }
-.preview-area :deep(h2) { font-size: 20px; font-weight: 600; margin: 16px 0 8px; line-height: 1.35; }
-.preview-area :deep(h3) { font-size: 17px; font-weight: 600; margin: 14px 0 6px; }
-.preview-area :deep(p) { margin: 0 0 6px; }
+.preview-area :deep(h1) { font-size: 24px; font-weight: 700; margin: 20px 0 10px; line-height: 1.3; color: var(--c-text); }
+.preview-area :deep(h2) { font-size: 20px; font-weight: 600; margin: 16px 0 8px; line-height: 1.35; color: var(--c-text); }
+.preview-area :deep(h3) { font-size: 17px; font-weight: 600; margin: 14px 0 6px; color: var(--c-text); }
+.preview-area :deep(p) { margin: 0 0 6px; color: var(--c-text-sec); }
 .preview-area :deep(br) { display: block; content: ''; margin-top: 4px; }
-.preview-area :deep(strong) { font-weight: 700; }
+.preview-area :deep(strong) { font-weight: 700; color: var(--c-text); }
 .preview-area :deep(em) { font-style: italic; }
 .preview-area :deep(ul), .preview-area :deep(ol) { margin: 4px 0 6px 0; padding-left: 24px; }
-.preview-area :deep(li) { margin-bottom: 2px; }
-.preview-area :deep(blockquote) { margin: 8px 0; padding: 6px 16px; border-left: 3px solid #409eff; background: #f5f7fa; }
+.preview-area :deep(li) { margin-bottom: 2px; color: var(--c-text-sec); }
+.preview-area :deep(blockquote) { margin: 8px 0; padding: 6px 16px; border-left: 3px solid var(--c-primary); background: var(--c-bg-sec); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .preview-area :deep(table) { border-collapse: collapse; margin: 8px 0; width: 100%; }
-.preview-area :deep(td), .preview-area :deep(th) { border: 1px solid #e4e7ed; padding: 6px 10px; }
-.preview-area :deep(code) { background: #f0f2f5; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 14px; }
-.preview-area :deep(pre) { background: #f5f7fa; padding: 12px 16px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
-.preview-area :deep(hr) { border: none; border-top: 1px solid #e4e7ed; margin: 16px 0; }
-.preview-area :deep(a) { color: #409eff; }
-.preview-area :deep(mark.srch-hl) { background: #fef08a; color: #303133; padding: 1px 2px; border-radius: 2px; }
+.preview-area :deep(td), .preview-area :deep(th) { border: 1px solid var(--c-border); padding: 6px 10px; }
+.preview-area :deep(code) { background: var(--c-bg-sec); padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 14px; color: var(--c-danger); }
+.preview-area :deep(pre) { background: var(--c-bg-sec); padding: 12px 16px; border-radius: var(--radius-md); overflow-x: auto; margin: 8px 0; }
+.preview-area :deep(hr) { border: none; border-top: 1px solid var(--c-border); margin: 16px 0; }
+.preview-area :deep(a) { color: var(--c-primary); }
+.preview-area :deep(mark.srch-hl) { background: color-mix(in srgb, var(--c-warning) 30%, transparent); color: var(--c-text); padding: 1px 2px; border-radius: 2px; }
 
 .add-rule-row {
   display: flex;
@@ -1535,5 +1598,9 @@ async function executeCantoneseTranslate() {
 
 .cantonese-tip {
   padding: 10px 0;
+}
+
+.pending-file-name {
+  color: var(--c-text-muted);
 }
 </style>

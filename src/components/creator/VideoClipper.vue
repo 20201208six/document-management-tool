@@ -278,8 +278,8 @@
       <template v-else>
         <div class="export-status">
           <el-icon v-if="exportStatus === 'generating'" class="is-loading" :size="32"><Loading /></el-icon>
-          <el-icon v-else-if="exportStatus === 'done'" :size="32" color="#67c23a"><CircleCheck /></el-icon>
-          <el-icon v-else-if="exportStatus === 'error'" :size="32" color="#f56c6c"><CircleClose /></el-icon>
+          <el-icon v-else-if="exportStatus === 'done'" :size="32" class="export-icon-done"><CircleCheck /></el-icon>
+          <el-icon v-else-if="exportStatus === 'error'" :size="32" class="export-icon-error"><CircleClose /></el-icon>
           <p>{{ exportMessage }}</p>
         </div>
       </template>
@@ -300,16 +300,16 @@
     <el-dialog v-model="showSubtitleMgr" title="字幕管理" width="620px" :append-to-body="true" @opened="onSubMgrOpened">
       <!-- 数据存储目录 -->
       <div style="margin-bottom:12px;display:flex;gap:6px;align-items:center">
-        <span style="font-size:12px;color:#606266;white-space:nowrap">字幕存储目录:</span>
+        <span class="submgr-label">字幕存储目录:</span>
         <el-input v-model="storageInput" size="small" placeholder="ASR 字幕等数据存放路径" style="flex:1" />
         <el-button size="small" @click="saveStoragePath">保存</el-button>
         <el-button size="small" @click="scanStorageSubtitles" :loading="scanningStorage">扫描目录</el-button>
       </div>
-      <div v-if="allSubtitleEntries.length === 0" style="text-align:center;color:#909399;padding:20px;">
+      <div v-if="allSubtitleEntries.length === 0" class="submgr-empty">
         暂无已转换的字幕，请先对视频执行 ASR 转字幕
       </div>
       <template v-else>
-        <div style="margin-bottom: 8px; color: #606266; font-size: 13px;">
+        <div class="submgr-count">
           共 {{ allSubtitleEntries.length }} 个字幕文件
         </div>
         <div class="sub-mgr-list" v-for="vid in allSubtitleEntries" :key="vid.id">
@@ -319,13 +319,13 @@
             <span class="sub-mgr-count">{{ vid.subtitles.length }} 条</span>
             <!-- 磁盘缓存：未链接 -->
             <template v-if="vid.fromDisk && !vid.isImported && !vid.videoPath">
-              <span style="color:#e6a23c;font-size:11px">⚠ 未链接视频</span>
+              <span class="submgr-tag submgr-tag-warning">⚠ 未链接视频</span>
               <el-button size="small" @click.stop="linkVideoToSubtitle(vid.diskFile)">链接视频</el-button>
             </template>
             <!-- 磁盘缓存：已链接（纯磁盘条目） -->
-            <span v-else-if="vid.fromDisk && !vid.isImported && vid.videoPath" style="color:#67c23a;font-size:11px">已链接</span>
+            <span v-else-if="vid.fromDisk && !vid.isImported && vid.videoPath" class="submgr-tag submgr-tag-success">已链接</span>
             <!-- 已导入视频：有磁盘缓存（已链接） -->
-            <span v-else-if="vid.isImported && vid.fromDisk" style="color:#67c23a;font-size:11px">已链接</span>
+            <span v-else-if="vid.isImported && vid.fromDisk" class="submgr-tag submgr-tag-success">已链接</span>
             <el-button size="small" text @click.stop="openSubFileLocation(vid.videoPath!)" v-if="vid.videoPath">打开视频位置</el-button>
           </div>
           <div v-show="subMgrExpanded.has(vid.id)" class="sub-mgr-body">
@@ -1527,7 +1527,7 @@ watch(() => store.activeVideoId, () => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: #f5f6fa;
+  background: var(--c-bg-sec);
 }
 
 /* 工具栏 */
@@ -1536,8 +1536,8 @@ watch(() => store.activeVideoId, () => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--c-bg-card);
+  border-bottom: 1px solid var(--c-border);
   gap: 8px;
   min-height: 42px;
 }
@@ -1554,11 +1554,11 @@ watch(() => store.activeVideoId, () => {
   gap: 4px;
 }
 
-.storage-label { font-size: 12px; color: #909399; white-space: nowrap; }
+.storage-label { font-size: 12px; color: var(--c-text-muted); white-space: nowrap; }
 
 .clip-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   font-family: monospace;
 }
 
@@ -1577,8 +1577,8 @@ watch(() => store.activeVideoId, () => {
   max-width: 480px;
   flex-shrink: 0;
   flex-grow: 0;
-  background: #fff;
-  border-right: 1px solid #f0f2f5;
+  background: var(--c-bg-card);
+  border-right: 1px solid var(--c-border-light);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1594,7 +1594,7 @@ watch(() => store.activeVideoId, () => {
 }
 
 .resize-handle:hover {
-  background: #409eff;
+  background: var(--c-primary);
 }
 
 /* 水平拖拽把手 */
@@ -1607,20 +1607,20 @@ watch(() => store.activeVideoId, () => {
 }
 
 .resize-handle-h:hover {
-  background: #409eff;
+  background: var(--c-primary);
 }
 
 /* 视频列表 */
 .video-list-panel {
   width: 240px;
   min-width: 240px;
-  background: #fff;
-  border-right: 1px solid #f0f2f5;
+  background: var(--c-bg-card);
+  border-right: 1px solid var(--c-border-light);
   display: flex;
   flex-direction: column;
 }
 
-.panel-empty-sm { display: flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 12px; padding: 20px; }
+.panel-empty-sm { display: flex; align-items: center; justify-content: center; color: var(--c-text-muted); font-size: 12px; padding: 20px; }
 
 .video-list { flex: 1; overflow-y: auto; }
 
@@ -1629,12 +1629,12 @@ watch(() => store.activeVideoId, () => {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid #fafafa;
+  border-bottom: 1px solid var(--c-border-light);
   cursor: pointer;
   transition: background 0.15s;
 }
-.video-item:hover { background: #f5f7fa; }
-.video-item.active { background: #ecf5ff; }
+.video-item:hover { background: var(--c-bg-hover); }
+.video-item.active { background: var(--c-primary-soft); }
 
 .video-thumb {
   width: 48px;
@@ -1668,16 +1668,16 @@ watch(() => store.activeVideoId, () => {
 .video-name {
   font-size: 12px;
   font-weight: 500;
-  color: #303133;
+  color: var(--c-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.video-meta { font-size: 11px; color: #909399; }
+.video-meta { font-size: 11px; color: var(--c-text-muted); }
 .folder-name { line-height: 1.6; }
 .asr-badge { font-size: 10px; padding: 0 4px; border-radius: 2px; }
-.asr-idle { color: #c0c4cc; }
-.asr-processing { color: #e6a23c; }
-.asr-done { color: #67c23a; background: #f0f9eb; }
-.asr-error { color: #f56c6c; background: #fef0f0; }
+.asr-idle { color: var(--c-text-muted); }
+.asr-processing { color: var(--c-warning); }
+.asr-done { color: var(--c-success); background: color-mix(in srgb, var(--c-success) 10%, transparent); }
+.asr-error { color: var(--c-danger); background: color-mix(in srgb, var(--c-danger) 10%, transparent); }
 
 .video-remove { opacity: 0; flex-shrink: 0; }
 .video-item:hover .video-remove { opacity: 1; }
@@ -1685,8 +1685,8 @@ watch(() => store.activeVideoId, () => {
 /* 预览区 */
 .preview-panel {
   flex: 1;
-  background: #fff;
-  border-right: 1px solid #f0f2f5;
+  background: var(--c-bg-card);
+  border-right: 1px solid var(--c-border-light);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1699,7 +1699,7 @@ watch(() => store.activeVideoId, () => {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #c0c4cc;
+  color: var(--c-text-muted);
 }
 
 .preview-body {
@@ -1732,14 +1732,14 @@ watch(() => store.activeVideoId, () => {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-top: 1px solid #f0f2f5;
-  background: #fafafa;
+  border-top: 1px solid var(--c-border-light);
+  background: var(--c-bg-sec);
 }
 
 .time-current, .time-total {
   font-size: 12px;
   font-family: monospace;
-  color: #606266;
+  color: var(--c-text-sec);
   min-width: 48px;
 }
 
@@ -1755,7 +1755,7 @@ watch(() => store.activeVideoId, () => {
 .seek-track {
   flex: 1;
   height: 4px;
-  background: #e4e7ed;
+  background: var(--c-border);
   border-radius: 2px;
   position: relative;
 }
@@ -1764,7 +1764,7 @@ watch(() => store.activeVideoId, () => {
   position: absolute;
   top: 0; left: 0;
   height: 100%;
-  background: #409eff;
+  background: var(--c-primary);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -1773,8 +1773,8 @@ watch(() => store.activeVideoId, () => {
   position: absolute;
   top: -2px;
   height: 8px;
-  background: rgba(64,158,255,0.2);
-  border: 1px solid rgba(64,158,255,0.5);
+  background: color-mix(in srgb, var(--c-primary) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-primary) 50%, transparent);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -1784,7 +1784,7 @@ watch(() => store.activeVideoId, () => {
   top: -4px;
   width: 12px; height: 12px;
   border-radius: 50%;
-  background: #409eff;
+  background: var(--c-primary);
   margin-left: -6px;
   pointer-events: none;
   z-index: 2;
@@ -1794,21 +1794,21 @@ watch(() => store.activeVideoId, () => {
   position: absolute;
   top: -6px;
   width: 10px; height: 16px;
-  background: #e6a23c;
+  background: var(--c-warning);
   border-radius: 3px;
   margin-left: -5px;
   cursor: col-resize;
   z-index: 3;
 }
-.out-handle { background: #67c23a; }
+.out-handle { background: var(--c-success); }
 
 .mark-section {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-top: 1px solid #f0f2f5;
-  background: #fafafa;
+  border-top: 1px solid var(--c-border-light);
+  background: var(--c-bg-sec);
   gap: 8px;
 }
 
@@ -1821,13 +1821,13 @@ watch(() => store.activeVideoId, () => {
 
 .mark-time {
   font-family: monospace;
-  color: #606266;
+  color: var(--c-text-sec);
   font-size: 12px;
   min-width: 50px;
 }
 
 .mark-duration {
-  color: #409eff;
+  color: var(--c-primary);
   font-size: 12px;
   font-weight: 500;
 }
@@ -1838,8 +1838,8 @@ watch(() => store.activeVideoId, () => {
   max-width: 480px;
   flex-shrink: 0;
   flex-grow: 0;
-  background: #fff;
-  border-left: 1px solid #f0f2f5;
+  background: var(--c-bg-card);
+  border-left: 1px solid var(--c-border-light);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1867,32 +1867,32 @@ watch(() => store.activeVideoId, () => {
   cursor: pointer;
   font-size: 12px;
 }
-.subtitle-item:hover, .clip-item-sm:hover { background: #f5f7fa; }
-.subtitle-item.selected { background: #ecf5ff; outline: 1px solid #c6e2ff; outline-offset: -1px; }
-.clip-item-sm.selected { background: #fef0f0; outline: 1px solid #fbc4c4; outline-offset: -1px; }
+.subtitle-item:hover, .clip-item-sm:hover { background: var(--c-bg-hover); }
+.subtitle-item.selected { background: var(--c-primary-soft); outline: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent); outline-offset: -1px; }
+.clip-item-sm.selected { background: color-mix(in srgb, var(--c-danger) 10%, transparent); outline: 1px solid color-mix(in srgb, var(--c-danger) 10%, transparent); outline-offset: -1px; }
 
 .sub-batch-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  background: #ecf5ff;
-  border-bottom: 1px solid #c6e2ff;
+  background: var(--c-primary-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-primary) 30%, transparent);
   font-size: 12px;
   height: 36px;
   box-sizing: border-box;
 }
 
-.sub-time { font-family: monospace; color: #409eff; min-width: 55px; font-size: 11px; }
-.sub-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #606266; }
+.sub-time { font-family: monospace; color: var(--c-primary); min-width: 55px; font-size: 11px; }
+.sub-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-sec); }
 
-.clip-time { font-family: monospace; color: #409eff; font-size: 11px; min-width: 90px; }
-.clip-dur { color: #909399; font-size: 11px; min-width: 30px; }
+.clip-time { font-family: monospace; color: var(--c-primary); font-size: 11px; min-width: 90px; }
+.clip-dur { color: var(--c-text-muted); font-size: 11px; min-width: 30px; }
 
 /* 底部轨道 */
 .timeline-bar {
-  background: #fff;
-  border-top: 1px solid #e4e7ed;
+  background: var(--c-bg-card);
+  border-top: 1px solid var(--c-border);
   padding: 6px 12px;
 }
 
@@ -1902,10 +1902,10 @@ watch(() => store.activeVideoId, () => {
   justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
-  color: #303133;
+  color: var(--c-text);
   margin-bottom: 4px;
 }
-.timeline-total { color: #909399; font-weight: 400; }
+.timeline-total { color: var(--c-text-muted); font-weight: 400; }
 
 .timeline-track {
   display: flex;
@@ -1916,14 +1916,14 @@ watch(() => store.activeVideoId, () => {
   padding: 2px 0;
 }
 
-.track-empty { color: #c0c4cc; font-size: 12px; padding: 8px; }
+.track-empty { color: var(--c-text-muted); font-size: 12px; padding: 8px; }
 
 .track-item {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: #ecf5ff;
+  background: var(--c-primary-soft);
   border-radius: 6px;
   font-size: 12px;
   cursor: grab;
@@ -1935,18 +1935,18 @@ watch(() => store.activeVideoId, () => {
 .track-num {
   width: 18px; height: 18px;
   border-radius: 50%;
-  background: #409eff;
-  color: #fff;
+  background: var(--c-primary);
+  color: var(--c-primary-text);
   display: flex; align-items: center; justify-content: center;
   font-size: 11px;
   flex-shrink: 0;
 }
 
-.track-label { max-width: 100px; overflow: hidden; text-overflow: ellipsis; color: #303133; }
-.track-time { font-family: monospace; color: #909399; font-size: 11px; display: flex; gap: 2px; align-items: center; }
-.track-start { color: #e6a23c; }
-.track-sep { color: #c0c4cc; }
-.track-end { color: #67c23a; }
+.track-label { max-width: 100px; overflow: hidden; text-overflow: ellipsis; color: var(--c-text); }
+.track-time { font-family: monospace; color: var(--c-text-muted); font-size: 11px; display: flex; gap: 2px; align-items: center; }
+.track-start { color: var(--c-warning); }
+.track-sep { color: var(--c-text-muted); }
+.track-end { color: var(--c-success); }
 
 /* 时长拖拽手柄 */
 .track-handle {
@@ -1955,7 +1955,7 @@ watch(() => store.activeVideoId, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c0c4cc;
+  color: var(--c-text-muted);
   font-size: 8px;
   cursor: col-resize;
   opacity: 0;
@@ -1964,7 +1964,7 @@ watch(() => store.activeVideoId, () => {
   flex-shrink: 0;
 }
 .track-item:hover .track-handle { opacity: 1; }
-.track-handle:hover { color: #409eff; background: rgba(64,158,255,0.1); }
+.track-handle:hover { color: var(--c-primary); background: color-mix(in srgb, var(--c-primary) 10%, transparent); }
 .track-handle.left { border-radius: 6px 0 0 6px; }
 .track-handle.right { border-radius: 0 6px 6px 0; }
 
@@ -1972,7 +1972,7 @@ watch(() => store.activeVideoId, () => {
 .dialog-tip {
   padding: 8px 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--c-text-muted);
   text-align: center;
 }
 
@@ -1984,7 +1984,9 @@ watch(() => store.activeVideoId, () => {
   gap: 12px;
   padding: 20px;
 }
-.export-status p { font-size: 14px; color: #606266; }
+.export-status p { font-size: 14px; color: var(--c-text-sec); }
+.export-icon-done { color: var(--c-success); }
+.export-icon-error { color: var(--c-danger); }
 
 /* 字幕管理弹窗 */
 .sub-mgr-list {
@@ -1996,13 +1998,13 @@ watch(() => store.activeVideoId, () => {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  background: #f5f7fa;
+  background: var(--c-bg-sec);
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
 }
 
-.sub-mgr-header:hover { background: #ecf5ff; }
+.sub-mgr-header:hover { background: var(--c-primary-soft); }
 
 .sub-mgr-expand {
   transition: transform 0.2s;
@@ -2010,8 +2012,8 @@ watch(() => store.activeVideoId, () => {
 }
 .sub-mgr-expand.rotated { transform: rotate(90deg); }
 
-.sub-mgr-name { font-weight: 500; color: #303133; }
-.sub-mgr-count { color: #409eff; font-size: 12px; margin-left: auto; margin-right: 8px; }
+.sub-mgr-name { font-weight: 500; color: var(--c-text); }
+.sub-mgr-count { color: var(--c-primary); font-size: 12px; margin-left: auto; margin-right: 8px; }
 
 .sub-mgr-body {
   padding: 4px 0 4px 20px;
@@ -2027,11 +2029,11 @@ watch(() => store.activeVideoId, () => {
   font-size: 12px;
   border-radius: 3px;
 }
-.sub-mgr-item:hover { background: #f5f7fa; }
+.sub-mgr-item:hover { background: var(--c-bg-hover); }
 
 .sub-mgr-time {
   font-family: monospace;
-  color: #409eff;
+  color: var(--c-primary);
   min-width: 55px;
   font-size: 11px;
   flex-shrink: 0;
@@ -2042,6 +2044,14 @@ watch(() => store.activeVideoId, () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #606266;
+  color: var(--c-text-sec);
 }
+
+/* 字幕管理：内联样式抽离 */
+.submgr-label { font-size: 12px; color: var(--c-text-sec); white-space: nowrap; }
+.submgr-empty { text-align: center; color: var(--c-text-muted); padding: 20px; }
+.submgr-count { margin-bottom: 8px; color: var(--c-text-sec); font-size: 13px; }
+.submgr-tag { font-size: 11px; }
+.submgr-tag-warning { color: var(--c-warning); }
+.submgr-tag-success { color: var(--c-success); }
 </style>

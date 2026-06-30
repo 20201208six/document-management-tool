@@ -9,29 +9,31 @@
     }"
   >
     <!-- 头像 -->
-    <div class="cm-avatar">
-      <el-icon v-if="message.role === 'user'" :size="18"><UserFilled /></el-icon>
-      <el-icon v-else :size="18"><Cpu /></el-icon>
+    <div class="cm-avatar" :class="{ 'cm-avatar--user': message.role === 'user' }">
+      <el-icon v-if="message.role === 'user'" :size="16"><UserFilled /></el-icon>
+      <template v-else>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </template>
     </div>
 
     <!-- 主体 -->
     <div class="cm-main">
       <!-- 元信息 -->
       <div class="cm-meta">
-        <span class="cm-role">{{ message.role === 'user' ? '我' : 'AI 助手' }}</span>
+        <span class="cm-role">{{ message.role === 'user' ? '你' : 'AI 助手' }}</span>
         <span v-if="message.deepThinking" class="cm-badge">深度思考</span>
-        <span class="cm-time">{{ message.timestamp }}</span>
-        <span v-if="message.isStreaming" class="cm-streaming">
-          <el-icon class="is-loading"><Loading /></el-icon> 生成中...
-        </span>
+        <span class="cm-time">{{ formatTime(message.timestamp) }}</span>
       </div>
 
       <!-- 思考过程 -->
       <div v-if="message.deepThinking && (message.reasoningContent || message.isStreaming)" class="cm-reasoning">
         <details :open="message.isStreaming">
           <summary class="cm-reasoning-toggle">
-            <span>{{ message.isStreaming ? '正在思考...' : '思考过程' }}</span>
-            <span v-if="message.isStreaming" class="cm-reasoning-count">({{ message.reasoningContent?.length || 0 }} 字)</span>
+            <el-icon :size="12"><InfoFilled /></el-icon>
+            <span>{{ message.isStreaming ? '思考中...' : '已深度思考' }}</span>
+            <span class="cm-reasoning-count" v-if="message.reasoningContent">{{ message.reasoningContent.length }}字</span>
           </summary>
           <div class="cm-reasoning-text">{{ message.reasoningContent || '正在分析...' }}</div>
         </details>
@@ -40,28 +42,30 @@
       <!-- 气泡 -->
       <div class="cm-bubble">
         <div class="cm-content" v-html="renderedContent"></div>
-      </div>
-
-      <!-- 追问链 -->
-      <div v-if="message.followUpIds.length > 0" class="cm-chain">
-        <span>
-          <el-icon><Connection /></el-icon>
-          {{ message.followUpIds.length }} 条追问
-        </span>
+        <div v-if="message.isStreaming && !message.content" class="cm-typing">
+          <span></span><span></span><span></span>
+        </div>
       </div>
 
       <!-- 操作按钮 -->
       <div v-if="!message.isStreaming" class="cm-actions" :class="{ 'cm-actions--rev': message.role === 'user' }">
         <template v-if="message.role === 'assistant'">
-          <button class="cm-act" @click="$emit('followUp', message.id)">追问</button>
-          <button class="cm-act" :class="{ active: message.isFavorited }" @click="$emit(message.isFavorited ? 'unfavorite' : 'favorite', message.id)">
-            {{ message.isFavorited ? '已收藏' : '收藏' }}
+          <button class="cm-action-btn" @click="$emit('copy', message.content)" title="复制">
+            <el-icon :size="12"><CopyDocument /></el-icon>
+            <span>复制</span>
           </button>
-          <button class="cm-act cm-act--del" @click="$emit('delete', message.id)">删除</button>
+          <button class="cm-action-btn" @click="$emit('followUp', message.id)" title="追问">
+            <el-icon :size="12"><Promotion /></el-icon>
+            <span>追问</span>
+          </button>
+          <button class="cm-action-btn" :class="{ active: message.isFavorited }" @click="$emit(message.isFavorited ? 'unfavorite' : 'favorite', message.id)">
+            <el-icon :size="12"><Star /></el-icon>
+            <span>{{ message.isFavorited ? '已收藏' : '收藏' }}</span>
+          </button>
         </template>
-        <template v-else>
-          <button class="cm-act cm-act--del" @click="$emit('delete', message.id)">删除</button>
-        </template>
+        <button class="cm-action-btn cm-action-btn--del" @click="$emit('delete', message.id)" title="删除">
+          <el-icon :size="12"><Delete /></el-icon>
+        </button>
       </div>
     </div>
   </div>
@@ -81,161 +85,320 @@ defineEmits<{
   favorite: [messageId: string]
   unfavorite: [messageId: string]
   delete: [messageId: string]
+  copy: [content: string]
 }>()
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true, typographer: true })
 
 const renderedContent = computed(() => {
   const content = props.message.content
-  if (!content && props.message.isStreaming) {
-    return '<span class="cm-thinking">思考中...</span>'
-  }
+  if (!content) return ''
   return md.render(content)
 })
+
+function formatTime(ts: string) {
+  try {
+    const d = new Date(ts)
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } catch { return '' }
+}
 </script>
 
 <style scoped>
-/* ===== 行容器 ===== */
 .cm-row {
-  display: flex; gap: 10px; padding: 12px 16px; max-width: 100%;
+  display: flex;
+  gap: 10px;
+  padding: 16px 16px 4px;
+  max-width: 100%;
+  animation: cmFadeIn 0.3s ease forwards;
 }
-.cm-row--ai  { flex-direction: row; }
+.cm-row--ai { flex-direction: row; }
 .cm-row--user { flex-direction: row-reverse; }
+.cm-row--streaming .cm-bubble { opacity: 0.95; }
 
-/* ===== 头像 ===== */
-.cm-avatar {
-  flex-shrink: 0; width: 34px; height: 34px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
+@keyframes cmFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.cm-row--ai .cm-avatar   { background: #f4f6f9; color: #667eea; }
-.cm-row--user .cm-avatar { background: #eef3ff; color: #1a4cff; }
 
-/* ===== 主体 ===== */
-.cm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; max-width: 78%; }
+.cm-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--c-primary), var(--c-accent));
+  color: var(--c-primary-text);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 20%, transparent);
+}
+.cm-avatar--user {
+  background: var(--c-bg-hover);
+  color: var(--c-primary);
+  box-shadow: none;
+  border: 1px solid var(--c-border);
+}
+
+.cm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100% - 50px);
+}
 .cm-row--user .cm-main { align-items: flex-end; }
 
-/* ===== 元信息 ===== */
-.cm-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.cm-role    { font-size: 12px; font-weight: 600; color: #8899b0; }
-.cm-time    { font-size: 11px; color: #bcc5d2; margin-left: auto; }
-.cm-row--user .cm-time { margin-left: 0; margin-right: auto; }
-.cm-badge   { font-size: 10px; color: #7c5cfc; background: #f4f0ff; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
-.cm-streaming { font-size: 11px; color: #8899b0; display: flex; align-items: center; gap: 3px; }
+.cm-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.cm-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+.cm-time {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  opacity: 0.7;
+}
+.cm-badge {
+  font-size: 10px;
+  color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 10%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
 
-/* ===== 气泡 ===== */
+.cm-reasoning {
+  margin-bottom: 6px;
+  border: 1px solid color-mix(in srgb, var(--c-accent) 20%, transparent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--c-accent) 3%, transparent);
+  max-width: 100%;
+}
+.cm-reasoning-toggle {
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  color: var(--c-accent);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+}
+.cm-reasoning-toggle::-webkit-details-marker { display: none; }
+.cm-reasoning-count {
+  font-size: 10px;
+  color: var(--c-text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.cm-reasoning-text {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--c-text-sec);
+  background: var(--c-bg-card);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  border-top: 1px solid color-mix(in srgb, var(--c-accent) 15%, transparent);
+}
+
 .cm-bubble {
-  padding: 12px 16px; border-radius: 14px;
+  padding: 10px 14px;
+  border-radius: 4px 14px 14px 14px;
   font-size: var(--msg-font-size, 14px);
   line-height: var(--msg-line-height, 1.7);
   word-break: break-word;
+  max-width: 100%;
+  position: relative;
 }
 .cm-row--ai .cm-bubble {
-  background: #fff; border: 1px solid #eef2f6;
+  background: var(--c-bg-card);
+  border: 1px solid var(--c-border-light);
   border-top-left-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 .cm-row--user .cm-bubble {
-  background: linear-gradient(135deg, #1a4cff, #3b6af0);
-  color: #fff; border-top-right-radius: 4px;
+  background: linear-gradient(135deg, var(--c-primary), var(--c-accent));
+  color: var(--c-primary-text);
+  border-top-right-radius: 4px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 20%, transparent);
 }
-.cm-row--streaming .cm-bubble { opacity: .92; }
 
-.cm-content { font-family: var(--msg-font-family, 'Microsoft YaHei','PingFang SC',sans-serif); }
-
-/* ===== Markdown 排版 ===== */
+.cm-content {
+  font-family: inherit;
+}
 .cm-content :deep(p) { margin: 0 0 var(--msg-paragraph-spacing, 8px); }
 .cm-content :deep(p:last-child) { margin-bottom: 0; }
 
-.cm-content :deep(h1),
-.cm-content :deep(h2),
-.cm-content :deep(h3),
-.cm-content :deep(h4) { font-weight: 700; margin: 14px 0 8px; line-height: 1.35; }
-.cm-content :deep(h1) { font-size: calc(var(--msg-font-size,14px) + 6px); padding-bottom: 6px; border-bottom: 1px solid #e8ecf2; }
-.cm-content :deep(h2) { font-size: calc(var(--msg-font-size,14px) + 4px); padding-bottom: 4px; border-bottom: 1px solid #eef2f6; }
-.cm-content :deep(h3) { font-size: calc(var(--msg-font-size,14px) + 2px); }
-.cm-content :deep(h4) { font-size: calc(var(--msg-font-size,14px) + 1px); }
-.cm-content :deep(h1:first-child, h2:first-child, h3:first-child, h4:first-child) { margin-top: 0; }
+.cm-content :deep(h1), .cm-content :deep(h2), .cm-content :deep(h3), .cm-content :deep(h4) {
+  font-weight: 700;
+  margin: 12px 0 6px;
+  line-height: 1.35;
+}
+.cm-content :deep(h1) { font-size: calc(var(--msg-font-size,14px) + 5px); padding-bottom: 4px; border-bottom: 1px solid var(--c-border-light); }
+.cm-content :deep(h2) { font-size: calc(var(--msg-font-size,14px) + 3px); }
+.cm-content :deep(h3) { font-size: calc(var(--msg-font-size,14px) + 1px); }
 
-.cm-row--user .cm-content :deep(h1),
-.cm-row--user .cm-content :deep(h2) { border-bottom-color: rgba(255,255,255,.15); }
+.cm-row--user .cm-content :deep(h1), .cm-row--user .cm-content :deep(h2) {
+  border-bottom-color: rgba(255,255,255,0.2);
+}
 
-.cm-content :deep(hr) { border: none; border-top: 1px solid #e8ecf2; margin: 12px 0; }
-.cm-row--user .cm-content :deep(hr) { border-color: rgba(255,255,255,.12); }
+.cm-content :deep(hr) { border: none; border-top: 1px solid var(--c-border-light); margin: 10px 0; }
+.cm-row--user .cm-content :deep(hr) { border-color: rgba(255,255,255,0.2); }
 
 .cm-content :deep(blockquote) {
-  border-left: 3px solid #1a4cff; padding: 6px 12px; margin: 8px 0;
-  background: #f8fafc; color: #64748b; border-radius: 0 6px 6px 0; line-height: 1.6;
+  border-left: 3px solid var(--c-primary);
+  padding: 6px 12px;
+  margin: 8px 0;
+  background: var(--c-bg-sec);
+  color: var(--c-text-sec);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: calc(var(--msg-font-size,14px) - 1px);
 }
 .cm-content :deep(blockquote p) { margin: 0; }
 .cm-row--user .cm-content :deep(blockquote) {
-  border-left-color: rgba(255,255,255,.4); background: rgba(255,255,255,.08); color: rgba(255,255,255,.8);
+  border-left-color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.9);
 }
 
 .cm-content :deep(ul), .cm-content :deep(ol) { margin: 6px 0; padding-left: 20px; }
 .cm-content :deep(li) { padding: 2px 0; line-height: 1.6; }
-.cm-content :deep(ul li::marker) { color: #1a4cff; }
-.cm-content :deep(ol li::marker) { color: #94a3b8; font-weight: 600; }
-.cm-row--user .cm-content :deep(ul li::marker) { color: rgba(255,255,255,.7); }
-.cm-row--user .cm-content :deep(ol li::marker) { color: rgba(255,255,255,.5); }
+.cm-content :deep(ul li::marker) { color: var(--c-primary); }
+.cm-row--user .cm-content :deep(ul li::marker) { color: rgba(255,255,255,0.7); }
 
 .cm-content :deep(pre) {
-  background: #1e293b; color: #e2e8f0; padding: 12px 14px; border-radius: 8px;
-  font-size: calc(var(--msg-font-size,14px) - 1px); line-height: 1.6; overflow-x: auto; margin: 8px 0;
+  background: var(--c-code-bg);
+  color: var(--c-code-text);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  font-size: calc(var(--msg-font-size,14px) - 1px);
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 8px 0;
 }
-.cm-content :deep(pre code) { font-family: 'SF Mono','Fira Code','Consolas',monospace; background: none; padding: 0; font-size: inherit; color: inherit; }
-.cm-row--user .cm-content :deep(pre) { background: rgba(0,0,0,.22); }
+.cm-content :deep(pre code) {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+.cm-row--user .cm-content :deep(pre) { background: rgba(0,0,0,0.25); }
 
 .cm-content :deep(code) {
-  background: #eef2f6; color: #dc2626; padding: 1px 5px; border-radius: 4px;
-  font-size: calc(var(--msg-font-size,14px) - 1px); font-family: 'SF Mono','Fira Code','Consolas',monospace;
+  background: color-mix(in srgb, var(--c-danger) 8%, transparent);
+  color: var(--c-danger);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: calc(var(--msg-font-size,14px) - 1px);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
-.cm-row--user .cm-content :deep(code) { background: rgba(255,255,255,.15); color: rgba(255,255,255,.9); }
+.cm-row--user .cm-content :deep(code) {
+  background: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.95);
+}
 
-.cm-content :deep(table) { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: calc(var(--msg-font-size,14px) - 1px); }
-.cm-content :deep(th) { background: #f4f6f9; padding: 5px 10px; border: 1px solid #e2e8f0; text-align: left; font-weight: 600; }
-.cm-content :deep(td) { padding: 5px 10px; border: 1px solid #e2e8f0; }
-.cm-row--user .cm-content :deep(th) { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.15); }
-.cm-row--user .cm-content :deep(td) { border-color: rgba(255,255,255,.15); }
+.cm-content :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: calc(var(--msg-font-size,14px) - 1px);
+}
+.cm-content :deep(th) {
+  background: var(--c-bg-sec);
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  text-align: left;
+  font-weight: 600;
+}
+.cm-content :deep(td) {
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+}
+.cm-row--user .cm-content :deep(th) {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.2);
+}
+.cm-row--user .cm-content :deep(td) { border-color: rgba(255,255,255,0.2); }
 
-.cm-content :deep(strong) { font-weight: 700; color: #0f172a; }
-.cm-content :deep(em)     { font-style: italic; color: #64748b; }
-.cm-content :deep(del)    { text-decoration: line-through; opacity: .5; }
-.cm-content :deep(a)      { color: #1a4cff; text-decoration: underline; }
-.cm-content :deep(img)    { max-width: 100%; border-radius: 6px; margin: 4px 0; }
+.cm-content :deep(strong) { font-weight: 700; }
+.cm-row--ai .cm-content :deep(strong) { color: var(--c-text); }
+.cm-content :deep(em) { font-style: italic; opacity: 0.85; }
+.cm-content :deep(a) { color: var(--c-primary); text-decoration: none; border-bottom: 1px dashed var(--c-primary); }
+.cm-content :deep(a:hover) { border-bottom-style: solid; }
+.cm-row--user .cm-content :deep(a) { color: #fff; border-bottom-color: rgba(255,255,255,0.5); }
+.cm-content :deep(img) { max-width: 100%; border-radius: var(--radius-sm); margin: 4px 0; }
 
-.cm-row--user .cm-content :deep(strong) { color: #fff; }
-.cm-row--user .cm-content :deep(em)     { color: rgba(255,255,255,.8); }
-.cm-row--user .cm-content :deep(a)      { color: rgba(255,255,255,.9); }
+.cm-typing {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px 0;
+}
+.cm-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-text-muted);
+  animation: cmDotBounce 1.2s infinite ease-in-out;
+}
+.cm-typing span:nth-child(2) { animation-delay: 0.15s; }
+.cm-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes cmDotBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
 
-.cm-thinking { color: #8899b0; font-style: italic; }
-
-/* ===== 操作按钮 ===== */
-.cm-actions { display: flex; gap: 4px; margin-top: 6px; opacity: 0; transition: opacity .2s; }
+/* Actions */
+.cm-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
 .cm-row:hover .cm-actions { opacity: 1; }
 .cm-actions--rev { flex-direction: row-reverse; }
 
-.cm-act {
-  font-size: 11px; padding: 3px 10px; border: 1px solid #e8ecf2; border-radius: 8px;
-  background: #fff; color: #6b7a8f; cursor: pointer; font-family: inherit;
-  transition: all .15s;
+.cm-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-bg-card);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition-fast);
 }
-.cm-act:hover { border-color: #1a4cff; color: #1a4cff; background: #f4f6ff; }
-.cm-act.active { background: #fefce8; border-color: #ca8a04; color: #ca8a04; }
-.cm-act--del:hover { border-color: #dc2626; color: #dc2626; background: #fef5f5; }
-
-.cm-chain { margin-top: 6px; font-size: 11px; color: #8899b0; }
-.cm-chain span { display: inline-flex; align-items: center; gap: 4px; }
-
-/* ===== 思考过程 ===== */
-.cm-reasoning { margin-bottom: 8px; border: 1px solid #e8e6f0; border-radius: 8px; overflow: hidden; }
-.cm-reasoning-toggle {
-  padding: 6px 10px; background: #faf9fe; cursor: pointer; user-select: none;
-  font-size: 12px; color: #7c5cfc; font-weight: 600; display: flex; align-items: center; gap: 6px;
+.cm-action-btn:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
 }
-.cm-reasoning-toggle:hover { background: #f2effa; }
-.cm-reasoning-count { font-size: 11px; color: #a0a0c0; font-weight: 400; margin-left: auto; }
-.cm-reasoning-text {
-  padding: 8px 10px; font-size: 12px; line-height: 1.6; color: #5a5a7a;
-  background: #fefefe; white-space: pre-wrap; word-break: break-word;
-  max-height: 220px; overflow-y: auto; border-top: 1px solid #e8e6f0;
+.cm-action-btn.active {
+  background: color-mix(in srgb, var(--c-warning) 8%, transparent);
+  border-color: var(--c-warning);
+  color: var(--c-warning);
+}
+.cm-action-btn--del:hover {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+  background: color-mix(in srgb, var(--c-danger) 6%, transparent);
 }
 </style>

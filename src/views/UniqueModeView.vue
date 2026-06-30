@@ -29,24 +29,36 @@
       </div>
 
       <div class="tab-switch">
-        <el-button :type="store.activeTab === 'analysis' ? 'primary' : 'default'" size="small" @click="store.switchTab('analysis')">
-          <el-icon><ChatDotRound /></el-icon> 文案分析
-        </el-button>
-        <el-button :type="store.activeTab === 'prediction' ? 'primary' : 'default'" size="small" @click="store.switchTab('prediction')">
-          <el-icon><TrendCharts /></el-icon> 点赞预测
-        </el-button>
+        <button
+          class="tab-btn"
+          :class="{ active: store.activeTab === 'analysis' }"
+          @click="store.switchTab('analysis')"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+          <span>文案分析</span>
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: store.activeTab === 'prediction' }"
+          @click="store.switchTab('prediction')"
+        >
+          <el-icon><TrendCharts /></el-icon>
+          <span>点赞预测</span>
+        </button>
       </div>
     </div>
 
     <!-- Tab 1：文案分析 -->
     <div v-if="store.activeTab === 'analysis'" class="unique-body">
       <div class="unique-left">
-        <div class="unique-chat-panel"><UniqueChatPanel /></div>
+        <div class="unique-chat-panel">
+          <UniqueChatPanel ref="chatPanelRef" />
+        </div>
         <div class="unique-file-browser"><UniqueFileBrowser /></div>
       </div>
       <div class="unique-right">
         <DataAnalysisCenter />
-        <CopywritingSuggestions />
+        <CopywritingSuggestions @apply="handleApplySuggestion" />
       </div>
     </div>
 
@@ -80,7 +92,6 @@
 
       <!-- 主体：顶部横排Tab + 内容区 -->
       <div class="predict-main">
-        <!-- 横排 Tab 导航 -->
         <div class="predict-tabs">
           <div
             v-for="nav in navItems" :key="nav.key"
@@ -106,7 +117,6 @@
         </div>
       </div>
 
-      <!-- JSON 导入隐藏 input -->
       <input ref="importInput" type="file" accept=".json" style="display:none" @change="handleImportJSON" />
     </div>
 
@@ -134,7 +144,6 @@
         <span class="add-line"></span>
       </div>
 
-      <!-- 已配置：展示结果 -->
       <div v-if="store.audienceProfile && !editingAudience" class="ad-ap">
         <div class="adap-row"><span class="adap-label">赛道</span><span class="adap-value">{{ store.audienceProfile.niche }}</span></div>
         <div class="adap-row"><span class="adap-label">核心受众</span><span class="adap-value">{{ store.audienceProfile.targetAudience }}</span></div>
@@ -152,7 +161,6 @@
         </div>
       </div>
 
-      <!-- 未配置 / 编辑中 -->
       <div v-else class="ad-ap-edit">
         <div class="adae-field">
           <label class="adae-label">赛道关键词</label>
@@ -204,14 +212,14 @@ const store = useUniqueModeStore()
 const showAccountDialog = ref(false)
 const newAccountName = ref('')
 const importInput = ref<HTMLInputElement | null>(null)
-const predictKey = ref(0)  // 账号切换时刷新 KeepAlive
+const predictKey = ref(0)
+const chatPanelRef = ref<InstanceType<typeof UniqueChatPanel> | null>(null)
 
 // ===== 受众画像配置 =====
 const audienceNiche = ref('')
 const audienceNotes = ref('')
 const editingAudience = ref(false)
 
-// 账号切换/画像加载时同步关键词
 watch(() => store.audienceProfile, (val) => {
   if (val) {
     audienceNiche.value = val.niche
@@ -229,6 +237,11 @@ async function handleGenerateAudience() {
   } catch (e: any) {
     ElMessage.error(e.message || '分析失败')
   }
+}
+
+function handleApplySuggestion(content: string) {
+  chatPanelRef.value?.fillInput(content)
+  ElMessage.success('已填入分析输入框，可直接点击「开始分析」')
 }
 
 const componentMap = {
@@ -283,7 +296,6 @@ const topLikesText = computed(() => {
 })
 
 function handleExportJSON() { store.downloadJSON() }
-
 function triggerImport() { importInput.value?.click() }
 
 function handleImportJSON(e: Event) {
@@ -297,7 +309,6 @@ function handleImportJSON(e: Event) {
     else { ElMessage.error(result.message) }
   }
   reader.readAsText(file)
-  // reset input
   ;(e.target as HTMLInputElement).value = ''
 }
 
@@ -309,13 +320,12 @@ async function handleResetBuiltIn() {
   } catch {}
 }
 
-// 账号切换
 function handleAccountSwitch(cmd: string) {
   if (cmd === '__manage__') { showAccountDialog.value = true; return }
   if (cmd === store.currentAccountId) return
   store.switchAccount(cmd)
-  predictKey.value++  // 刷新 KeepAlive
-  editingAudience.value = false  // 重置画像编辑状态
+  predictKey.value++
+  editingAudience.value = false
   ElMessage.success('已切换到：' + (store.currentAccount?.name || ''))
 }
 function handleAddAccount() {
@@ -333,101 +343,341 @@ function handleDeleteAccount(accountId: string) {
 </script>
 
 <style scoped>
-.unique-mode { flex: 1; display: flex; flex-direction: column; height: 100%; background: #f5f7fb; overflow: hidden; }
-.unique-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 20px; background: #fff; border-bottom: 1px solid #e4e7ed; height: 44px; min-height: 44px; }
-.account-section { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.account-label { color: #909399; }
-.account-selector {
-  display: flex; align-items: center; gap: 5px;
-  padding: 3px 10px;
-  border: 1px solid #dcdfe6; border-radius: 6px;
-  cursor: pointer; background: #fff;
-  font-size: 13px; color: #303133;
-  transition: border-color .2s;
+.unique-mode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--c-bg);
+  overflow: hidden;
 }
-.account-selector:hover { border-color: #1a4cff; }
-.as-name { font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.as-arrow { font-size: 12px; color: #909399; margin-left: 2px; }
-.ad-acc-name { flex: 1; }
-.ad-check { color: #1a4cff; font-weight: 700; margin-left: 8px; }
-:deep(.el-dropdown-menu__item.is-active) { background: #f0f4ff; color: #1a4cff; }
-.tab-switch { display: flex; gap: 6px; }
 
-.unique-body { flex: 1; display: flex; gap: 12px; padding: 12px; overflow: hidden; }
-.unique-left { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow: hidden; }
-.unique-chat-panel { flex: 1; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow: hidden; min-height: 300px; }
-.unique-file-browser { height: 180px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); overflow: hidden; }
-.unique-right { width: 400px; min-width: 400px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+/* ===== 顶部栏 ===== */
+.unique-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--c-bg-card);
+  border-bottom: 1px solid var(--c-border-light);
+  height: 48px;
+  min-height: 48px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.account-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.account-label { color: var(--c-text-muted); }
+.account-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: var(--c-bg);
+  font-size: 13px;
+  color: var(--c-text);
+  transition: var(--transition-fast);
+}
+.account-selector:hover {
+  border-color: var(--c-primary);
+  background: var(--c-bg-hover);
+}
+.as-name {
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-primary);
+}
+.as-arrow { font-size: 12px; color: var(--c-text-muted); margin-left: 2px; }
+.ad-acc-name { flex: 1; }
+.ad-check { color: var(--c-primary); font-weight: 700; margin-left: 8px; }
+:deep(.el-dropdown-menu__item.is-active) {
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  color: var(--c-primary);
+}
+
+/* Tab 按钮 */
+.tab-switch {
+  display: flex;
+  gap: 4px;
+  background: var(--c-bg-sec);
+  padding: 3px;
+  border-radius: var(--radius-md);
+}
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-sec);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.tab-btn:hover {
+  color: var(--c-primary);
+  background: var(--c-bg-hover);
+}
+.tab-btn.active {
+  background: var(--c-bg-card);
+  color: var(--c-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.tab-btn .el-icon { font-size: 14px; }
+
+/* ===== 文案分析布局 ===== */
+.unique-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+.unique-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+.unique-chat-panel {
+  flex: 1;
+  background: var(--c-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--c-shadow);
+  overflow: hidden;
+  min-height: 320px;
+  border: 1px solid var(--c-border-light);
+}
+.unique-file-browser {
+  height: 180px;
+  background: var(--c-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--c-shadow);
+  overflow: hidden;
+  border: 1px solid var(--c-border-light);
+  flex-shrink: 0;
+}
+.unique-right {
+  width: 380px;
+  min-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
 
 /* ===== 点赞预测布局 ===== */
-.predict-layout { flex: 1; display: flex; flex-direction: column; padding: 16px 18px; gap: 12px; overflow: hidden; }
+.predict-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  gap: 14px;
+  overflow: hidden;
+}
 
 /* 统计卡片 */
-.predict-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; flex-shrink: 0; }
-.ps-card { background: #fff; border-radius: 16px; padding: 22px 20px; border: 1px solid #eef2f6; }
-.ps-label { font-size: 13px; color: #6b7a8f; font-weight: 500; margin-bottom: 8px; }
-.ps-value { font-size: 28px; font-weight: 700; color: #0b1a30; margin-top: 4px; }
-.ps-unit { font-size: 14px; font-weight: 400; color: #868e96; margin-left: 4px; }
-.ps-desc { font-size: 13px; color: #8a9bb0; margin-top: 6px; padding-top: 8px; border-top: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.predict-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  flex-shrink: 0;
+}
+.ps-card {
+  background: var(--c-bg-card);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  border: 1px solid var(--c-border-light);
+  transition: var(--transition-fast);
+}
+.ps-card:hover {
+  box-shadow: var(--c-shadow);
+  transform: translateY(-1px);
+}
+.ps-label { font-size: 13px; color: var(--c-text-sec); font-weight: 500; margin-bottom: 6px; }
+.ps-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--c-text);
+  margin-top: 2px;
+  line-height: 1.2;
+}
+.ps-desc {
+  font-size: 12px;
+  color: var(--c-text-muted);
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 状态提示 */
-.predict-hint { background: #f4f6fa; border-radius: 10px; padding: 10px 16px; font-size: 13px; color: #3d5068; border-left: 4px solid #1a4cff; flex-shrink: 0; }
+.predict-hint {
+  background: var(--c-bg-sec);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--c-text-sec);
+  border-left: 4px solid var(--c-primary);
+  flex-shrink: 0;
+}
 
-/* 顶部横排Tab导航 + 内容区 */
-.predict-main { flex: 1; display: flex; flex-direction: column; gap: 14px; overflow: hidden; min-height: 0; }
+.predict-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  min-height: 0;
+}
 
-.predict-tabs { display: flex; align-items: center; gap: 4px; flex-shrink: 0; background: #fff; border-radius: 12px; padding: 4px; border: 1px solid #eef2f6; }
-.pt-item { padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; color: #2c3e50; cursor: pointer; transition: background 0.15s, color 0.15s; user-select: none; white-space: nowrap; }
-.pt-item:hover { background: #f0f4fe; }
-.pt-item.active { background: #e6edfe; color: #1a4cff; font-weight: 600; }
+.predict-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  background: var(--c-bg-card);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+  border: 1px solid var(--c-border-light);
+  overflow-x: auto;
+}
+.pt-item {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-sec);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  user-select: none;
+  white-space: nowrap;
+}
+.pt-item:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-primary);
+}
+.pt-item.active {
+  background: color-mix(in srgb, var(--c-primary) 12%, transparent);
+  color: var(--c-primary);
+  font-weight: 600;
+}
 .pt-icon { margin-right: 4px; }
-.pt-bump-badge { color: #ef4444; font-size: 10px; margin-left: 2px; animation: bump-blink 1s infinite; }
-@keyframes bump-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.pt-bump-badge {
+  color: var(--c-danger);
+  font-size: 10px;
+  margin-left: 2px;
+  animation: bump-blink 1s infinite;
+}
+@keyframes bump-blink {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
 
-.predict-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.predict-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-.dialog-tip { padding: 12px 0; font-size: 13px; color: #909399; text-align: center; }
-
-/* 账号管理弹窗 */
+/* ===== 账号管理弹窗 ===== */
 .ad-list { max-height: 280px; overflow-y: auto; margin-bottom: 14px; }
 .ad-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border: 1px solid #eef2f6; border-radius: 10px;
-  margin-bottom: 8px; transition: border-color .15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--c-border-light);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  transition: var(--transition-fast);
+  background: var(--c-bg-card);
 }
-.ad-item.current { border-color: #1a4cff; background: #f9faff; }
-.adi-name { font-weight: 600; font-size: 14px; color: #0b1a30; flex: 1; }
-.adi-badge { font-size: 11px; background: #1a4cff; color: #fff; padding: 2px 8px; border-radius: 10px; }
+.ad-item:hover { border-color: var(--c-border); }
+.ad-item.current {
+  border-color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 5%, transparent);
+}
+.adi-name { font-weight: 600; font-size: 14px; color: var(--c-text); flex: 1; }
+.adi-badge {
+  font-size: 11px;
+  background: var(--c-primary);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
 .adi-actions { display: flex; gap: 6px; margin-left: auto; }
-.ad-add { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+.ad-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-border-light);
+}
 
 /* 受众画像区域 */
 .ad-divider {
-  display: flex; align-items: center; gap: 8px; margin-top: 16px; margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  margin-bottom: 12px;
 }
-.add-line { flex: 1; height: 1px; background: #e8ecf1; }
-.add-label { font-size: 12px; font-weight: 600; color: #5a6a80; white-space: nowrap; }
+.add-line { flex: 1; height: 1px; background: var(--c-border-light); }
+.add-label { font-size: 12px; font-weight: 600; color: var(--c-text-sec); white-space: nowrap; }
 
 /* 已配置画像展示 */
 .ad-ap { display: flex; flex-direction: column; gap: 6px; }
 .adap-row { display: flex; gap: 8px; font-size: 12px; align-items: flex-start; }
-.adap-label { font-weight: 600; color: #0b1a30; min-width: 60px; flex-shrink: 0; }
-.adap-value { color: #4d5a6e; line-height: 1.5; }
-.adap-section-title { font-size: 12px; font-weight: 600; color: #0b1a30; margin-top: 4px; }
+.adap-label { font-weight: 600; color: var(--c-text); min-width: 60px; flex-shrink: 0; }
+.adap-value { color: var(--c-text-sec); line-height: 1.5; }
+.adap-section-title { font-size: 12px; font-weight: 600; color: var(--c-text); margin-top: 4px; }
 .adap-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 2px; }
-.adap-tag { font-size: 11px; padding: 3px 8px; background: #eef3ff; color: #1a4cff; border-radius: 10px; font-weight: 500; }
+.adap-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  color: var(--c-primary);
+  border-radius: 10px;
+  font-weight: 500;
+}
 .adap-summary {
-  display: flex; gap: 6px; padding: 8px 10px; background: #f0fdf4; border-radius: 6px;
-  border: 1px solid #bbf7d0; margin-top: 4px; font-size: 12px; color: #166534; line-height: 1.5;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--c-success) 10%, transparent);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--c-success) 30%, transparent);
+  margin-top: 4px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--c-success) 70%, black);
+  line-height: 1.5;
 }
 .adap-actions { display: flex; gap: 6px; margin-top: 6px; }
 
 /* 编辑画像 */
 .ad-ap-edit { display: flex; flex-direction: column; gap: 10px; }
 .adae-field { display: flex; flex-direction: column; gap: 4px; }
-.adae-label { font-size: 12px; font-weight: 600; color: #0b1a30; }
-.adae-optional { font-weight: 400; color: #909399; font-size: 11px; }
-.adae-hint { font-size: 11px; color: #909399; line-height: 1.4; }
-.adae-hint.warn { color: #e6a23c; }
+.adae-label { font-size: 12px; font-weight: 600; color: var(--c-text); }
+.adae-optional { font-weight: 400; color: var(--c-text-muted); font-size: 11px; }
+.adae-hint { font-size: 11px; color: var(--c-text-muted); line-height: 1.4; }
+.adae-hint.warn { color: var(--c-warning); }
 .adae-actions { display: flex; gap: 6px; }
 </style>
