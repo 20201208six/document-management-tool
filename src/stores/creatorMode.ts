@@ -30,6 +30,7 @@ export interface ImportedVideo {
   asrStatus: 'idle' | 'processing' | 'done' | 'error'
   asrError?: string
   source: 'manual' | 'folder'  // 导入来源：手动选择文件 / 文件夹浏览点击
+  fps: number           // 视频帧率（ASR 时从视频检测，0 表示未知）
 }
 
 /** 时间轨道 */
@@ -189,7 +190,8 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       ratio: '16:9',
       subtitles: [],
       asrStatus: 'idle',
-      source
+      source,
+      fps: 0
     }
     importedVideos.value.push(video)
     if (!activeVideoId.value) activeVideoId.value = id

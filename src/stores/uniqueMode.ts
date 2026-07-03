@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { buildModelRequestBody } from '@/services/deepseek'
 
 // ===== 类型定义 =====
 
@@ -661,22 +662,22 @@ async function callAI(systemPrompt: string, userContent: string, temperature: nu
     throw new Error('请先在全局模型管理中设置 API Key')
   }
 
+  const { body } = buildModelRequestBody(model, {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent }
+    ],
+    temperature,
+    max_tokens: 8192
+  })
+
   const response = await fetch(model.apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${model.apiKey}`
     },
-    body: JSON.stringify({
-      model: model.modelParam,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent }
-      ],
-      temperature,
-      max_tokens: 8192,
-      stream: false
-    })
+    body: JSON.stringify(body)
   })
 
   if (!response.ok) {

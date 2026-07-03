@@ -492,6 +492,11 @@ async function loadCachedSubtitles(videoId: string, videoPath: string) {
 
     const parsed = JSON.parse(result.content)
     const subtitles = parsed.subtitles || parsed
+    // 恢复视频帧率
+    if (parsed._meta?.fps) {
+      const video = store.importedVideos.find(v => v.id === videoId)
+      if (video) video.fps = parsed._meta.fps
+    }
     if (Array.isArray(subtitles) && subtitles.length > 0) {
       store.setVideoSubtitles(videoId, subtitles)
       store.setAsrStatus(videoId, 'done')
@@ -515,14 +520,16 @@ async function saveSubtitlesCache(videoPath: string, subtitles: any[]) {
     text: s.text,
     startTime: s.startTime,
     endTime: s.endTime,
-    words: s.words || []
+    words: s.words || [],
+    fps: s.fps || 0
   }))
   const wrapper = {
     subtitles: cacheData,
     _meta: {
       videoPath: videoPath,
       videoName: video?.name || videoName,
-      videoDuration: video?.duration || 0
+      videoDuration: video?.duration || 0,
+      fps: video?.fps || 0
     }
   }
   const json = JSON.stringify(wrapper, null, 2)
@@ -934,16 +941,23 @@ async function handleAsr() {
   try {
     const electronAPI = (window as any).electronAPI
     if (electronAPI?.runAsr) {
-      // Electron 端：真实 ASR
+      // Electron 端：真实 ASR（新格式返回 { result, fps }，兼容旧格式）
       const resultJson = await electronAPI.runAsr(video.path)
-      const result = JSON.parse(resultJson)
-      const subtitles = result.utterances?.map((u: any) => ({
+      const parsed = JSON.parse(resultJson)
+      const asrResult = parsed.result || parsed  // 兼容旧格式（直接返回 ASR JSON）
+      const detectedFps: number = parsed.fps || 0
+
+      const subtitles: SubtitleSegment[] = (asrResult.utterances?.map((u: any) => ({
         id: 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         text: u.text,
         startTime: u.start_time,
         endTime: u.end_time,
-        words: u.words || []
-      })) || []
+        words: u.words || [],
+        fps: detectedFps || undefined
+      })) || []) as SubtitleSegment[]
+
+      // 存储视频帧率
+      video.fps = detectedFps
       store.setVideoSubtitles(video.id, subtitles)
       store.setAsrStatus(video.id, 'done')
       // 保存字幕缓存到视频旁边
@@ -1163,7 +1177,14 @@ async function listDirectoryRecursive(dirPath: string): Promise<Array<{ name: st
 
 async function scanStorageSubtitles() {
   const api = (window as any).electronAPI
-  if (!api?.listDirectory || !storageInput.value) return
+  if (!api?.listDirectory) {
+    ElMessage.warning('文件系统 API 不可用，请检查 Electron 环境')
+    return
+  }
+  if (!storageInput.value) {
+    ElMessage.warning('请先设置字幕存储目录')
+    return
+  }
   scanningStorage.value = true
   const results: typeof storageSubtitleFiles.value = []
   try {

@@ -604,7 +604,10 @@ function findFfmpeg(): string {
   const appRoot = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..')
 
   // 1. 优先：项目 resources 目录内的完整版 ffmpeg
-  const localPaths = [
+  //    dev 模式：appRoot = 项目根目录，路径为 appRoot/resources/ffmpeg-.../bin/ffmpeg.exe
+  //    打包模式：extraResources 将 resources/ 内容直接放到 process.resourcesPath/，
+  //             额外补一层不带 resources/ 前缀的查找
+  const localPaths: string[] = [
     path.join(appRoot, 'resources', 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
     path.join(appRoot, 'ffmpeg.exe'),
     path.join(appRoot, 'resources', 'ffmpeg.exe'),
@@ -612,6 +615,15 @@ function findFfmpeg(): string {
     path.join(process.cwd(), 'ffmpeg.exe'),
     path.join(process.cwd(), 'resources', 'ffmpeg.exe'),
   ]
+
+  // 打包模式下 extraResources 会去掉 resources/ 前缀，追加直接路径
+  if (app.isPackaged) {
+    localPaths.push(
+      path.join(process.resourcesPath, 'ffmpeg-master-latest-win64-gpl', 'bin', 'ffmpeg.exe'),
+      path.join(process.resourcesPath, 'ffmpeg.exe'),
+    )
+  }
+
   for (const p of localPaths) {
     if (fs.existsSync(p)) { console.log('[FFmpeg] 项目内找到:', p); return p }
   }
@@ -650,6 +662,37 @@ function searchRecursive(dir: string, fileName: string, maxDepth: number, depth 
 }
 
 /** 从视频提取音轨为 WAV（16kHz 单声道） */
+/** 用 ffprobe 获取视频帧率 */
+function getVideoFps(videoPath: string): Promise<number> {
+  const ffprobeExe = findFfmpeg().replace(/ffmpeg\.exe$/i, 'ffprobe.exe')
+  // ffprobe 可能不在同目录，回退到用 ffmpeg 靠前的路径搜索
+  return new Promise((resolve) => {
+    const child = spawn(ffprobeExe, [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=r_frame_rate',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      videoPath
+    ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
+    child.on('close', () => {
+      const match = stdout.trim().match(/(\d+)\/(\d+)/)
+      if (match) {
+        const fps = parseInt(match[1]) / parseInt(match[2])
+        console.log('[ffprobe] 检测到帧率:', fps, 'fps')
+        resolve(fps)
+      } else {
+        console.warn('[ffprobe] 无法解析帧率, stdout:', stdout, 'stderr:', stderr)
+        resolve(0) // 0 表示未知，回退到默认
+      }
+    })
+    child.on('error', () => resolve(0))
+  })
+}
+
 function extractAudio(videoPath: string, outputWavPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const ffmpeg = findFfmpeg()
@@ -754,6 +797,9 @@ ipcMain.handle('run-asr', async (_event, videoPath: string) => {
 
   const wavPath = path.join(tmpDir, `asr_${Date.now()}.wav`)
   try {
+    // 0. 获取视频帧率
+    const fps = await getVideoFps(resolvedPath)
+
     // 1. 提取音轨
     console.log('[ASR] 提取音轨:', resolvedPath)
     await extractAudio(resolvedPath, wavPath)
@@ -769,7 +815,7 @@ ipcMain.handle('run-asr', async (_event, videoPath: string) => {
       try {
         const result = await queryAsr(jobId)
         console.log('[ASR] 识别完成')
-        return JSON.stringify(result)
+        return JSON.stringify({ result, fps })
       } catch (e) {
         console.log('[ASR] 第', i + 1, '次轮询, 继续等待...')
       }

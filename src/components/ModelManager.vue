@@ -185,6 +185,7 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
 import type { AIModel } from '@/types/chat'
+import { buildModelRequestBody } from '@/services/deepseek'
 
 const props = defineProps<{
   visible: boolean
@@ -386,17 +387,18 @@ async function testModelConnection(model: AIModel) {
   testingId.value = model.id
   testResults.delete(model.id)
   try {
+    const { body } = buildModelRequestBody(model, {
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 1,
+      temperature: 0
+    })
     const response = await fetch(model.apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${model.apiKey}`
       },
-      body: JSON.stringify({
-        model: model.modelParam || 'deepseek-chat',
-        messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 1
-      })
+      body: JSON.stringify(body)
     })
     const ok = response.ok
     let msg = ''

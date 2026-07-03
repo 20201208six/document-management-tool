@@ -432,7 +432,7 @@
 
         <div class="retro-form" style="margin-top:10px">
           <label class="retro-label">复盘备注（可选）：</label>
-          <el-input v-model="retroNote" placeholder="如：发布后被限流、上了热门…" style="margin-top:6px" />
+          <el-input v-model="retroNote" placeholder="如：新开始、发布后被限流、上了热门…" style="margin-top:6px" />
         </div>
       </div>
       <template #footer>

@@ -57,6 +57,7 @@ export interface SubtitleSegment {
   startTime: number      // 毫秒
   endTime: number        // 毫秒
   words: ASRWord[]
+  fps?: number           // 视频帧率（ASR 时从视频读取，用于帧间隔计算）
 }
 
 // ===== 核心函数 =====
@@ -212,7 +213,11 @@ export function msToTime(ms: number): string {
 }
 
 /**
- * 测试 ASR 连接（简单 GET 请求验证凭证是否有效）
+ * 测试 ASR 连接（验证 API 可达且凭证有效）
+ * 发一个 blocking=0 的虚拟查询，根据 HTTP 状态码判断：
+ * - 2xx → API 可达，凭证通过鉴权（dummy_test 任务不存在不影响鉴权结论）
+ * - 401/403 → 凭证无效
+ * - 其他 / 网络错误 → 服务不可达
  */
 export async function testAsrConnection(appId: string, accessToken: string): Promise<boolean> {
   try {
@@ -222,8 +227,16 @@ export async function testAsrConnection(appId: string, accessToken: string): Pro
         'Authorization': `Bearer; ${accessToken}`
       }
     })
-    // 200/400 等都表示服务可达，凭证有效
-    return response.status < 500
+    // HTTP 2xx 表示请求通过了鉴权，凭证有效
+    // （dummy_test 任务不存在时 API 仍返回 2xx + JSON 错误码，这是预期行为）
+    if (!response.ok) return false
+
+    // 额外校验：响应必须是合法 JSON（排除被代理重定向到 HTML 页面的情况）
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) return false
+
+    await response.json() // 能 parse 即可
+    return true
   } catch {
     return false
   }

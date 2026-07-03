@@ -94,13 +94,62 @@
           </div>
 
           <div class="wf-card">
-            <div class="card-title">步骤 2：文案方向 / 需求</div>
-            <el-input
-              v-model="currentConv.topic"
-              type="textarea"
-              :rows="2"
-              placeholder="描述您想要生成的文案方向，例如：&#10;「做一个关于时间管理的励志视频脚本」"
-            />
+            <div class="card-title">步骤 2：文案方向 / 画像配置</div>
+
+            <div class="field-block">
+              <div class="field-label">文案方向</div>
+              <el-input
+                v-model="currentConv.topic"
+                type="textarea"
+                :rows="2"
+                placeholder="例如：「做一个关于时间管理的励志视频脚本」"
+              />
+            </div>
+
+            <div class="field-divider"></div>
+
+            <div class="field-block">
+              <div class="field-label">人设画像 <span class="field-hint">你是谁？</span></div>
+              <el-input
+                v-model="currentConv.speakerPersona"
+                type="textarea"
+                :rows="2"
+                placeholder="例：10年互联网运营老兵，擅长用自嘲讲干货"
+                @change="onConvDirty"
+              />
+            </div>
+
+            <div class="field-block">
+              <div class="field-label">人群画像 <span class="field-hint">给谁看？</span></div>
+              <el-input
+                v-model="currentConv.audiencePersona"
+                type="textarea"
+                :rows="2"
+                placeholder="例：25-35岁职场新人，焦虑但想进步"
+                @change="onConvDirty"
+              />
+            </div>
+
+            <div class="field-divider"></div>
+
+            <div class="field-block">
+              <div class="field-label">参考文案 <span class="field-hint">选填，可多条</span></div>
+              <div v-for="(_, idx) in currentConv.referenceCopies" :key="idx" class="ref-copy-item">
+                <el-input
+                  :model-value="currentConv.referenceCopies[idx]"
+                  type="textarea"
+                  :rows="2"
+                  :placeholder="`参考文案 ${idx + 1}`"
+                  @update:model-value="(v: string) => updateReferenceCopy(idx, v)"
+                />
+                <el-button class="ref-copy-delete" size="small" text type="danger" @click="removeReferenceCopy(idx)">
+                  &times;
+                </el-button>
+              </div>
+              <el-button v-if="!currentConv.referenceCopies || currentConv.referenceCopies.length < 5" size="small" text type="primary" @click="addReferenceCopy">
+                + 添加参考文案
+              </el-button>
+            </div>
           </div>
 
           <div class="wf-card">
@@ -144,17 +193,73 @@
             </el-radio-group>
           </div>
 
-          <el-button
-            type="primary"
-            size="default"
-            :loading="isGenerating"
-            :disabled="selectedSourceIds.size === 0 || !currentConv.topic.trim()"
-            @click="handleGenerate"
-            style="width:100%"
-          >
-            <el-icon><MagicStick /></el-icon>
-            生成文案
-          </el-button>
+          <div class="wf-card">
+            <div class="card-title">步骤 5：计算时长 / 去气口</div>
+            <p class="step-desc">根据句子间隔设置，分析气口分布并计算总时长</p>
+
+            <div v-if="gapStats" class="gap-stats">
+              <div class="gap-stat-row">
+                <span>视频帧率</span><strong>{{ selectedSourcesFps.join(' / ') }}</strong>
+              </div>
+              <div class="gap-stat-row">
+                <span>句子间隔</span><strong>{{ currentConv.frameGap }}帧 ≈ {{ gapThresholdMsDisplay }}</strong>
+              </div>
+              <div class="gap-stat-row">
+                <span>字幕总数</span><strong>{{ gapStats.totalSegments }}</strong>
+              </div>
+              <div class="gap-stat-row" style="border-top:1px dashed #ebeef5;padding-top:8px;margin-top:4px">
+                <span style="color:#909399">句间气口</span><strong>{{ gapStats.segGaps }}<span v-if="gapStats.removableSegGaps" style="color:#67c23a;font-size:10px;margin-left:4px">可去{{ gapStats.removableSegGaps }}</span></strong>
+              </div>
+              <div class="gap-stat-row">
+                <span style="color:#909399">字间气口</span><strong>{{ gapStats.wordGaps }}<span v-if="gapStats.removableWordGaps" style="color:#67c23a;font-size:10px;margin-left:4px">可去{{ gapStats.removableWordGaps }}</span></strong>
+              </div>
+              <div class="gap-stat-row">
+                <span>去除后节省</span><strong style="color:#67c23a">{{ store.formatTime(gapStats.savedMs / 1000) }}</strong>
+              </div>
+              <div class="gap-stat-row">
+                <span>原始总时长</span><strong>{{ store.formatTime(gapStats.originalDurationSec) }}</strong>
+              </div>
+              <div class="gap-stat-row">
+                <span>去气口后时长</span><strong style="color:#409eff">{{ store.formatTime(gapStats.compactDurationSec) }}</strong>
+              </div>
+            </div>
+            <div v-else class="step-desc" style="color:#c0c4cc">选择数据源后点击下方按钮分析</div>
+
+            <el-button
+              size="small"
+              :disabled="selectedSourceIds.size === 0"
+              :loading="computingGap"
+              @click="computeGaps"
+              style="width:100%;margin-top:8px"
+            >
+              计算时长并分析气口
+            </el-button>
+          </div>
+
+          <div class="wf-card">
+            <div class="card-title">步骤 6：AI 智能处理</div>
+            <p class="step-desc">大模型将分三阶段处理：去重优化 → 时间轴文案 → 网感编排</p>
+
+            <div class="ai-stage-progress" v-if="isGenerating">
+              <div class="ai-stage" v-for="(stage, i) in aiStages" :key="i"
+                :class="{ active: i === currentAiStage, done: i < currentAiStage }">
+                <span class="stage-dot">{{ i < currentAiStage ? '✓' : i === currentAiStage ? '●' : '○' }}</span>
+                <span class="stage-label">{{ stage }}</span>
+              </div>
+            </div>
+
+            <el-button
+              type="primary"
+              size="default"
+              :loading="isGenerating"
+              :disabled="selectedSourceIds.size === 0 || !currentConv.topic.trim()"
+              @click="handleGenerate"
+              style="width:100%"
+            >
+              <el-icon><MagicStick /></el-icon>
+              {{ isGenerating ? 'AI 处理中...' : '开始 AI 处理' }}
+            </el-button>
+          </div>
 
           <div v-if="isGenerating" class="wf-loading">
             <el-icon class="is-loading" :size="28"><Loading /></el-icon>
@@ -196,29 +301,32 @@
           </div>
         </div>
 
-        <!-- 右侧：结果区（步骤 5-7） -->
+        <!-- 右侧：结果区（步骤 7） -->
         <div class="wf-right">
-          <!-- 生成中流式输出 或 已完成结果 -->
-          <div v-if="currentConv.generatedScript || streamingScript" class="wf-card result-card" style="height:100%;display:flex;flex-direction:column;min-height:0">
+          <!-- ===== 流式生成中 ===== -->
+          <div v-if="isGenerating" class="wf-card result-card" style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div class="card-title" style="flex-shrink:0">步骤 7：AI 处理中...</div>
+            <div class="script-text" style="flex:1;overflow-y:auto;min-height:0" v-html="renderScript(streamingScript || '等待返回...')"></div>
+          </div>
+
+          <!-- ===== Phase 2: 微调阶段 ===== -->
+          <div v-else-if="currentConv.generatedScript && reviewPhase === 'tuning'" class="wf-card result-card" style="flex:1;display:flex;flex-direction:column;min-height:0">
             <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-              <span>
-                步骤 5：朗读预览
-                <span v-if="isGenerating" style="font-size:11px;color:#409eff;font-weight:400;margin-left:6px">接收中</span>
-              </span>
-              <el-button size="small" type="primary" @click="handleApply" :disabled="selectedSubs.length === 0 || isGenerating">
-                <el-icon><Check /></el-icon> 应用并导出
-              </el-button>
+              <span>步骤 7：微调片段</span>
+              <div style="display:flex;gap:6px">
+                <el-button size="small" text @click="reviewPhase = 'review'">&lt; 返回审核</el-button>
+                <el-button size="small" type="primary" @click="handleApply" :disabled="selectedSubs.length === 0 || isGenerating">
+                  <el-icon><Check /></el-icon> 导出剪映
+                </el-button>
+              </div>
             </div>
 
             <!-- 主：朗读预览 -->
             <div v-if="matchedSubs.length > 0" class="script-text" style="flex:1;overflow-y:auto;min-height:0" v-html="renderScript(readableScript)"></div>
-            <div v-else-if="isGenerating" class="script-text" style="flex:1;overflow-y:auto;min-height:0" v-html="renderScript(streamingScript)"></div>
 
             <!-- AI 分析（可折叠） -->
             <details v-if="currentConv.generatedScript" class="ai-analysis" style="flex-shrink:0">
-              <summary style="cursor:pointer;font-size:12px;color:#909399;padding:4px 0">
-                AI 筛选剔除 & 编排 & 节奏审查 & 时长
-              </summary>
+              <summary style="cursor:pointer;font-size:12px;color:#909399;padding:4px 0">AI 筛选剔除 & 编排 & 节奏审查 & 时长</summary>
               <div v-html="renderScript(aiAnalysisOnly)" class="analysis-text"></div>
             </details>
 
@@ -228,13 +336,11 @@
               <span>总时长: {{ store.formatTime(totalMatchDuration) }}</span>
             </div>
 
-            <!-- 步骤 7：微调片段 -->
+            <!-- 微调列表 -->
             <div v-if="matchedSubs.length > 0" class="tune-section" style="flex-shrink:0;overflow:hidden;display:flex;flex-direction:column;max-height:180px">
               <div class="tune-header">
-                <span>步骤 7：微调片段</span>
-                <el-button v-if="removedIndices.size > 0" size="small" text type="primary" @click="removedIndices.clear()">
-                  恢复全部
-                </el-button>
+                <span>微调片段</span>
+                <el-button v-if="removedIndices.size > 0" size="small" text type="primary" @click="removedIndices.clear()">恢复全部</el-button>
               </div>
               <div class="tune-list">
                 <div
@@ -256,11 +362,146 @@
             </div>
           </div>
 
-          <div v-else class="wf-card result-card" style="height:100%;display:flex;flex-direction:column;overflow:hidden">
-            <div class="card-title" style="flex-shrink:0">步骤 5：朗读预览</div>
+          <!-- ===== Phase 1: 方案审核阶段 ===== -->
+          <div v-else-if="currentConv.generatedScript" class="wf-card result-card" style="flex:1;display:flex;flex-direction:column;min-height:0">
+            <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+              <span>步骤 7：方案审核</span>
+              <span v-if="matchedSubs.length > 0" style="font-size:11px;color:#909399;font-weight:400">
+                匹配 {{ matchedSubs.length }} 段 · {{ store.formatTime(totalMatchDuration) }}
+              </span>
+            </div>
+
+            <!-- 生成结果预览（可折叠） -->
+            <details v-if="matchedSubs.length > 0" style="flex-shrink:0;margin-bottom:8px">
+              <summary style="cursor:pointer;font-size:12px;color:#409eff;padding:4px 0">📋 查看生成文案</summary>
+              <div class="script-text" style="max-height:200px;overflow-y:auto;margin-top:4px" v-html="renderScript(readableScript)"></div>
+            </details>
+
+            <!-- AI 分析（可折叠） -->
+            <details v-if="currentConv.generatedScript" class="ai-analysis" style="flex-shrink:0;margin-bottom:8px">
+              <summary style="cursor:pointer;font-size:12px;color:#909399;padding:4px 0">📊 AI 筛选 & 编排分析</summary>
+              <div v-html="renderScript(aiAnalysisOnly)" class="analysis-text"></div>
+            </details>
+
+            <!-- 对话区 -->
+            <div class="review-chat" style="flex:1;overflow-y:auto;min-height:0;border-top:1px solid #ebeef5;padding-top:8px">
+              <!-- 第一条系统消息：发送给 AI 的完整输入 -->
+              <div v-if="sentPrompt" class="review-msg review-msg--system">
+                <details>
+                  <summary class="review-msg-label" style="cursor:pointer;display:inline">📋 AI 收到的完整输入</summary>
+                  <div class="review-msg-text" style="margin-top:6px" v-html="renderScript(sentPrompt)"></div>
+                </details>
+              </div>
+
+              <!-- 初始提示（有系统消息但无用户消息时也显示） -->
+              <div v-if="reviewMessages.length === 0" class="review-hint">
+                <p>方案已生成。你可以与 AI 讨论：</p>
+                <ul>
+                  <li>"为什么选了 #3 而不是 #8？"</li>
+                  <li>"前三秒的钩子分够不够高？"</li>
+                  <li>"中间节奏太密集，能不能分散？"</li>
+                </ul>
+              </div>
+
+              <!-- 对话消息 -->
+              <div v-for="(msg, i) in reviewMessages" :key="i" class="review-msg" :class="'review-msg--' + msg.role">
+                <div class="review-msg-label">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
+                <div class="review-msg-text" v-html="renderScript(msg.text)"></div>
+              </div>
+
+              <!-- AI 正在回复... -->
+              <div v-if="reviewSending" class="review-msg review-msg--ai">
+                <div class="review-msg-label">AI</div>
+                <div class="review-msg-text" style="color:#909399">思考中...</div>
+              </div>
+            </div>
+
+            <!-- 输入区 -->
+            <div class="review-input-area" style="flex-shrink:0;display:flex;gap:8px;align-items:flex-end;margin-top:8px">
+              <el-input
+                v-model="reviewInput"
+                type="textarea"
+                :rows="1"
+                placeholder="询问 AI 处理逻辑..."
+                resize="none"
+                @keydown.enter.exact.prevent="sendReviewMessage"
+                :disabled="reviewSending"
+                style="flex:1"
+              />
+              <el-button size="small" type="primary" @click="sendReviewMessage" :loading="reviewSending" :disabled="!reviewInput.trim()">发送</el-button>
+            </div>
+
+            <!-- 确认按钮 -->
+            <div style="flex-shrink:0;margin-top:10px;text-align:center">
+              <el-button type="success" size="small" @click="confirmScheme" :disabled="matchedSubs.length === 0">
+                <el-icon><Check /></el-icon> 确认方案，进入微调
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 气口处理结果预览（算完气口后、AI 处理前展示） -->
+          <div v-else-if="gapStats && compactedSubtitles.length > 0" class="wf-card result-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+            <div class="card-title" style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+              <span>步骤 7：气口处理结果</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:11px;color:#909399;font-weight:400">
+                  原始 {{ store.formatTime(gapStats.originalDurationSec) }}
+                  <span style="color:#67c23a;margin:0 4px">→</span>
+                  压缩 {{ store.formatTime(gapStats.compactDurationSec) }}
+                </span>
+                <el-button size="small" text :type="subtitleViewMode === 'strip' ? 'primary' : ''" @click="subtitleViewMode = 'strip'">字幕条</el-button>
+                <el-button size="small" text :type="subtitleViewMode === 'list' ? 'primary' : ''" @click="subtitleViewMode = 'list'">列表</el-button>
+              </div>
+            </div>
+
+            <!-- 字幕条视图 -->
+            <div v-if="subtitleViewMode === 'strip'" class="subtitle-strip-view" style="flex:1;overflow-y:auto;min-height:0">
+              <div v-if="stripVideos.length === 0" style="padding:20px;text-align:center;color:#909399;font-size:12px">暂无字幕条数据</div>
+              <div v-for="(video, vi) in stripVideos" :key="video.id">
+                <div class="strip-video-label" :style="{ '--label-color': video.color }">{{ video.name }}</div>
+                <div class="strip-track" :style="{ height: (video.rows.length > 0 ? Math.max(...video.rows.map(r => r.endRow)) : 1) * 28 + 8 + 'px' }">
+                  <div
+                    v-for="seg in video.segments"
+                    :key="seg.i"
+                    class="strip-seg"
+                    :style="{
+                      left: seg.leftPct + '%',
+                      width: seg.widthPct + '%',
+                      top: (seg.row - 1) * 28 + 'px',
+                      backgroundColor: video.color
+                    }"
+                    :title="`#${seg.i + 1} ${store.formatTimeMs(seg.compactStartMs)}-${store.formatTimeMs(seg.compactEndMs)}\n${seg.text}`"
+                  >
+                    <span v-if="seg.widthPct > 1" class="strip-seg-text">{{ seg.text.slice(0, 12) }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- 时间轴刻度 -->
+              <div class="strip-ruler">
+                <template v-for="tick in stripTimeTicks" :key="tick.label">
+                  <span class="strip-tick" :style="{ left: tick.pct + '%' }">{{ tick.label }}</span>
+                </template>
+              </div>
+            </div>
+
+            <!-- 列表视图 -->
+            <div v-else class="compact-preview" style="flex:1;overflow-y:auto;min-height:0;padding:8px 0">
+              <template v-for="(seg, i) in compactPreviewGrouped" :key="i">
+                <div v-if="seg.videoLabel" class="compact-video-label">{{ seg.videoLabel }}</div>
+                <div class="compact-item">
+                  <span class="compact-idx">#{{ i + 1 }}</span>
+                  <span class="compact-time">{{ store.formatTimeMs(seg.compactStartMs) }}-{{ store.formatTimeMs(seg.compactEndMs) }}</span>
+                  <span class="compact-text">{{ seg.text }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div v-else class="wf-card result-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+            <div class="card-title" style="flex-shrink:0">步骤 7：文案展示与微调</div>
             <div class="wf-empty" style="flex:1;justify-content:center">
               <el-icon :size="32"><Document /></el-icon>
-              <span v-if="!isGenerating">在左侧输入方向后点击「生成」</span>
+              <span v-if="!isGenerating">在左侧填写方向后点击「开始 AI 处理」</span>
               <span v-else style="color:#409eff">等待 AI 返回...</span>
             </div>
           </div>
@@ -277,6 +518,7 @@ import { Delete } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useCreatorModeStore } from '@/stores/creatorMode'
 import { exportJianyingProject, buildProject } from '@/services/jianying'
+import { buildModelRequestBody } from '@/services/deepseek'
 import type { SubtitleSegment } from '@/services/asr'
 
 const chatStore = useChatStore()
@@ -284,12 +526,93 @@ const store = useCreatorModeStore()
 
 // ===== 数据源（基于磁盘缓存） =====
 const scanning = ref(false)
+const computingGap = ref(false)
+interface GapStats {
+  totalSegments: number
+  totalGaps: number
+  removableGaps: number
+  savedMs: number
+  originalDurationSec: number
+  compactDurationSec: number
+  wordGaps: number
+  removableWordGaps: number
+  segGaps: number
+  removableSegGaps: number
+}
+const gapStats = ref<GapStats | null>(null)
+
+/** 去气口后的压缩字幕（仅时间轴压缩，text 不变），供 AI 使用 */
+interface CompactedSub {
+  videoId: string
+  originalStartMs: number
+  originalEndMs: number
+  compactStartMs: number
+  compactEndMs: number
+  text: string
+}
+const compactedSubtitles = ref<CompactedSub[]>([])
+
+/** 选中视频的帧率列表 */
+const selectedSourcesFps = computed(() => {
+  const selected = sourceList.value.filter(s => selectedSourceIds.value.has(s.id))
+  return selected.map(s => `${s.fps || DEFAULT_FPS}fps`)
+})
+
+/** 句子间隔的毫秒显示（用最高帧率计算最保守值） */
+const gapThresholdMsDisplay = computed(() => {
+  const fpsList = sourceList.value.filter(s => selectedSourceIds.value.has(s.id)).map(s => s.fps || DEFAULT_FPS)
+  const maxFps = fpsList.length > 0 ? Math.max(...fpsList) : DEFAULT_FPS
+  const ms = currentConv.value.frameGap * frameMs(maxFps)
+  return Math.round(ms) + 'ms'
+})
+
+/** 右侧面板预览：将单词级压缩数据按原字幕分组合并 */
+interface CompactPreviewItem {
+  compactStartMs: number
+  compactEndMs: number
+  text: string
+  videoLabel?: string
+}
+const compactPreviewGrouped = computed<CompactPreviewItem[]>(() => {
+  const result: CompactPreviewItem[] = []
+  let cur: CompactPreviewItem | null = null
+  let lastVideoId = ''
+  for (const c of compactedSubtitles.value) {
+    const isNewSegment = !cur || c.originalStartMs !== (result[result.length - 1] as any)?._segStart
+    const isNewVideo = c.videoId !== lastVideoId
+
+    if (isNewSegment) {
+      if (isNewVideo && result.length > 0) {
+        // 视频切换时加分隔
+        lastVideoId = c.videoId
+      } else if (isNewVideo) {
+        lastVideoId = c.videoId
+      }
+      cur = { compactStartMs: c.compactStartMs, compactEndMs: c.compactEndMs, text: c.text }
+      if (isNewVideo) {
+        const src = sourceList.value.find(s => s.id === c.videoId)
+        cur.videoLabel = src?.name || c.videoId
+      }
+      ;(cur as any)._segStart = c.originalStartMs
+      result.push(cur)
+    } else {
+      cur.compactEndMs = c.compactEndMs
+      cur.text += c.text
+    }
+  }
+  return result
+})
+
+// AI 阶段进度
+const aiStages = ['去重优化：去除相邻重复话和同义内容', '时间轴文案：生成带时间标记的精选文案', '网感编排：组织文案使其符合短视频节奏']
+const currentAiStage = ref(0)
 
 interface SubtitleSource {
   id: string
   name: string
   subtitles: SubtitleSegment[]
   subtitleCount: number
+  fps: number             // 视频帧率（0 表示未知，回退到 30fps）
 }
 
 const sourceList = ref<SubtitleSource[]>([])
@@ -330,12 +653,16 @@ const readableScript = computed(() => {
   return lines.join('\n')
 })
 
-/** 仅提取 AI 输出的分析部分（去掉选择清单） */
+/** 仅提取 AI 输出的分析部分（去重日志 + 网感编排） */
 const aiAnalysisOnly = computed(() => {
   const conv = currentConv.value
   if (!conv?.generatedScript) return ''
-  // 去掉「选择清单」区块，保留筛选剔除、编排说明、节奏审查、时长验证
-  return conv.generatedScript.replace(/\n?##\s*选择清单\s*\n[\s\S]*?(?=\n##\s*筛选剔除|$)/i, '').trim()
+  // 保留 第一阶段（去重优化）和 第三阶段（网感编排），去掉 第二阶段（时间轴文案）
+  let text = conv.generatedScript
+    .replace(/\n?##\s*第二阶段[：:]\s*时间轴文案\s*\n[\s\S]*?(?=\n##\s*第三阶段|$)/i, '')
+  // 兼容旧格式
+  text = text.replace(/\n?##\s*选择清单\s*\n[\s\S]*?(?=\n##\s*筛选剔除|$)/i, '')
+  return text.trim()
 })
 
 function toggleRemove(idx: number) {
@@ -391,7 +718,8 @@ async function scanDiskSubtitles() {
           id: v.id,
           name: v.name,
           subtitles: [...v.subtitles],
-          subtitleCount: v.subtitles.length
+          subtitleCount: v.subtitles.length,
+          fps: v.fps || 0
         })
       }
     }
@@ -402,17 +730,20 @@ async function scanDiskSubtitles() {
       const alreadyIncluded = results.some(r => r.name.replace(/\.\w+$/, '') === diskBaseName)
       if (!alreadyIncluded) {
         let subs: SubtitleSegment[] = []
+        let cachedFps = 0
         try {
           const content = await api.readFile(df.path)
           const data = JSON.parse(content)
           subs = Array.isArray(data.subtitles) ? data.subtitles : []
+          cachedFps = data._meta?.fps || subs[0]?.fps || 0
         } catch {}
         if (subs.length > 0) {
           results.push({
             id: 'disk_' + diskBaseName,
             name: diskBaseName,
             subtitles: subs,
-            subtitleCount: subs.length
+            subtitleCount: subs.length,
+            fps: cachedFps
           })
         }
       }
@@ -465,6 +796,9 @@ interface Conversation {
   id: string
   title: string
   topic: string
+  referenceCopies: string[]
+  speakerPersona: string
+  audiencePersona: string
   durationRequirement: string
   frameGap: number
   generatedScript: string
@@ -488,7 +822,7 @@ function saveConversations() {
 }
 
 function emptyConv(): Conversation {
-  return { id: '', title: '', topic: '', durationRequirement: '', frameGap: 5, generatedScript: '', createdAt: 0, updatedAt: 0 }
+  return { id: '', title: '', topic: '', referenceCopies: [], speakerPersona: '', audiencePersona: '', durationRequirement: '', frameGap: 5, generatedScript: '', createdAt: 0, updatedAt: 0 }
 }
 
 // 持久化的后备对象，避免 v-model 写入临时对象
@@ -504,6 +838,9 @@ function newConversation() {
     id,
     title: '新建对话',
     topic: '',
+    referenceCopies: [],
+    speakerPersona: '',
+    audiencePersona: '',
     durationRequirement: '',
     frameGap: 5,
     generatedScript: '',
@@ -556,6 +893,31 @@ function onConvDirty() {
   saveConversations()
 }
 
+function addReferenceCopy() {
+  const conv = currentConv.value
+  if (conv) {
+    if (!Array.isArray(conv.referenceCopies)) conv.referenceCopies = []
+    conv.referenceCopies.push('')
+    saveConversations()
+  }
+}
+
+function removeReferenceCopy(idx: number) {
+  const conv = currentConv.value
+  if (conv && Array.isArray(conv.referenceCopies)) {
+    conv.referenceCopies.splice(idx, 1)
+    saveConversations()
+  }
+}
+
+function updateReferenceCopy(idx: number, value: string) {
+  const conv = currentConv.value
+  if (conv && Array.isArray(conv.referenceCopies)) {
+    conv.referenceCopies[idx] = value
+    saveConversations()
+  }
+}
+
 // ===== 生成逻辑 =====
 const selectedModelId = ref<string>('')
 const isGenerating = ref(false)
@@ -564,12 +926,351 @@ const streamingScript = ref('')
 const showGenLog = ref(false)
 const genLog = ref<null | { promptTokens: number; completionTokens: number; charsOut: number; truncated: boolean }>(null)
 
+const reviewPhase = ref<'review' | 'tuning'>('review')  // 方案审核 → 微调
+
+// ===== 方案审核对话 =====
+
+/** 构建发送给 AI 的输入预览 */
+function buildReviewPromptPreview(sourceContent: string, conv: Conversation) {
+  const parts: string[] = []
+  parts.push('## 发送给 AI 的完整输入\n')
+
+  // 用户设定
+  parts.push('### 用户设定')
+  if (conv.topic) parts.push(`- 文案方向：${conv.topic}`)
+  if (conv.speakerPersona) parts.push(`- 人设画像：${conv.speakerPersona}`)
+  if (conv.audiencePersona) parts.push(`- 人群画像：${conv.audiencePersona}`)
+  if (conv.durationRequirement) parts.push(`- 时长要求：${conv.durationRequirement}`)
+  if (conv.referenceCopies.length > 0) {
+    parts.push(`- 参考文案：${conv.referenceCopies.length} 条`)
+    conv.referenceCopies.forEach((rc, i) => {
+      parts.push(`  ${i + 1}. ${rc.slice(0, 120)}${rc.length > 120 ? '...' : ''}`)
+    })
+  }
+  parts.push('')
+
+  // 字幕库概览
+  const lines = sourceContent.split('\n')
+  const subtitleCount = lines.filter(l => /^#\d+/.test(l)).length
+  parts.push('### 字幕库（去气口后）')
+  parts.push(`共 ${subtitleCount} 条字幕，AI 从中挑选符合七维评分标准的内容。`)
+  parts.push('')
+
+  // AI 系统指令概要
+  parts.push('### AI 处理流程')
+  parts.push('第一阶段：去重优化 → 第二阶段：时间轴文案 → 第三阶段：网感编排')
+  parts.push('评分维度：开场钩子 | 沉浸共鸣 | 干货密度 | 节奏掌控 | 人设差异 | 传播共鸣 | 可信背书')
+
+  return parts.join('\n')
+}
+interface ReviewMessage {
+  role: 'user' | 'ai'
+  text: string
+  time: number
+}
+const reviewMessages = ref<ReviewMessage[]>([])
+const reviewInput = ref('')
+const reviewSending = ref(false)
+const sentPrompt = ref('')  // 发送给 AI 的完整 Prompt（用于审核对话首条消息）
+const subtitleViewMode = ref<'strip' | 'list'>('strip')  // 气口结果视图：字幕条 / 列表
+
+/** 视频调色板 */
+const STRIP_COLORS = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#8e44ad', '#1abc9c', '#e74c3c']
+
+/** 字幕条视图：分组后的视频数据 */
+interface StripSegment {
+  i: number
+  compactStartMs: number
+  compactEndMs: number
+  text: string
+  leftPct: number
+  widthPct: number
+  row: number
+}
+interface StripVideo {
+  id: string
+  name: string
+  color: string
+  segments: StripSegment[]
+  rows: { startMs: number; endMs: number; endRow: number }[]  // 行占用记录（防重叠算法）
+}
+const stripVideos = computed<StripVideo[]>(() => {
+  const segments = compactPreviewGrouped.value
+  if (segments.length === 0) return []
+
+  const totalMs = segments[segments.length - 1].compactEndMs
+  if (totalMs <= 0) return []
+
+  // 按 videoLabel 分组
+  const groupMap = new Map<string, { label: string; segs: typeof segments }>()
+  let currentLabel = ''
+  for (const seg of segments) {
+    if (seg.videoLabel) {
+      currentLabel = seg.videoLabel
+    }
+    if (!groupMap.has(currentLabel)) {
+      groupMap.set(currentLabel, { label: currentLabel, segs: [] })
+    }
+    groupMap.get(currentLabel)!.segs.push(seg)
+  }
+
+  const result: StripVideo[] = []
+  let colorIdx = 0
+  for (const [, group] of groupMap) {
+    const videoId = sourceList.value.find(s => s.name === group.label)?.id || group.label
+    const color = STRIP_COLORS[colorIdx % STRIP_COLORS.length]
+    colorIdx++
+
+    // 防重叠行布局
+    const rows: { startMs: number; endMs: number; endRow: number }[] = []
+    const stripSegs: StripSegment[] = group.segs.map((seg, idx) => {
+      const leftPct = (seg.compactStartMs / totalMs) * 100
+      const widthPct = Math.max(0.3, ((seg.compactEndMs - seg.compactStartMs) / totalMs) * 100)
+
+      // 找到第一个没有重叠的行
+      let row = 1
+      for (const r of rows) {
+        if (seg.compactStartMs >= r.endMs || seg.compactEndMs <= r.startMs) {
+          continue // 不重叠，可以放同一行
+        }
+        row = Math.max(row, r.endRow + 1)
+      }
+      // 检查之前放在这一行的是否重叠
+      const sameRowSegs = stripSegs.filter(s => s.row === row)
+      for (const s of sameRowSegs) {
+        const sStart = (s.leftPct / 100) * totalMs
+        const sEnd = ((s.leftPct + s.widthPct) / 100) * totalMs
+        if (!(seg.compactEndMs <= sStart || seg.compactStartMs >= sEnd)) {
+          row++
+          break
+        }
+      }
+
+      rows.push({ startMs: seg.compactStartMs, endMs: seg.compactEndMs, endRow: row })
+      return { ...seg, leftPct, widthPct, row, i: idx }
+    })
+
+    result.push({ id: videoId, name: group.label, color, segments: stripSegs, rows })
+  }
+  return result
+})
+
+/** 时间轴刻度 */
+const stripTimeTicks = computed(() => {
+  const segments = compactPreviewGrouped.value
+  if (segments.length === 0) return []
+
+  const totalMs = segments[segments.length - 1].compactEndMs
+  const totalSec = totalMs / 1000
+
+  // 选择合适的步长
+  let stepSec: number
+  if (totalSec <= 10) stepSec = 1
+  else if (totalSec <= 30) stepSec = 2
+  else if (totalSec <= 60) stepSec = 5
+  else if (totalSec <= 180) stepSec = 15
+  else if (totalSec <= 600) stepSec = 30
+  else stepSec = 60
+
+  const ticks: { label: string; pct: number }[] = []
+  for (let s = 0; s <= totalSec; s += stepSec) {
+    ticks.push({
+      label: store.formatTime(s),
+      pct: (s / totalSec) * 100
+    })
+  }
+  // 最后一个刻度
+  const lastPct = 100
+  if (ticks.length === 0 || ticks[ticks.length - 1].pct < 98) {
+    ticks.push({ label: store.formatTime(totalSec), pct: lastPct })
+  }
+  return ticks
+})
+
 const selectedModel = computed(() => {
   if (selectedModelId.value) {
     return chatStore.models.find(m => m.id === selectedModelId.value) || null
   }
   return chatStore.models.find(m => m.isDefault) || chatStore.models[0] || null
 })
+
+// ===== 步骤 5：计算时长 / 去气口 =====
+const DEFAULT_FPS = 30  // 未知帧率时的回退值
+
+/** 根据视频帧率计算每帧毫秒数 */
+function frameMs(fps: number): number {
+  return 1000 / (fps > 0 ? fps : DEFAULT_FPS)
+}
+
+/** 单词级时间轴项（用于字间气口压缩） */
+interface WordTimeline {
+  text: string
+  startMs: number
+  endMs: number
+  /** 属于哪条字幕（用于 entries 的回溯匹配） */
+  segmentStartMs: number
+  segmentEndMs: number
+}
+
+function computeGaps() {
+  const selectedSources = sourceList.value.filter(s => selectedSourceIds.value.has(s.id))
+  if (selectedSources.length === 0) {
+    if (sourceList.value.length === 0) {
+      ElMessage.warning('未找到字幕数据源，请先点击步骤 1「扫描目录」')
+    } else {
+      ElMessage.warning('请先在步骤 1 中勾选要处理的视频')
+    }
+    return
+  }
+
+  // 检查是否有字幕数据
+  const sourcesWithSubs = selectedSources.filter(s => s.subtitles.length > 0)
+  if (sourcesWithSubs.length === 0) {
+    ElMessage.warning('所选视频没有字幕数据，请先对视频进行语音识别')
+    return
+  }
+
+  computingGap.value = true
+  // 重置旧的生成结果，让右侧面板显示气口预览
+  currentConv.value.generatedScript = ''
+  matchedSubs.value = []
+  removedIndices.value = new Set()
+  sentPrompt.value = ''
+  reviewMessages.value = []
+  reviewPhase.value = 'review'
+  const frameGap = currentConv.value.frameGap  // 用户设置的帧数（1-10）
+
+  try {
+  let totalSegments = 0
+  let totalWordGaps = 0
+  let totalSegGaps = 0
+  let removableWordGaps = 0
+  let removableSegGaps = 0
+  let originalDurationMs = 0
+  let savedMs = 0
+  const compacted: CompactedSub[] = []
+
+  for (const src of sourcesWithSubs) {
+    const subs = [...src.subtitles].sort((a, b) => a.startTime - b.startTime)
+    if (subs.length === 0) continue
+
+    const srcFps = src.fps || DEFAULT_FPS
+    const gapThresholdMs = frameGap * frameMs(srcFps)
+    totalSegments += subs.length
+
+    // ========== 第一遍：构建单词级时间轴 ==========
+    const timeline: WordTimeline[] = []
+    for (const sub of subs) {
+      if (sub.words && sub.words.length > 0) {
+        const sorted = [...sub.words].sort((a, b) => a.start_time - b.start_time)
+        for (const w of sorted) {
+          originalDurationMs += (w.end_time - w.start_time)
+          timeline.push({
+            text: w.text,
+            startMs: w.start_time,
+            endMs: w.end_time,
+            segmentStartMs: sub.startTime,
+            segmentEndMs: sub.endTime
+          })
+        }
+      } else {
+        // 无 word 数据，整段作为单项
+        originalDurationMs += (sub.endTime - sub.startTime)
+        timeline.push({
+          text: sub.text,
+          startMs: sub.startTime,
+          endMs: sub.endTime,
+          segmentStartMs: sub.startTime,
+          segmentEndMs: sub.endTime
+        })
+      }
+    }
+
+    if (timeline.length === 0) continue
+
+    // ========== 第二遍：逐词压缩气口 ==========
+    for (let i = 0; i < timeline.length; i++) {
+      const item = timeline[i]
+
+      if (i === 0) {
+        // 第一条：起点固定为 0
+        const dur = item.endMs - item.startMs
+        compacted.push({
+          videoId: src.id,
+          originalStartMs: item.segmentStartMs,
+          originalEndMs: item.segmentEndMs,
+          compactStartMs: 0,
+          compactEndMs: dur,
+          text: item.text
+        })
+        continue
+      }
+
+      const prev = timeline[i - 1]
+      const gap = item.startMs - prev.endMs
+
+      if (gap > 0) {
+        // 区分字间气口（同一 segment 内）和句间气口（跨 segment）
+        const sameSegment = item.segmentStartMs === prev.segmentStartMs
+        if (sameSegment) {
+          totalWordGaps++
+        } else {
+          totalSegGaps++
+        }
+
+        if (gap > gapThresholdMs) {
+          const excess = gap - gapThresholdMs
+          savedMs += excess
+          if (sameSegment) {
+            removableWordGaps++
+          } else {
+            removableSegGaps++
+          }
+        }
+      }
+
+      const prevCompacted = compacted[compacted.length - 1]
+      const compactStart = prevCompacted.compactEndMs + gapThresholdMs
+      const dur = item.endMs - item.startMs
+      compacted.push({
+        videoId: src.id,
+        originalStartMs: item.segmentStartMs,
+        originalEndMs: item.segmentEndMs,
+        compactStartMs: compactStart,
+        compactEndMs: compactStart + dur,
+        text: item.text
+      })
+    }
+  }
+
+  const compactDurationMs = compacted.length > 0
+    ? compacted[compacted.length - 1].compactEndMs
+    : 0
+
+  gapStats.value = {
+    totalSegments,
+    totalGaps: totalWordGaps + totalSegGaps,
+    removableGaps: removableWordGaps + removableSegGaps,
+    savedMs,
+    originalDurationSec: Math.round(originalDurationMs / 1000),
+    compactDurationSec: Math.round(compactDurationMs / 1000),
+    // 附加字间气口统计
+    wordGaps: totalWordGaps,
+    removableWordGaps,
+    segGaps: totalSegGaps,
+    removableSegGaps
+  }
+
+  compactedSubtitles.value = compacted
+  computingGap.value = false
+  } catch (e: any) {
+    console.error('[computeGaps] 出错:', e)
+    ElMessage.error(`气口计算失败: ${e?.message || String(e)}`)
+    gapStats.value = undefined
+    compactedSubtitles.value = []
+    computingGap.value = false
+  }
+}
 
 async function handleGenerate() {
   const conv = conversations.value.find(c => c.id === activeConvId.value)
@@ -587,16 +1288,14 @@ async function handleGenerate() {
     return
   }
 
-  const sourceContent = buildSourceContent(selectedSources)
-  if (!sourceContent.content.trim()) {
-    ElMessage.warning('所选数据源中没有字幕内容')
-    return
-  }
-
   isGenerating.value = true
   streamingScript.value = ''
   genLog.value = null
   showGenLog.value = true
+  currentAiStage.value = 0
+  reviewPhase.value = 'review'
+  reviewMessages.value = []
+  sentPrompt.value = ''
   statusText.value = `正在使用 ${selectedSources.length} 个数据源，调用 AI 生成文案...`
 
   // 计算选中数据源的原始总时长（秒），告诉 AI 实际数据量
@@ -609,12 +1308,37 @@ async function handleGenerate() {
   const totalSourceMin = Math.floor(totalSourceSec / 60)
   const totalSourceSecRemain = Math.floor(totalSourceSec % 60)
 
+  // 自动计算气口（如果还没手动算过）
+  if (!gapStats.value) computeGaps()
+
   try {
+    const fullTextChunks: string[] = []
+    currentAiStage.value = 0
+
+    // 有压缩字幕就传进去，AI 收到的是去气口时间轴
+    const sourceContent = compactedSubtitles.value.length > 0
+      ? buildSourceContent(selectedSources, compactedSubtitles.value)
+      : buildSourceContent(selectedSources)
+    if (!sourceContent.content.trim()) {
+      ElMessage.warning('所选数据源中没有字幕内容')
+      isGenerating.value = false
+      return
+    }
+
     const result = await callAI(
-      sourceContent.content, conv.topic, conv.durationRequirement || '', conv.frameGap,
+      sourceContent.content, conv.topic, conv.referenceCopies, conv.speakerPersona || '', conv.audiencePersona || '',
+      conv.durationRequirement || '', conv.frameGap,
       totalSourceMin, totalSourceSecRemain, model,
-      (text) => { streamingScript.value = text }
+      (text) => {
+        streamingScript.value = text
+        fullTextChunks.length = 0
+        fullTextChunks.push(text)
+        // 检测输出中的阶段标记来推进进度
+        if (text.includes('第二阶段') || text.includes('时间轴文案')) currentAiStage.value = 1
+        if (text.includes('第三阶段') || text.includes('网感编排')) currentAiStage.value = 2
+      }
     )
+    currentAiStage.value = 3 // 全部完成
     const script = result.text
 
     genLog.value = {
@@ -636,6 +1360,9 @@ async function handleGenerate() {
     conv.generatedScript = script
     conv.updatedAt = Date.now()
     saveConversations()
+
+    // 保存发送给 AI 的完整输入（供审核对话查看）
+    sentPrompt.value = buildReviewPromptPreview(sourceContent.content, conv)
 
     // 时长校验 + 自动裁剪：如果用户设了时长要求
     if (conv.durationRequirement?.trim()) {
@@ -694,11 +1421,66 @@ async function handleGenerate() {
   }
 }
 
-function buildSourceContent(sources: SubtitleSource[]): { content: string; entries: SubtitleEntry[] } {
+function buildSourceContent(sources: SubtitleSource[], compacted?: CompactedSub[]): { content: string; entries: SubtitleEntry[] } {
   const lines: string[] = []
   const entries: SubtitleEntry[] = []
-  let idx = 0
 
+  // 有压缩数据时：将单词级压缩数据按原字幕分组合并，AI 看到完整句子 + 压缩时间轴
+  if (compacted && compacted.length > 0) {
+    // 按 (videoId, 原字幕起始时间) 分组，把单词拼回句子
+    type SegmentGroup = { videoId: string; originalStartMs: number; originalEndMs: number; words: CompactedSub[] }
+    const groups: SegmentGroup[] = []
+    let cur: SegmentGroup | null = null
+    for (const c of compacted) {
+      if (!cur || cur.videoId !== c.videoId || cur.originalStartMs !== c.originalStartMs) {
+        cur = { videoId: c.videoId, originalStartMs: c.originalStartMs, originalEndMs: c.originalEndMs, words: [] }
+        groups.push(cur)
+      }
+      cur.words.push(c)
+      if (c.originalEndMs > cur.originalEndMs) cur.originalEndMs = c.originalEndMs
+    }
+
+    const byVideo = new Map<string, SegmentGroup[]>()
+    for (const g of groups) {
+      if (!byVideo.has(g.videoId)) byVideo.set(g.videoId, [])
+      byVideo.get(g.videoId)!.push(g)
+    }
+
+    let idx = 0
+    for (const src of sources) {
+      const srcGroups = byVideo.get(src.id)
+      if (!srcGroups || srcGroups.length === 0) continue
+
+      const firstWord = srcGroups[0].words[0]
+      const lastWord = srcGroups[srcGroups.length - 1].words
+      const compactDur = Math.round(lastWord[lastWord.length - 1].compactEndMs / 1000)
+      const originalDur = Math.round(srcGroups.reduce((s, g) => s + (g.originalEndMs - g.originalStartMs), 0) / 1000)
+      const srcFps = src.fps || DEFAULT_FPS
+      lines.push(`【视频：${src.name} | 原始时长约 ${originalDur}秒 | 去气口后约 ${compactDur}秒 | 帧率 ${srcFps}fps | 句子间隔 ${currentConv.value.frameGap}帧≈${Math.round(frameMs(srcFps) * currentConv.value.frameGap)}ms】`)
+
+      for (const g of srcGroups) {
+        const text = g.words.map(w => w.text).join('')
+        const compactStart = g.words[0].compactStartMs
+        const compactEnd = g.words[g.words.length - 1].compactEndMs
+        const dur = Math.round((g.originalEndMs - g.originalStartMs) / 1000)
+        idx++
+        lines.push(`#${idx} [${store.formatTimeMs(compactStart)}-${store.formatTimeMs(compactEnd)} | ${dur}秒] ${text}`)
+        entries.push({
+          videoId: g.videoId,
+          videoName: src.name,
+          videoPath: '',
+          startTime: g.originalStartMs,
+          endTime: g.originalEndMs,
+          text
+        })
+      }
+      lines.push('')
+    }
+    return { content: lines.join('\n'), entries }
+  }
+
+  // 无压缩数据：原始时间轴
+  let idx = 0
   for (const src of sources) {
     let videoSec = 0
     for (const sub of src.subtitles) videoSec += (sub.endTime - sub.startTime) / 1000
@@ -721,58 +1503,95 @@ function buildSourceContent(sources: SubtitleSource[]): { content: string; entri
   return { content: lines.join('\n'), entries }
 }
 
-async function callAI(sourceContent: string, topic: string, durationReq: string, frameGap: number, dataMin: number, dataSec: number, model: { apiKey: string; apiUrl: string; modelParam: string }, onChunk: (text: string) => void): Promise<{ text: string; promptTokens: number; completionTokens: number }> {
-  let systemPrompt = `你是一个专业的视频剪辑师。你的工作是从「字幕库」中挑选字幕并按播出顺序排列，形成一段逻辑通顺、听觉流畅的视频文案。
+async function callAI(sourceContent: string, topic: string, referenceCopies: string[], speakerPersona: string, audiencePersona: string, durationReq: string, frameGap: number, dataMin: number, dataSec: number, model: { apiKey: string; apiUrl: string; modelParam: string }, onChunk: (text: string) => void, customSystemPrompt?: string): Promise<{ text: string; promptTokens: number; completionTokens: number }> {
+  let systemPrompt: string
+  let userMsg: string
 
-【你的工作方式】
-1. 阅读每条字幕的内容（编号 #N，后面有文本和时长秒数）
-2. 根据用户要求挑选合适的字幕，按播出顺序排列
-3. 执行去重筛查（见下方「去重规则」），把重复的字幕丢掉
-4. 检查排列后的文本节奏是否自然（见下方「节奏审查」）
-5. 累计选中字幕的时长，验证是否符合用户的目标
+  if (customSystemPrompt) {
+    // 审核对话模式：直接用自定义系统提示词，sourceContent 作为上下文
+    systemPrompt = customSystemPrompt
+    userMsg = topic  // topic 参数复用于用户消息
+  } else {
+    systemPrompt = `你是一个专业的短视频剪辑师。你的工作分三个阶段完成：
 
-【挑选原则】
-- 开头：最具冲击力或共鸣感的字幕 → 抓人眼球
-- 中间：逻辑递进，前一句自然引出后一句 → 观众能跟得上
-- 结尾：引发好奇或给出行动号召 → 获客钩子
-- 节奏：长短句交替（2-8秒为主力句，避免连续多条都超过15秒导致听觉疲劳）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-【去重规则——你必须逐条筛查，把重复的字幕丢掉】
-重复分三类，请在浏览字幕库时逐条检查：
+## 第一阶段：去重优化
+
+浏览字幕库中每一条字幕，严格筛查并标记需要去除的内容：
 
 ▸ 字面重复（口吃/磕巴）：
-  如 "他没有风险，没有风险" → 第二个"没有风险"是口吃重复 → 只保留 #N 一次
-  如 "然后然后我们就" → "然后"重复 → 视为一条即可
-  在编排说明中注明你跳过了哪些字面重复
+  如 "他没有风险，没有风险" → 第二个"没有风险"是口吃重复
+  如 "然后然后我们就" → "然后"重复
 
 ▸ 语义重复（同一个意思说了两遍）：
   如 #5 "这个特别好" 和 #18 "真的特别棒" → 同义，只保留更精炼的一条
-  如 #7 "这个方法很管用" 和 #22 "这个方法确实有效" → 只留一条
-  在编排说明中注明：某某与某某同义，选了 X
+  如 "很重要，特别关键，非常核心" → 三词同义堆砌
 
-▸ 近义堆砌（一句话里用了多个同义词）：
-  如 "很重要，特别关键，非常核心" → 这三词同义堆砌 → 如果分属不同字幕条，只选一条
-  如 "必须要做，一定要做，不得不做" → 情绪递进可以保留，纯粹同义只留一条
+▸ 相邻重复话：
+  特别关注编号相邻的字幕，如果两句话意思完全相同或高度重叠，只保留表达更完整的那条。
 
-【节奏审查（气口分析）——这一步很关键】
-选完字幕后，请模拟朗读一遍，评估听觉节奏：
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-▸ 字幕时长分布检查：
-  - 短字幕（≤1秒）：信息碎片感强，不宜连续出现3条以上
-  - 主力学幕（2~8秒）：最舒适，应占多数
-  - 长字幕（>15秒）：如果内部没有自然停顿，听众会疲劳 → 尽量拆开或跳过
+## 第二阶段：时间轴文案
 
-▸ 句间衔接检查：
-  - 前一句结尾和后一句开头的语义是否顺滑？
-  - 有没有"话题突然跳转"导致听众需要回神反应？（有的话请标注）
-  - 同一主题的字幕应该放在一起，不要交叉打乱
+经过第一阶段去重后，从剩余字幕中按「七维评分」挑选最适合的片段，并为每条选中字幕标注其原始时间轴：
 
-▸ 气口自然度：
-  - 一条字幕内部如果断句位置不对（如一句话被切断在"的/了/吗"之前），听觉上会很别扭 → 跳过这条
-  - 如果相邻两条字幕拼起来正好是一句完整的话，是最理想的状态
+▸ 开场钩子（hook）：前 3 条能否让观众「划不走」？优先选一击命中隐秘困惑的字幕
+▸ 沉浸共鸣（empathy）：优先选带「你」「我们」视角、描述具体场景的内容
+▸ 干货密度（density）：跳过翻来覆去说同一件事的字幕，保留信息增量最大的版本
+▸ 节奏掌控（structure）：按「痛点→分析→解法」三段式排列，情绪逐步递进
+▸ 人设差异（originality）：保留「我亲自试过」「我踩过的坑」等个人体感内容
+▸ 传播共鸣（socialResonance）：优先选能引起群体共鸣的话题（职场、家庭、成长等）
+▸ 可信背书（polish）：保留有具体数字/案例的字幕，跳过纯感叹/口号
 
-【时长说明】
-每条字幕后面的 | X秒 是该条时长。选中的每条秒数加起来就是总时长。`
+选中后自评七维综合分，低于 3 分的维度标注原因。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 第三阶段：网感编排
+
+将第二阶段选中的时间轴文案组织成一条完整的、符合短视频节奏的文案：
+
+▸ 钩子前置：最抓人的 1-2 条放开头，3 秒内建立期待
+▸ 情绪递进：钩子引发焦虑 → 展开加深理解 → 结尾给出解法或留悬念
+▸ 节奏把控：主力句（2~8秒）占多数，短碎片不连续超过 3 条，长句（>15秒）拆开
+▸ 衔接自然：前一句结尾和后一句开头语义顺滑，不出现话题突然跳转
+▸ 朗读通顺：句子不能断在"的/了/吗"之前，相邻两句最好能拼成完整一句话
+▸ 网感终点：结尾引发好奇或给出明确行动号召，让观众想点赞/评论/转发
+
+每条字幕后面的 | X秒 是该条时长，选中的每条秒数加起来就是总时长。`
+
+  // 人设画像
+  if (speakerPersona.trim()) {
+    systemPrompt += `\n\n【人设画像——你是谁】
+你代表了以下人设，挑选字幕时优先选择符合该人设视角和语气的内容：
+${speakerPersona.trim()}
+
+在「编排说明」中说明你的选择如何体现了这个人的风格。`
+  }
+
+  // 人群画像
+  if (audiencePersona.trim()) {
+    systemPrompt += `\n\n【人群画像——给谁看】
+你的目标受众是：
+${audiencePersona.trim()}
+
+挑选字幕时，优先选择能让这类人群产生「这说的就是我」共鸣的内容。在«编排说明»中说明你如何针对这个人群做了取舍。`
+  }
+
+  // 参考文案
+  const copies = referenceCopies.filter(c => c.trim())
+  if (copies.length > 0) {
+    const copyBlocks = copies.map((c, i) => `【参考文案 ${i + 1}】\n${c.trim()}`).join('\n\n')
+    systemPrompt += `\n\n【参考文案——你必须模仿的风格】
+用户提供了 ${copies.length} 篇参考文案，请先逐篇分析其风格特征（语调、句式、节奏、人称、钩子模式），然后提取它们之间的共性风格，按照这种风格从字幕库中挑选和编排。
+
+分析完后，在「编排说明」中用 1-2 句说明你识别到的共性风格特征，以及你是如何在挑选字幕时体现这些风格的。
+
+${copyBlocks}
+【参考文案结束】`
+  }
 
   if (durationReq.trim()) {
     const nums = durationReq.match(/\d+/g)?.map(Number) || []
@@ -789,45 +1608,57 @@ async function callAI(sourceContent: string, topic: string, durationReq: string,
     systemPrompt += `\n\n导出时片段间自动插入 ${frameGap} 帧间隔，你无需额外处理。`
   }
 
-  systemPrompt += `\n\n【输出格式——每个部分都必须有】
-请严格按以下五个部分输出：
+  systemPrompt += `\n\n【输出格式——严格按以下顺序输出】
 
-## 选择清单
-每行一个编号（只写 #N，不要抄文字），按播出顺序排列。示例：
-#5
-#12
-#3
+## 第一阶段：去重优化
+列出你在字幕库中发现并去除的重复/堆砌内容：
+- #7（与 #5 字面重复："没有风险"出现两次）→ 去除
+- #22（与 #18 语义重复：都说"这个方法好"）→ 去除，保留 #18
+- #34-35（相邻两句意思重叠：都在解释同一个概念）→ 保留 #34
+（如果没有需要去除的，写"无"）
 
-## 筛选剔除
-列出你主动跳过、没选的字幕及其原因：
-- #7（与 #5 字面重复："没有风险"出现两次）→ 跳过
-- #22（与 #18 同义）→ 跳过
-- #33（<1秒碎片，且被切断在"的"字前）→ 跳过
-（如果没有需要跳过的，写"无"）
+## 第二阶段：时间轴文案
+按播出顺序列出选中的字幕，每条一行，格式：「#N [时间轴] 文案内容」
+示例：
+#5 [00:12-00:16] 你有没有发现，越是拼命的人越容易陷入一个误区
+#12 [00:18-00:26] 我花了三年时间才明白，努力和结果之间缺的不是毅力
+#3 [00:28-00:33] 而是一个被大多数人忽略的关键变量
 
-## 编排说明
-3~5 句话说明：
-- 为什么这样选（开头策略、中间逻辑线、结尾设计）
-- 做了哪些取舍（比如某条内容好但太长所以跳过）
-- 如果数据总量达不到时长目标，在这里首先说明
+## 第三阶段：网感编排
+分成以下小节：
 
-## 节奏审查
-用 2~3 句话从"听众耳朵"角度评价：
-- 时长分布：主力句（2-8秒）占比？有没有连续3条以上短碎片？
-- 衔接体验：相邻句子过渡是否平顺？有没有突然换话题？
-- 气口自然度：有没有字幕断在半句话导致听觉别扭？
-- "通顺" 或 "有跳跃，在第X条和第Y条之间"
+### 编排说明
+3~5 句话说明：开头为什么选这几条、中间如何递进、结尾设计思路。注明做了哪些取舍。
 
-## 时长验证
+### 节奏审查
+2~3 句话评价：主力句（2-8秒）占比、句间衔接是否平顺、朗读是否通顺。
+
+### 时长验证
 逐条列出时长并求和（必须有算式），例如：
 #5(4秒) + #12(8秒) + #3(5秒) = 17秒
-选中3条，累计17秒，约0.3分钟`
+选中3条，累计17秒，约0.3分钟
 
-  const userMsg = `【字幕库】\n${sourceContent}\n\n【用户要求】\n${topic}\n\n请从字幕库中挑选合适的字幕，按上述格式输出。`
+### 七维自评
+每个维度打分（1-5）及一句话说明，低于 3 分的标注原因。`
+
+    userMsg = `【字幕库】\n${sourceContent}\n\n【用户要求】\n${topic}\n\n请严格按三个阶段处理，先完成去重优化再挑选文案，最后做网感编排。`
+  }
 
   // 大幅提高限制：276条字幕约10000字，不再轻易截断
   const msgChars = userMsg.length
   const truncatedMsg = msgChars > 15000 ? userMsg.slice(0, 15000) + '\n...(内容已截断，剩余条目可能不完整)' : userMsg
+
+  const reqModel = { provider: 'deepseek', modelParam: model.modelParam }
+  const { body } = buildModelRequestBody(reqModel, {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: truncatedMsg }
+    ],
+    temperature: 0.7,
+    max_tokens: 16384,
+    stream: true
+  })
+  body.stream = true  // V4 流式由调用方自行设置
 
   const response = await fetch(model.apiUrl, {
     method: 'POST',
@@ -835,16 +1666,7 @@ async function callAI(sourceContent: string, topic: string, durationReq: string,
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${model.apiKey}`
     },
-    body: JSON.stringify({
-      model: model.modelParam,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: truncatedMsg }
-      ],
-      temperature: 0.7,
-      max_tokens: 16384,
-      stream: true
-    })
+    body: JSON.stringify(body)
   })
 
   if (!response.ok) {
@@ -958,30 +1780,28 @@ async function readNonStream(response: Response): Promise<{ text: string; prompt
 function parseScriptIndices(script: string, entries: SubtitleEntry[]): SubtitleEntry[] {
   if (entries.length === 0) return []
 
-  // 提取「选择清单」区块中的所有 #N
-  const selectSection = script.match(/##\s*选择清单\s*\n([\s\S]*?)(?=\n##|$)/i)
+  // 提取「第二阶段：时间轴文案」区块中的所有 #N
+  const selectSection = script.match(/##\s*第二阶段[：:]\s*时间轴文案\s*\n([\s\S]*?)(?=\n##\s*第三阶段|$)/i)
+    || script.match(/##\s*选择清单\s*\n([\s\S]*?)(?=\n##|$)/i) // 兼容旧格式
   const sectionText = selectSection ? selectSection[1] : script
 
-  // 提取所有 #N 编号（支持 #1, #12, #1-#5 等格式）
+  // 提取所有 #N 编号
   const indices: number[] = []
   const seen = new Set<number>()
 
-  // 匹配 #N 模式
   const matches = sectionText.matchAll(/#(\d+)/g)
   for (const m of matches) {
     const n = parseInt(m[1], 10)
     if (n >= 1 && n <= entries.length && !seen.has(n)) {
       seen.add(n)
-      indices.push(n - 1) // 转 0-based
+      indices.push(n - 1)
     }
   }
 
-  // 如果解析到了编号，直接返回映射
   if (indices.length > 0) {
     return indices.map(i => entries[i])
   }
 
-  // 回退：旧格式兼容 —— 用 bigram 模糊匹配
   return fuzzyMatchScriptToSubs(script, entries)
 }
 
@@ -1084,6 +1904,89 @@ function fuzzyMatchScriptToSubs(script: string, subs: SubtitleEntry[]): Subtitle
   }
 
   return result
+}
+
+// ===== 方案审核对话 =====
+/** 发送审核消息到 AI */
+async function sendReviewMessage() {
+  const input = reviewInput.value.trim()
+  if (!input || reviewSending.value) return
+
+  reviewMessages.value.push({ role: 'user', text: input, time: Date.now() })
+  reviewInput.value = ''
+  reviewSending.value = true
+
+  const conv = currentConv.value
+  const model = selectedModel.value
+  if (!model || !conv?.generatedScript) {
+    ElMessage.warning('没有可审查的方案')
+    reviewSending.value = false
+    return
+  }
+
+  try {
+    // 收集已选字幕的上下文（供 AI 参考）
+    const selectedLines = matchedSubs.value
+      .filter((_, i) => !removedIndices.value.has(i))
+      .map((s, i) => {
+        const dur = Math.round((s.endTime - s.startTime) / 1000)
+        return `#${i + 1} [${store.formatTimeMs(s.startTime)}-${store.formatTimeMs(s.endTime)} | ${dur}秒] ${s.text}`
+      })
+      .join('\n')
+
+    const reviewSystemPrompt = `你是一个短视频剪辑方案审核助手。用户正在审核你之前生成的文案方案，你可以：
+
+▸ 解释为什么选择某条字幕 / 放弃另一条
+▸ 讨论七维评分（开场钩子、沉浸共鸣、干货密度、节奏掌控、人设差异、传播共鸣、可信背书）在各条字幕上的体现
+▸ 根据用户的反馈调整选择——说明如果替换某条，时长和节奏会有什么变化
+▸ 回答关于网感编排和节奏控制的任何问题
+
+回答要求：
+- 语言简洁直接，聚焦用户问的具体问题
+- 如果用户提出替换建议，分析利弊后给出明确推荐
+- 引用具体的字幕编号和内容，让用户知道你在说哪一条
+
+当前方案信息：
+- 话题方向：${conv.topic || '未指定'}
+- 人设画像：${conv.speakerPersona || '未指定'}
+- 目标人群：${conv.audiencePersona || '未指定'}
+- 目标时长：${conv.durationRequirement || '未指定'}
+- 总匹配片段数：${matchedSubs.value.length}
+- 当前选中片段数：${matchedSubs.value.filter((_, i) => !removedIndices.value.has(i)).length}
+
+生成方案（含七维评分）：\n${conv.generatedScript.slice(0, 8000)}\n\n当前选中字幕列表：\n${selectedLines}`
+
+    let fullResponse = ''
+    const result = await callAI(
+      '',
+      input,
+      [],
+      '',
+      '',
+      '',
+      0,
+      0,
+      0,
+      model,
+      (chunk) => { fullResponse += chunk },
+      reviewSystemPrompt
+    )
+    reviewMessages.value.push({ role: 'ai', text: result.text, time: Date.now() })
+  } catch (e: any) {
+    reviewMessages.value.push({ role: 'ai', text: `审核对话出错: ${e.message || '未知错误'}`, time: Date.now() })
+  } finally {
+    reviewSending.value = false
+  }
+}
+
+/** 确认方案，进入微调 */
+function confirmScheme() {
+  if (matchedSubs.value.length === 0) {
+    ElMessage.warning('没有匹配的片段，请先生成方案')
+    return
+  }
+  reviewPhase.value = 'tuning'
+  ElMessage.success('已进入微调，可在此移除不满意的片段后导出剪映')
 }
 
 /** 应用并导出为剪映工程 */
@@ -1590,5 +2493,334 @@ onMounted(async () => {
   gap: 8px;
   padding: 40px;
   color: #c0c4cc;
+}
+
+/* 步骤 2：画像 + 参考文案 */
+.field-block {
+  margin-bottom: 2px;
+}
+
+.field-label {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.field-hint {
+  font-weight: 400;
+  color: #909399;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.field-divider {
+  height: 1px;
+  background: #ebeef5;
+  margin: 12px 0;
+}
+
+.ref-copy-item {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.ref-copy-item .el-textarea {
+  flex: 1;
+}
+
+.ref-copy-delete {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: #909399;
+  padding: 2px 4px;
+  min-height: auto;
+}
+
+/* 步骤 5：去气口 */
+.step-desc {
+  font-size: 12px;
+  color: #909399;
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+
+.gap-stats {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f5f7fa;
+  border-radius: 6px;
+}
+
+.gap-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #606266;
+}
+
+.gap-stat-row strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 步骤 6：AI 阶段进度 */
+.ai-stage-progress {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+
+.ai-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: #c0c4cc;
+  transition: color 0.3s;
+}
+
+.ai-stage.active {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.ai-stage.done {
+  color: #67c23a;
+}
+
+.stage-dot {
+  font-size: 11px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.stage-label {
+  line-height: 1.4;
+}
+
+/* 去气口预览列表 */
+.compact-preview {
+  font-size: 12px;
+}
+
+.compact-video-label {
+  color: #409eff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 8px 4px;
+  border-top: 1px dashed #ebeef5;
+  margin-top: 4px;
+}
+
+.compact-video-label:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.compact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.compact-item:nth-child(even) {
+  background: #fafafa;
+}
+
+.compact-item:hover {
+  background: #f0f2f5;
+}
+
+.compact-idx {
+  color: #409eff;
+  font-weight: 600;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+.compact-time {
+  color: #909399;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.compact-text {
+  color: #303133;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 方案审核对话 */
+.review-hint {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.review-hint ul {
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+
+.review-hint li {
+  color: #409eff;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+.review-msg {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.review-msg--user {
+  background: #ecf5ff;
+  border-left: 3px solid #409eff;
+}
+
+.review-msg--ai {
+  background: #f5f7fa;
+  border-left: 3px solid #67c23a;
+}
+
+.review-msg--system {
+  background: #fdf6ec;
+  border-left: 3px solid #e6a23c;
+}
+
+.review-msg--system .review-msg-label {
+  color: #e6a23c;
+}
+
+.review-msg--system summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-msg-label {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #909399;
+}
+
+.review-msg--user .review-msg-label {
+  color: #409eff;
+}
+
+.review-msg--ai .review-msg-label {
+  color: #67c23a;
+}
+
+.review-msg-text {
+  color: #303133;
+  word-break: break-word;
+}
+
+/* 字幕条视图 */
+.subtitle-strip-view {
+  padding: 8px 8px 28px 8px;
+  position: relative;
+}
+
+.strip-track {
+  margin: 6px 0 12px 0;
+  position: relative;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  min-height: 24px;
+}
+
+.strip-video-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #606266;
+  padding: 4px 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.strip-video-label::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--label-color, #409eff);
+}
+
+.strip-seg {
+  position: absolute;
+  height: 22px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  overflow: hidden;
+  min-width: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.strip-seg:hover {
+  filter: brightness(0.88);
+  transform: scaleY(1.2);
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.strip-seg-text {
+  font-size: 10px;
+  color: #fff;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.strip-ruler {
+  position: relative;
+  height: 20px;
+  border-top: 1px solid #dcdfe6;
+  margin-top: 4px;
+}
+
+.strip-tick {
+  position: absolute;
+  font-size: 10px;
+  color: #909399;
+  transform: translateX(-50%);
+  top: 2px;
+  white-space: nowrap;
+}
+
+.strip-tick::before {
+  content: '';
+  display: block;
+  height: 6px;
+  width: 1px;
+  background: #dcdfe6;
+  margin: 0 auto;
 }
 </style>

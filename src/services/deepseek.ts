@@ -9,6 +9,48 @@ export function generateId(): string {
   return 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
 }
 
+/**
+ * 构建 V4 模型请求体。
+ * DeepSeek V4 系列模型（modelParam 含 "v4"）需要 thinking 参数，
+ * 非 V4 模型走旧的 temperature/max_tokens 逻辑。
+ */
+export function buildModelRequestBody(model: Pick<AIModel, 'provider' | 'modelParam'>, options: {
+  messages: { role: string; content: string }[]
+  temperature?: number
+  max_tokens?: number
+  stream?: boolean
+  deepThinking?: boolean
+}): { url: string; body: Record<string, any> } {
+  const isV4 = model.modelParam.includes('v4')
+  const modelParam = !isV4 && options.deepThinking && model.provider === 'deepseek'
+    ? 'deepseek-reasoner'
+    : model.modelParam
+
+  const body: Record<string, any> = {
+    model: modelParam,
+    messages: options.messages,
+    stream: options.stream ?? false
+  }
+
+  if (isV4) {
+    if (options.deepThinking) {
+      body.thinking = { type: 'enabled' }
+      body.reasoning_effort = 'high'
+    } else {
+      body.thinking = { type: 'disabled' }
+      if (options.temperature !== undefined) body.temperature = options.temperature
+    }
+    if (options.max_tokens !== undefined && !options.deepThinking) {
+      body.max_tokens = options.max_tokens
+    }
+  } else {
+    if (options.temperature !== undefined) body.temperature = options.temperature
+    body.max_tokens = options.max_tokens ?? 2048
+  }
+
+  return { url: '', body }
+}
+
 /** 从消息数组中提取 API 所需的消息格式 */
 function buildApiMessages(messages: ChatMessage[], systemPrompt?: string) {
   const apiMessages: { role: string; content: string }[] = []
