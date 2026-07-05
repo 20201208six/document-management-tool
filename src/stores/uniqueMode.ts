@@ -130,56 +130,70 @@ export const SCORING_DIMENSION_CONFIG: Array<{
   /** Likert 5级锚定描述 */
   rubric: string[]
 }> = [
-  { key: 'hook', label: '开场钩子', desc: '前3秒能否让受众划不走', color: '#f56c6c', rubric: [
-    '无具体指向，泛泛而谈，受众没有任何"这是在对我说"的感觉',
-    '提到了一个普遍话题但没对准具体困惑，受众可能好奇但不一定被击中',
-    '明确指向了某个群体共有的困境，受众产生"这说的是我的事"的识别感',
-    '精准命中受众心中正在纠结但还没想清楚的问题，受众感到"你怎么知道我在想这个"',
-    '一击命中受众最隐秘的困惑，产生强烈的被看穿感和不可划走的本能反应'
-  ]},
-  { key: 'empathy', label: '沉浸共鸣', desc: '是否让受众觉得「这说的就是我」', color: '#e6a23c', rubric: [
-    '与受众无关的抽象话题，没有任何代入路径',
-    '泛泛涉及了可能与受众相关的话题，但停留在表面',
-    '说出了受众心里知道但没表达出来的感受，产生"对，就是这样"的认可',
-    '不仅说出了受众的感受，还帮他们理清了情绪的来龙去脉，产生被解读的深层满足',
-    '受众感到"这个人说出了我一直想说但说不清的东西"，产生强烈的精神连接'
-  ]},
-  { key: 'density', label: '干货密度', desc: '每段是否都在提供新知，不注水', color: '#9b59b6', rubric: [
-    '翻来覆去讲一个已知道理，没有任何新认知',
-    '有1个有价值的角度但展开拖沓，信息稀疏',
-    '2-3个递进的解释角度，每个角度都有信息增量',
-    '持续提供新的理解框架，每个段落都让受众对问题的理解更进一层',
-    '全程高密度输出，受众感觉"每句话都在刷新我对这个问题的认知"'
-  ]},
-  { key: 'structure', label: '节奏掌控', desc: '受众是否经历了「被戳中→被解读→被点醒」', color: '#1abc9c', rubric: [
-    '流水账，没有情绪引导，受众看完没有感受变化',
-    '有基本的结构但缺乏情绪起伏，受众看完和看完前感觉差不多',
-    '有清晰的起承转合，受众经历了从困惑到理解的感受变化',
-    '结构精心设计，受众经历了被理解→被解释→被给予希望的完整情绪弧线',
-    '情绪路径如大师布局，受众经历多轮"啊！原来是这个原因→那我该怎么做→原来如此"的认知升级'
-  ]},
-  { key: 'originality', label: '人设差异', desc: '换个同行来讲，是否就没这个味儿了', color: '#e74c3c', rubric: [
-    '重复同赛道常见观点，换个同行也能讲，无差异',
-    '有个人经历但不独特，同行用类似角度也能覆盖',
-    '有独特的解读角度或案例组合，同行不太容易复制',
-    '"只有这个人能讲"的内容，结合了独特的经验/案例/表达方式',
-    '开创性洞察，为赛道带来了全新的理解维度，受众从未听过这个角度的解读'
-  ]},
-  { key: 'socialResonance', label: '传播共鸣', desc: '是否让受众产生「必须转给谁看」的冲动', color: '#3498db', rubric: [
-    '纯个人琐事，与任何群体性困境无关',
-    '提及了某个社会话题但没有切中痛点，共鸣面窄',
-    '触及了一个具体的人群困境，相关群体能对号入座',
-    '准确命名了一个"人人都感觉到但没人说清"的人生阶段困境，具备自发传播动力',
-    '击中了某一人生阶段核心的未被言说的集体隐痛，让受众产生"终于有人说出来了"的转发冲动'
-  ]},
-  { key: 'polish', label: '可信背书', desc: '是否让人觉得你说的有根据、不忽悠', color: '#409eff', rubric: [
-    '语言粗糙/夸张/无根据，受众感到"这是忽悠"',
-    '基本通顺但缺乏可信度背书，受众半信半疑',
-    '语言流畅工整，有一定可信度支撑（如引经据典/案例佐证）',
-    '文字考究有节制，引用/案例/逻辑完整，受众感到"这个人是真懂的"',
-    '每个论断都建立在可感知的根基上，受众感到"这不是在说服我，是在帮我看到真相"'
-  ]}
-]
+    {
+      key: 'hook', label: '开场钩子', desc: '前3秒能否让受众划不走', color: '#f56c6c', rubric: [
+        '无具体指向，泛泛而谈，受众没有任何"这是在对我说"的感觉',
+        '提到了一个普遍话题但没对准具体困惑，受众可能好奇但不一定被击中',
+        '明确指向了某个群体共有的困境，受众产生"这说的是我的事"的识别感',
+        '精准命中受众心中正在纠结但还没想清楚的问题，受众感到"你怎么知道我在想这个"',
+        '一击命中受众最隐秘的困惑，产生强烈的被看穿感和不可划走的本能反应'
+      ]
+    },
+    {
+      key: 'empathy', label: '沉浸共鸣', desc: '是否让受众觉得「这说的就是我」', color: '#e6a23c', rubric: [
+        '与受众无关的抽象话题，没有任何代入路径',
+        '泛泛涉及了可能与受众相关的话题，但停留在表面',
+        '说出了受众心里知道但没表达出来的感受，产生"对，就是这样"的认可',
+        '不仅说出了受众的感受，还帮他们理清了情绪的来龙去脉，产生被解读的深层满足',
+        '受众感到"这个人说出了我一直想说但说不清的东西"，产生强烈的精神连接'
+      ]
+    },
+    {
+      key: 'density', label: '干货密度', desc: '每段是否都在提供新知，不注水', color: '#9b59b6', rubric: [
+        '翻来覆去讲一个已知道理，没有任何新认知',
+        '有1个有价值的角度但展开拖沓，信息稀疏',
+        '2-3个递进的解释角度，每个角度都有信息增量',
+        '持续提供新的理解框架，每个段落都让受众对问题的理解更进一层',
+        '全程高密度输出，受众感觉"每句话都在刷新我对这个问题的认知"'
+      ]
+    },
+    {
+      key: 'structure', label: '节奏掌控', desc: '受众是否经历了「被戳中→被解读→被点醒」', color: '#1abc9c', rubric: [
+        '流水账，没有情绪引导，受众看完没有感受变化',
+        '有基本的结构但缺乏情绪起伏，受众看完和看完前感觉差不多',
+        '有清晰的起承转合，受众经历了从困惑到理解的感受变化',
+        '结构精心设计，受众经历了被理解→被解释→被给予希望的完整情绪弧线',
+        '情绪路径如大师布局，受众经历多轮"啊！原来是这个原因→那我该怎么做→原来如此"的认知升级'
+      ]
+    },
+    {
+      key: 'originality', label: '人设差异', desc: '换个同行来讲，是否就没这个味儿了', color: '#e74c3c', rubric: [
+        '重复同赛道常见观点，换个同行也能讲，无差异',
+        '有个人经历但不独特，同行用类似角度也能覆盖',
+        '有独特的解读角度或案例组合，同行不太容易复制',
+        '"只有这个人能讲"的内容，结合了独特的经验/案例/表达方式',
+        '开创性洞察，为赛道带来了全新的理解维度，受众从未听过这个角度的解读'
+      ]
+    },
+    {
+      key: 'socialResonance', label: '传播共鸣', desc: '是否让受众产生「必须转给谁看」的冲动', color: '#3498db', rubric: [
+        '纯个人琐事，与任何群体性困境无关',
+        '提及了某个社会话题但没有切中痛点，共鸣面窄',
+        '触及了一个具体的人群困境，相关群体能对号入座',
+        '准确命名了一个"人人都感觉到但没人说清"的人生阶段困境，具备自发传播动力',
+        '击中了某一人生阶段核心的未被言说的集体隐痛，让受众产生"终于有人说出来了"的转发冲动'
+      ]
+    },
+    {
+      key: 'polish', label: '可信背书', desc: '是否让人觉得你说的有根据、不忽悠', color: '#409eff', rubric: [
+        '语言粗糙/夸张/无根据，受众感到"这是忽悠"',
+        '基本通顺但缺乏可信度背书，受众半信半疑',
+        '语言流畅工整，有一定可信度支撑（如引经据典/案例佐证）',
+        '文字考究有节制，引用/案例/逻辑完整，受众感到"这个人是真懂的"',
+        '每个论断都建立在可感知的根基上，受众感到"这不是在说服我，是在帮我看到真相"'
+      ]
+    }
+  ]
 
 /** 旧版9维评分（用于数据迁移） */
 export interface LegacyScoringDimensions {
@@ -260,7 +274,7 @@ export interface ScriptRecord {
   modelVersion?: string
   /** 内容拆解结果（录入时自动生成） */
   decomposition?: ContentDecomposition
-  /** 评分时是否已注入受众画像（画像变更时用于触发重评分） */
+  /** @deprecated 评分已与画像解耦，不再追踪此标记 */
   scoredWithProfile?: boolean
 }
 
@@ -358,6 +372,16 @@ export interface PredictionResult {
   /** 反事实分析 */
   counterfactuals?: string[]
   predictedAt: string
+  /** 回归模型预估播放量 */
+  estimatedViews?: number | null
+  /** 播放量预测区间 */
+  estimatedViewsRange?: { low: number; high: number }
+  /** 点赞回归模型 R² */
+  likeModelR2?: number
+  /** 播放回归模型 R² */
+  viewsModelR2?: number | null
+  /** 评分分桶对照表 */
+  scoreRangeBuckets?: ScoreRangeBucket[]
 }
 
 /** 预测日志条目（不可变，用于复盘校准） */
@@ -612,6 +636,14 @@ export interface AudienceProfile {
   summary: string
   /** 生成时间 */
   generatedAt: number
+  /** 生成时的样本数量（用于过期检测） */
+  generatedWithSampleCount?: number
+  /** AI 建议的维度权重调整（画像→权重联动） */
+  dimensionWeightHints?: Array<{
+    dimension: string
+    reason: string
+    direction: '++' | '+' | '=' | '-' | '--'
+  }>
 }
 
 /** 改写对比结果 */
@@ -730,6 +762,134 @@ function deriveBuckets(records: Array<{ actualLikes: number }>): Array<{ min: nu
   ]
 }
 
+// ===== 数据驱动回归模型 =====
+
+/** 评分→点赞量回归模型 */
+export interface LikeRegressionModel {
+  /** 对数值的斜率 a: log10(likes) = a × compositeScore + b */
+  slope: number
+  /** 截距 */
+  intercept: number
+  /** 决定系数 R² */
+  r2: number
+  /** 参与拟合的样本数 */
+  sampleCount: number
+  /** 模型预测：给定综合分，返回预估点赞量 */
+  predict(score: number): number
+  /** 预测区间 [low, high] */
+  predictRange(score: number): { low: number; high: number }
+}
+
+/** 评分→播放量回归模型 */
+export interface ViewsRegressionModel {
+  slope: number
+  intercept: number
+  r2: number
+  sampleCount: number
+  predict(score: number): number
+  predictRange(score: number): { low: number; high: number }
+}
+
+/** 分桶对照表：每个评分区间→平均点赞量（供AI参考） */
+export interface ScoreRangeBucket {
+  range: string
+  avgLikes: number
+  avgViews: number | null
+  sampleCount: number
+}
+
+/** 简单线性回归（对数空间） */
+function linearRegress(xs: number[], ys: number[]): { slope: number; intercept: number; r2: number } {
+  const n = xs.length
+  if (n < 3) return { slope: 0, intercept: Math.log10(ys[0] || 100), r2: 0 }
+  const sumX = xs.reduce((a, b) => a + b, 0)
+  const sumY = ys.reduce((a, b) => a + b, 0)
+  const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0)
+  const sumX2 = xs.reduce((a, x) => a + x * x, 0)
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+  const intercept = (sumY - slope * sumX) / n
+  const yMean = sumY / n
+  const ssRes = ys.reduce((a, y, i) => a + (y - (slope * xs[i] + intercept)) ** 2, 0)
+  const ssTot = ys.reduce((a, y) => a + (y - yMean) ** 2, 0)
+  const r2 = ssTot > 0 ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : 0
+  return { slope, intercept, r2 }
+}
+
+/** 基于样本库建立综合分→点赞量的回归模型 */
+function buildLikeRegressionModel(records: Array<{ compositeScore: number; actualLikes: number }>): LikeRegressionModel {
+  const valid = records.filter(r => r.actualLikes > 0 && r.compositeScore > 0)
+  if (valid.length < 3) {
+    return {
+      slope: 0, intercept: 2, r2: 0, sampleCount: valid.length,
+      predict: (s: number) => 100,
+      predictRange: (s: number) => ({ low: 10, high: 1000 })
+    }
+  }
+  const xs = valid.map(r => r.compositeScore)
+  const ys = valid.map(r => Math.log10(r.actualLikes))
+  const { slope, intercept, r2 } = linearRegress(xs, ys)
+  const mse = ys.reduce((a, y, i) => a + (y - (slope * xs[i] + intercept)) ** 2, 0) / valid.length
+  const stdErr = Math.sqrt(mse)
+  return {
+    slope, intercept, r2, sampleCount: valid.length,
+    predict: (score: number) => Math.round(Math.pow(10, slope * score + intercept)),
+    predictRange: (score: number) => {
+      const logMid = slope * score + intercept
+      const factor = Math.pow(10, 1.5 * stdErr)
+      return {
+        low: Math.round(Math.pow(10, logMid) / factor),
+        high: Math.round(Math.pow(10, logMid) * factor)
+      }
+    }
+  }
+}
+
+/** 基于样本库建立综合分→播放量的回归模型 */
+function buildViewsRegressionModel(records: Array<{ compositeScore: number; views?: number }>): ViewsRegressionModel | null {
+  const valid = records.filter(r => (r.views ?? 0) > 0 && r.compositeScore > 0)
+  if (valid.length < 3) return null
+  const xs = valid.map(r => r.compositeScore)
+  const ys = valid.map(r => Math.log10(r.views!))
+  const { slope, intercept, r2 } = linearRegress(xs, ys)
+  const mse = ys.reduce((a, y, i) => a + (y - (slope * xs[i] + intercept)) ** 2, 0) / valid.length
+  const stdErr = Math.sqrt(mse)
+  return {
+    slope, intercept, r2, sampleCount: valid.length,
+    predict: (score: number) => Math.round(Math.pow(10, slope * score + intercept)),
+    predictRange: (score: number) => {
+      const logMid = slope * score + intercept
+      const factor = Math.pow(10, 1.5 * stdErr)
+      return { low: Math.round(Math.pow(10, logMid) / factor), high: Math.round(Math.pow(10, logMid) * factor) }
+    }
+  }
+}
+
+/** 分桶统计：评分区间 → 平均点赞/播放 */
+function buildScoreRangeBuckets(records: Array<{ compositeScore: number; actualLikes: number; views?: number }>): ScoreRangeBucket[] {
+  if (records.length < 3) return []
+  const sorted = [...records].sort((a, b) => a.compositeScore - b.compositeScore)
+  const bucketCount = Math.min(5, Math.max(3, Math.floor(records.length / 3)))
+  const buckets: ScoreRangeBucket[] = []
+  const size = Math.ceil(sorted.length / bucketCount)
+  for (let i = 0; i < sorted.length; i += size) {
+    const chunk = sorted.slice(i, i + size)
+    if (chunk.length === 0) continue
+    const minScore = chunk[0].compositeScore
+    const maxScore = chunk[chunk.length - 1].compositeScore
+    const avgLikes = Math.round(chunk.reduce((a, r) => a + r.actualLikes, 0) / chunk.length)
+    const viewsChunk = chunk.filter(r => (r.views ?? 0) > 0)
+    const avgViews = viewsChunk.length > 0 ? Math.round(viewsChunk.reduce((a, r) => a + r.views!, 0) / viewsChunk.length) : null
+    const fmt = (n: number) => n >= 10000 ? (n / 10000).toFixed(1) + 'w' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
+    buckets.push({
+      range: `${minScore}-${maxScore}分`,
+      avgLikes,
+      avgViews,
+      sampleCount: chunk.length
+    })
+  }
+  return buckets
+}
+
 /** 从 AI 返回文本中解析 7 维分数 */
 function parseScores(text: string): ScoringDimensions {
   const scores = defaultScores()
@@ -745,14 +905,14 @@ function parseScores(text: string): ScoringDimensions {
 
   let parsed = 0
   for (const [label, key] of Object.entries(dimMap)) {
-    // 匹配标签后的冒号格式：hook: 4 或 开场钩子: 4 等
-    // 也兼容小数输出 3.5（取整）、带理由的 4 | ...
-    const regex = new RegExp(`${label}[：:]\\s*(\\d+)(?:\\.\\d+)?`, 'i')
+    // 匹配标签后的冒号格式：hook: 3.5 或 开场钩子: 4 等
+    // 兼容小数输出 3.5（parseFloat处理）、带理由的 4 | ...
+    const regex = new RegExp(`${label}[：:]\\s*(\\d+(?:\\.\\d+)?)`, 'i')
     const match = text.match(regex)
     if (match) {
-      const rawVal = parseInt(match[1], 10)
-      // Likert 1-5 映射为 0,20,40,60,80,100
-      const val = rawVal <= 5 ? (rawVal * 20) : Math.max(0, Math.min(100, rawVal))
+      const rawVal = parseFloat(match[1])
+      // Likert 1-5（支持小数如3.5）映射为 0-100
+      const val = rawVal <= 5 ? Math.round(rawVal * 20) : Math.max(0, Math.min(100, rawVal))
       scores[key] = val
       parsed++
     }
@@ -783,7 +943,7 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
     try {
       const d = localStorage.getItem(ACCOUNTS_KEY)
       if (d) { const parsed = JSON.parse(d); if (Array.isArray(parsed) && parsed.length > 0) return parsed }
-    } catch {}
+    } catch { }
     // 首次使用：创建默认模拟账号
     const defaultAccount: Account = {
       id: generateId('acct'),
@@ -1100,8 +1260,8 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
               if (needsRescore.length > 0) {
                 console.log(`[migration] 发现 ${needsRescore.length} 条旧格式数据，开始后台重评分...`)
                 needsRescore.reduce((chain, r: any) =>
-                  chain.then(() => reAnalyzeScript(r.id).catch(() => {}))
-                , Promise.resolve())
+                  chain.then(() => reAnalyzeScript(r.id).catch(() => { }))
+                  , Promise.resolve())
               }
             }, 3000)
           }
@@ -1273,8 +1433,8 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
     const old = getCurrentEffectiveWeights()
     const defaults = { hook: 18, empathy: 14, density: 16, structure: 14, originality: 16, socialResonance: 12, polish: 10 }
     // 检查是否有实际变化
-    const allKeys = [...new Set([...Object.keys(old), ...Object.keys(defaults)])]
-    const hasChange = allKeys.some(k => (old[k] ?? 0) !== (defaults[k] ?? 0))
+    const allKeys = [...new Set([...Object.keys(old), ...Object.keys(defaults)])] as Array<keyof ScoringDimensions>
+    const hasChange = allKeys.some(k => ((old as Record<string, number>)[k] ?? 0) !== (defaults[k] ?? 0))
     if (!hasChange) return
     customWeights.value = {}
     localStorage.removeItem(weightsKey(currentAccountId.value))
@@ -1577,8 +1737,8 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
     // 样本里程碑
     const tier = totalScripts < 10 ? '起步 (样本<10，预测仅作参考)' :
       totalScripts < 30 ? '成长 (样本10-30，预测开始稳定)' :
-      totalScripts < 60 ? '成熟 (样本30-60，预测可信度较高)' :
-      '丰富 (样本60+，预测精度持续优化)'
+        totalScripts < 60 ? '成熟 (样本30-60，预测可信度较高)' :
+          '丰富 (样本60+，预测精度持续优化)'
     const sampleMilestone = `${totalScripts} 条 | ${tier}`
 
     return {
@@ -1901,28 +2061,17 @@ polish: XX
             return config?.label || key
           }
         }
-      } catch {} finally {
+      } catch { } finally {
         // 冷却10分钟，避免频繁校准
         setTimeout(() => { autoCalibrateThrottle = false }, 10 * 60 * 1000)
       }
     }
   )
 
-  // 自动保存受众画像
+  // 自动保存受众画像（评分不再依赖画像，仅保存持久化）
   watch(audienceProfile, () => {
     saveAudienceProfile()
-    // 画像创建/更新后，后台重评分所有无画像评分的旧样本
-    if (audienceProfile.value) {
-      const unscored = scriptRecords.value.filter(r => !r.scoredWithProfile && r.scores && Object.values(r.scores).some(v => v > 0))
-      if (unscored.length > 0) {
-        console.log(`[audience] 画像已配置，发现 ${unscored.length} 条无画像样本，开始后台重评分...`)
-        setTimeout(() => {
-          unscored.reduce((chain, r) =>
-            chain.then(() => reAnalyzeScript(r.id).catch(() => {})
-          ), Promise.resolve())
-        }, 2000)
-      }
-    }
+    // 注：评分已与画像解耦——画像仅影响预测校准层，不影响评分本身，故不再触发重评分
   }, { deep: true })
 
   // ===== 多维数据分析 =====
@@ -2042,16 +2191,20 @@ polish: XX
     // 感叹句数
     features.push({ key: 'exclaimCount', label: '感叹句数', values: records.map(r => (r.content.match(/[！!]/g) || []).length) })
     // 首句字数（钩子密度）
-    features.push({ key: 'hookLength', label: '首句字数', values: records.map(r => {
-      const first = r.content.split(/[。！？!?\n]/)[0] || ''
-      return first.length || 1
-    }) })
+    features.push({
+      key: 'hookLength', label: '首句字数', values: records.map(r => {
+        const first = r.content.split(/[。！？!?\n]/)[0] || ''
+        return first.length || 1
+      })
+    })
     // 平均句长
-    features.push({ key: 'avgSentenceLen', label: '平均句长', values: records.map(r => {
-      const chars = r.content.length
-      const sentences = (r.content.match(/[。！？!?]/g) || []).length || 1
-      return Math.round(chars / sentences)
-    }) })
+    features.push({
+      key: 'avgSentenceLen', label: '平均句长', values: records.map(r => {
+        const chars = r.content.length
+        const sentences = (r.content.match(/[。！？!?]/g) || []).length || 1
+        return Math.round(chars / sentences)
+      })
+    })
 
     const likes = records.map(r => r.actualLikes)
     const views = recordsWithViews.length >= 3 ? recordsWithViews.map(r => r.views!) : null
@@ -2111,10 +2264,10 @@ polish: XX
     // ===== 逐维度 × 播放 相关系数（反映"什么维度最影响平台推流"）=====
     const dimViewsCorr = viewsArr.length >= 3
       ? SCORING_DIMENSION_CONFIG.map(d => {
-          const vals = viewsArr.map(r => r.scores[d.key] || 60)
-          const r = pearsonR(vals, viewsData)
-          return { key: d.key, label: d.label, correlation: r ?? 0, significance: corrSignificance(r ?? 0) }
-        }).sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation))
+        const vals = viewsArr.map(r => r.scores[d.key] || 60)
+        const r = pearsonR(vals, viewsData)
+        return { key: d.key, label: d.label, correlation: r ?? 0, significance: corrSignificance(r ?? 0) }
+      }).sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation))
       : []
 
     // 点赞率
@@ -2383,7 +2536,7 @@ ${topView ? `→ 推流最依赖【${topView.label}】` : ''}
     try {
       const raw = localStorage.getItem(acctKey('um-highlike-thresholds', currentAccountId.value))
       if (raw) return { ...DEFAULT_HIGH_LIKE_THRESHOLDS, ...JSON.parse(raw) }
-    } catch {}
+    } catch { }
     return { ...DEFAULT_HIGH_LIKE_THRESHOLDS }
   }
 
@@ -2558,9 +2711,16 @@ ${topView ? `→ 推流最依赖【${topView.label}】` : ''}
       personalityCtx = `\n【账号背景】该账号中，${top3} 三个维度与点赞量关联最强。分析时优先关注这些维度。`
     }
 
+    // 受众画像上下文（帮助理解"为什么这些钩子/引爆点对这个受众有效"）
+    let audienceCtx = ''
+    if (audienceProfile.value) {
+      const ap = audienceProfile.value
+      audienceCtx = `\n【受众背景】赛道：${ap.niche} | 受众：${ap.targetAudience} | 画像摘要：${ap.summary}`
+    }
+
     const system = `你是一名顶尖短视频内容拆解师。你需要将一篇短视频文稿拆解为三个关键维度分析。
 
-${personalityCtx}
+${personalityCtx}${audienceCtx}
 
 请按以下格式输出（严格 JSON，不要 markdown 标记）：
 
@@ -2807,10 +2967,9 @@ ${originalContent}
     if (precomputed) {
       // 已有评分结果，直接入库，跳过 AI 调用
       record.modelVersion = precomputed.modelVersion ?? getCurrentModelId()
-      record.scoredWithProfile = !!audienceProfile.value
       scriptRecords.value.unshift(record)
       saveScripts()
-      autoDecomposeScript(record).catch(() => {})
+      autoDecomposeScript(record).catch(() => { })
     } else {
       // 自动 AI 7维评分 + 分析（先评分，成功后再入库）
       isAnalyzingScript.value = true
@@ -2820,7 +2979,6 @@ ${originalContent}
         record.modelVersion = getCurrentModelId()
         record.compositeScore = calcCompositeScore(record.scores, customWeights.value)
         record.analysis = cleanAnalysisText(aiResult)
-        record.scoredWithProfile = !!audienceProfile.value
         record.updatedAt = new Date().toLocaleString('zh-CN')
 
         // AI 评分成功后才写入样本库
@@ -2828,16 +2986,16 @@ ${originalContent}
         saveScripts()
 
         // 后台静默拆解（不阻塞）
-        autoDecomposeScript(record).catch(() => {})
-        // 首次积累足够样本后，提示配置受众画像
-        if (!audienceProfile.value && scriptRecords.value.length >= 3 && !audienceProfileHinted) {
+        autoDecomposeScript(record).catch(() => { })
+        // 首条录入后提示配置受众画像（时机不影响评分，但越早配预测越准）
+        if (!audienceProfile.value && scriptRecords.value.length >= 1 && !audienceProfileHinted) {
           audienceProfileHinted = true
           setTimeout(() => {
             ElMessageBox.confirm(
-              '已录入 3 条文稿，建议现在配置「受众画像」——让 AI 知道你的视频在跟谁说话，后续评分更准。\n\n配置入口：顶部「当前账号」→「管理账号」→ 滚动到底部「受众画像」',
+              '已录入首条文稿，建议配置「受众画像」——帮助 AI 精准回答"这个分对这群受众意味着什么"，让点赞预测更准。\n\n配置入口：顶部「当前账号」→「管理账号」→ 滚动到底部「受众画像」',
               '配置受众画像',
               { confirmButtonText: '知道了', cancelButtonText: '不再提醒', type: 'info', distinguishCancelAndClose: true }
-            ).catch(() => {})
+            ).catch(() => { })
           }, 500)
         }
       } catch (e: any) {
@@ -2873,7 +3031,6 @@ ${originalContent}
       record.modelVersion = getCurrentModelId()
       record.compositeScore = calcCompositeScore(record.scores, customWeights.value)
       record.analysis = cleanAnalysisText(aiResult)
-      record.scoredWithProfile = !!audienceProfile.value
       record.updatedAt = new Date().toLocaleString('zh-CN')
       saveScripts()
     } catch (e: any) { ElMessage.error('分析失败: ' + (e.message || '未知错误')) }
@@ -2887,19 +3044,19 @@ ${originalContent}
     return text.length > maxLen ? text.slice(0, maxLen) + '...' : text
   }
 
-  const SCORING_SYSTEM_PROMPT = `你是短视频文案评分专家。使用以下5级锚定量表（1=最低, 5=最高）对文稿的7个维度逐一打分，每项附一句话评分理由。
+  const SCORING_SYSTEM_PROMPT = `你是短视频文案评分专家。使用以下5级锚定量表对文稿的7个维度逐一打分。精确到0.5级（如3.5表示介于3和4之间），每项附一句话评分理由。
 
 评分前请先自行判断：这篇文稿属于该赛道下的哪个细分选题方向？基于该选题方向，受众最核心的困惑是什么？然后据此评分。
 
 【5级锚定量表】
 ${SCORING_DIMENSION_CONFIG.map(d =>
-  `【${d.label}】${d.desc}
+    `【${d.label}】${d.desc}
   1 = ${d.rubric[0]}
   2 = ${d.rubric[1]}
   3 = ${d.rubric[2]}
   4 = ${d.rubric[3]}
   5 = ${d.rubric[4]}`
-).join('\n')}
+  ).join('\n')}
 
 【输出格式要求】
 严格按照以下格式（数字|理由）：
@@ -2940,19 +3097,6 @@ polish: 3 | 通顺工整，有几句出彩
     if (anchors) prompt += anchors
     // 附加平台算法规则（纯算法层，不含受众描述）
     prompt += '\n\n' + PLATFORM_SCORING_GUIDE[record.platform]
-    // 附加受众画像锚定（用户配置的赛道/受众/困惑）
-    if (audienceProfile.value) {
-      const ap = audienceProfile.value
-      prompt += `\n\n【账号受众画像——请以此为准校准评分，尤其关注"这群受众真正需要什么"】
-- 赛道：${ap.niche}
-- 核心受众：${ap.targetAudience}
-- 受众核心困惑（评分时请对照这些困惑来判断"困惑命中"和"被理解感"）：
-${ap.coreConfusions.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
-- 共鸣触发模式：${ap.resonancePatterns}
-- 信任建立方式：${ap.trustBuilders}
-- 不适用的话题/调性：${ap.avoidTopics}
-- 分析摘要：${ap.summary}`
-    }
     // 附加自定义判断标准
     if (Object.keys(customCriteria.value).length > 0) {
       const rules = SCORING_DIMENSION_CONFIG
@@ -2964,15 +3108,11 @@ ${ap.coreConfusions.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
     }
     const userContent = `【平台】${record.platform}\n【实际点赞量】${record.actualLikes.toLocaleString()}\n【文稿内容】\n${record.content}`
 
-    // 多次评分取中位数（消除单次随机波动）
-    const allResults: ScoringDimensions[] = []
-    const allRawTexts: string[] = []
-    const actualRuns = Math.min(runs, 3) // 最多 3 次，避免过长等待
-    for (let i = 0; i < actualRuns; i++) {
-      const raw = await callAI(prompt, userContent, 0.15)
-      allRawTexts.push(raw)
-      allResults.push(parseScores(raw))
-    }
+    // 多次评分取中位数（并行执行，消除单次随机波动 + 大幅提速）
+    const actualRuns = Math.min(runs, 3) // 最多 3 次
+    const runPromises = Array.from({ length: actualRuns }, () => callAI(prompt, userContent, 0.15))
+    const allRawTexts = await Promise.all(runPromises)
+    const allResults = allRawTexts.map(raw => parseScores(raw))
 
     // 检测并记录分歧：任意维度3轮极差 >= 2 级（即 >= 40 分）
     const diffs: ScoringDisagreement[] = []
@@ -3042,15 +3182,15 @@ ${ap.coreConfusions.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
       const rawSamples = scriptRecords.value
         .filter(r => r.content && r.content.trim().length > 0)
         .slice(0, 20)
-      
+
       const sampleBlock = rawSamples.length > 0
         ? `\n【已有文稿样本（含平台与表现数据，高赞/高点赞率的样本参考价值更高，低互动样本仅作反例）】\n${rawSamples.map((r, i) => {
-            const text = r.content.length > 300 ? r.content.slice(0, 300) + '...' : r.content
-            const perf = r.views && r.views > 0
-              ? `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()} | 播放：${r.views.toLocaleString()} | 点赞率：${(r.likeRate ?? (r.views > 0 ? (r.actualLikes / r.views * 100) : 0)).toFixed(2)}%`
-               : `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()}`
-            return `[${i + 1}] ${perf}\n${text}`
-          }).join('\n---\n')}`
+          const text = r.content.length > 300 ? r.content.slice(0, 300) + '...' : r.content
+          const perf = r.views && r.views > 0
+            ? `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()} | 播放：${r.views.toLocaleString()} | 点赞率：${(r.likeRate ?? (r.views > 0 ? (r.actualLikes / r.views * 100) : 0)).toFixed(2)}%`
+            : `平台：${r.platform} | 点赞：${r.actualLikes.toLocaleString()}`
+          return `[${i + 1}] ${perf}\n${text}`
+        }).join('\n---\n')}`
         : ''
 
       const prompt = `你是一位内容策略分析师。请基于以下信息，分析该账号的受众画像。
@@ -3066,10 +3206,15 @@ ${sampleBlock}
   "resonancePatterns": "什么类型的开头/话题/句式最容易让这群人产生'这就是在说我'的感觉",
   "trustBuilders": "什么建立信任的方式最有效（如引经据典/案例/数据/真实经历等）",
   "avoidTopics": "与这群人的期待明显冲突的话题或表达方式",
-  "summary": "一段话（80-120字）概括：这群人的状态 + 他们真正需要什么 + 应该用什么样的方式和他们对话"
+  "summary": "一段话（80-120字）概括：这群人的状态 + 他们真正需要什么 + 应该用什么样的方式和他们对话",
+  "dimensionWeightHints": [
+    { "dimension": "hook", "reason": "为什么这个维度对这群受众重要", "direction": "++" },
+    { "dimension": "empathy", "reason": "为什么这个维度对这群受众重要", "direction": "+" }
+  ]
 }
 
 注意：
+- dimensionWeightHints 列出对这群受众最重要的3-4个评分维度，direction取值为 "++"(极重要) "+"(重要) "="(一般) "-"(不重要) "--"(极不重要)
 - 基于已有文稿的风格反推受众，不要编造与内容无关的描述
 - 所有输出聚焦"受众需要什么"，而不是"创作者做什么"
 - 高点赞、高点赞率的样本应作为正面参考重点分析；低互动的样本仅推测"缺少共鸣"的方向
@@ -3096,7 +3241,11 @@ ${sampleBlock}
         trustBuilders: parsed.trustBuilders || '',
         avoidTopics: parsed.avoidTopics || '',
         summary: parsed.summary || nicheKeywords,
-        generatedAt: Date.now()
+        generatedAt: Date.now(),
+        generatedWithSampleCount: scriptRecords.value.length,
+        dimensionWeightHints: Array.isArray(parsed.dimensionWeightHints)
+          ? parsed.dimensionWeightHints
+          : undefined
       }
 
       audienceProfile.value = profile
@@ -3120,7 +3269,13 @@ ${sampleBlock}
         return `【文稿${i + 1}】平台:${r.platform} | 点赞:${r.actualLikes.toLocaleString()} | 综合:${r.compositeScore}分\n${scoreStr}\n摘要: ${preview}`
       }).join('\n\n---\n\n')
 
-      const sysPrompt = `你是短视频数据分析专家。分析以下带7维评分的文稿库，归纳规律。${audienceProfile.value ? `\n\n【账号受众背景】\n赛道：${audienceProfile.value.niche}\n目标受众：${audienceProfile.value.targetAudience}\n核心困惑：${audienceProfile.value.coreConfusions.join('；')}\n共鸣模式：${audienceProfile.value.resonancePatterns}` : ''}
+      const sysPrompt = `你是短视频数据分析专家。分析以下带7维评分的文稿库，归纳规律。${audienceProfile.value ? `
+
+【账号受众背景】
+赛道：${audienceProfile.value.niche}
+目标受众：${audienceProfile.value.targetAudience}
+核心困惑：${audienceProfile.value.coreConfusions.join('；')}
+共鸣模式：${audienceProfile.value.resonancePatterns}` : ''}
 
 ## 高赞规律
 - 点赞量最高的那些文稿，在7个维度上有什么共同特征？
@@ -3252,137 +3407,158 @@ ${sampleBlock}
     } finally { isGeneratingFramework.value = false }
   }
 
-  // ===== 点赞预测 =====
+  // ===== 点赞预测（优化版：1轮评分 + 回归模型基线 + 非阻塞规律生成）=====
 
-  async function predictLikes(content: string, platform: Platform): Promise<PredictionResult> {
+  async function predictLikes(content: string, platform: Platform, fastMode: boolean = true): Promise<PredictionResult> {
     if (scriptRecords.value.length === 0) throw new Error('请先录入至少一条带点赞量的文稿作为参考')
     isPredicting.value = true
     try {
-      // 如果没有规律总结，先生成
-      if (!patternSummary.value || scriptRecords.value.length > (patternSummary.value.totalCount + 2)) {
-        try { await generatePatternSummary() } catch {}
+      // ===== 后台非阻塞规律生成（不阻塞主预测流程）=====
+      if (!patternSummary.value || scriptRecords.value.length > (patternSummary.value.totalCount + 3)) {
+        generatePatternSummary().catch(() => { }) // fire-and-forget
       }
 
-      // 先对新稿做7维评分（打分环节可以看到实际点赞量，这是合理的）
+      // ===== Step 1: 数据驱动回归模型（本机计算，毫秒级）=====
+      const likeModel = buildLikeRegressionModel(scriptRecords.value)
+      const viewsModel = buildViewsRegressionModel(scriptRecords.value)
+      const scoreBuckets = buildScoreRangeBuckets(scriptRecords.value)
+
+      // ===== Step 2: 7维评分（并行1-2轮，默认快速模式1轮，纯客观量表不注入画像）=====
       let scorePrompt = SCORING_SYSTEM_PROMPT
-      // 附加参考样本（了解账号内容风格）
       const anchors = buildAnchorExamples()
       if (anchors) scorePrompt += anchors
-      // 附加平台定位锚定
       scorePrompt += '\n\n' + PLATFORM_SCORING_GUIDE[platform]
       if (Object.keys(customCriteria.value).length > 0) {
         const rules = SCORING_DIMENSION_CONFIG
           .filter(d => customCriteria.value[d.key])
           .map(d => `  - ${d.label}: ${customCriteria.value[d.key]}`)
-        if (rules.length > 0) {
-          scorePrompt += `\n\n【用户自定义判断标准】\n请优先参照以下标准进行评分：\n${rules.join('\n')}`
-        }
-      }
-      // 附加受众画像锚定（与 scoreSingleScript 对齐）
-      if (audienceProfile.value) {
-        const ap = audienceProfile.value
-        scorePrompt += `\n\n【账号受众画像——请以此为准校准评分，尤其关注"这群受众真正需要什么"】
-- 赛道：${ap.niche}
-- 核心受众：${ap.targetAudience}
-- 受众核心困惑（评分时请对照这些困惑来判断"困惑命中"和"被理解感"）：
-${ap.coreConfusions.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
-- 共鸣触发模式：${ap.resonancePatterns}
-- 信任建立方式：${ap.trustBuilders}
-- 不适用的话题/调性：${ap.avoidTopics}
-- 分析摘要：${ap.summary}`
-      }
-      // 3轮评分取中位数，消除单次随机波动
-      const scoringRuns = 3
-      const allScoreResults: ScoringDimensions[] = []
-      const userContent = `【平台】${platform}\n【待评分的文稿内容】\n${content}`
-      for (let i = 0; i < scoringRuns; i++) {
-        const raw = await callAI(scorePrompt, userContent, 0.15)
-        allScoreResults.push(parseScores(raw))
+        if (rules.length > 0) scorePrompt += `\n\n【用户自定义判断标准】\n${rules.join('\n')}`
       }
 
-      // 检测并记录分歧
-      const diffs: ScoringDisagreement[] = []
-      for (const d of SCORING_DIMENSION_CONFIG) {
-        const vals = allScoreResults.map(r => r[d.key])
-        const range = Math.max(...vals) - Math.min(...vals)
-        if (range >= 40) {
-          diffs.push({ key: d.key, label: d.label, runs: vals, range })
-        }
-      }
-      predictDisagreements.value = diffs
+      const scoringRuns = fastMode ? 1 : 2
+      const userContent = `【平台】${platform}\n【待评分文稿】\n${content}`
+      const runPromises = Array.from({ length: scoringRuns }, () => callAI(scorePrompt, userContent, 0.15))
+      const allRawTexts = await Promise.all(runPromises)
+      const allScoreResults = allRawTexts.map(raw => parseScores(raw))
 
-      // 逐维度取中位数
-      const medianScoreResult: ScoringDimensions = defaultScores()
+      // 逐维度取中位数（1轮时直接使用）
+      const newScores: ScoringDimensions = defaultScores()
       for (const d of SCORING_DIMENSION_CONFIG) {
         const vals = allScoreResults.map(r => r[d.key]).sort((a, b) => a - b)
-        medianScoreResult[d.key] = vals[Math.floor(vals.length / 2)]
+        newScores[d.key] = vals[Math.floor(vals.length / 2)]
       }
-      const newScores = medianScoreResult
       const newComposite = calcCompositeScore(newScores, customWeights.value)
+
+      // ===== Step 3: 回归模型基线预测（本机计算）=====
+      let modelRange = likeModel.predictRange(newComposite)
+      let modelBaseline = likeModel.predict(newComposite)
+      const viewsBaseline = viewsModel?.predict(newComposite) ?? null
+      const viewsRange = viewsModel?.predictRange(newComposite) ?? null
+
+      // ===== Step 3.5: 历史偏差校准（基于复盘数据自动修正模型基线）=====
+      let calibrationNote = ''
+      const trend = deviationTrend.value
+      if (trend && trend.total >= 3) {
+        // 阻尼系数：样本越少阻尼越大，避免小样本过激修正
+        const damping = Math.min(1, (trend.total - 2) / 8)  // 3条=0.125, 5条=0.375, 10条=1.0
+        const rawDev = trend.avgDev / 100  // avgDev: 正数=低估了, 负数=高估了
+        const calibFactor = 1 - rawDev * damping  // 偏乐观(rawDev<0) → calibFactor>1 → 降低基线
+        const calibratedBaseline = Math.round(modelBaseline * calibFactor)
+        const calibratedLow = Math.round(modelRange.low * calibFactor)
+        const calibratedHigh = Math.round(modelRange.high * calibFactor)
+
+        calibrationNote = `
+【历史偏差校准】（基于近${trend.total}次复盘，阻尼系数${(damping * 100).toFixed(0)}%）
+- 近${trend.total}次平均偏差：${trend.avgDev > 0 ? '+' : ''}${trend.avgDev}%（${trend.trend === 'over' ? '整体偏乐观' : trend.trend === 'under' ? '整体偏保守' : '基本平衡'}）
+- 主桶命中率：${trend.headlineHitRate ?? '--'}%（相邻桶：${trend.adjacentHitRate ?? '--'}%）
+- 模型基线已自动修正：${modelBaseline.toLocaleString()} → ${calibratedBaseline.toLocaleString()}赞`
+        if (Math.abs(calibFactor - 1) > 0.02) {
+          modelBaseline = calibratedBaseline
+          modelRange = { low: calibratedLow, high: calibratedHigh }
+        }
+        if (trend.needsBump) {
+          calibrationNote += `
+- ⚠️ 脱靶率 ${trend.missRate}%，预测严重失准，建议跑一次权重交叉验证（数据分析 → Bump升级）`
+        }
+      }
+
+      // ===== Step 4: 构建分桶对照表（供AI参考）=====
+      const bucketTable = scoreBuckets.length > 0
+        ? scoreBuckets.map(b => `  ${b.range}: 均${(b.avgLikes >= 10000 ? (b.avgLikes / 10000).toFixed(1) + 'w' : b.avgLikes.toLocaleString())}赞${b.avgViews ? ' / 均' + (b.avgViews >= 10000 ? (b.avgViews / 10000).toFixed(1) + 'w' : b.avgViews.toLocaleString()) + '播' : ''} (${b.sampleCount}条)`).join('\n')
+        : '样本不足，无法生成分桶对照'
 
       // 维度分析文本
       const dimAnalysis = SCORING_DIMENSION_CONFIG.map(d =>
         `${d.label}: ${newScores[d.key]}分`
       )
+      const dimScoreSummary = dimAnalysis.join('\n')
 
       // 找参考样本
       const refSamples = findBestReferenceSamples(newScores, newComposite, platform)
 
-      // ===== 盲预测：构建预测 Prompt（不透露单个样本的实际点赞量）=====
-      const dimScoreSummary = SCORING_DIMENSION_CONFIG.map(d =>
-        `${d.label}: ${newScores[d.key]}分`
+      // ===== Step 5: AI 数据驱动预测（评分→点赞 + 受众画像校准）=====
+      const refSummary = refSamples.map((r, i) =>
+        `【参考${i + 1}】${r.platform} | 综合${r.compositeScore}分 | 实际${r.actualLikes.toLocaleString()}赞\n相似原因: ${r.similarityReason}`
       ).join('\n')
 
-      // 只给 AI 相似样本的评分特征，不给实际点赞量
-      const blindRefSummary = refSamples.map((r, i) =>
-        `【参考${i + 1}】${r.platform} | 综合${r.compositeScore}分\n相似原因: ${r.similarityReason}`
-      ).join('\n')
+      // 受众画像校准层（评分已解耦，画像仅在此处影响"分→赞"的映射校准）
+      const audienceCalibration = audienceProfile.value ? (() => {
+        const ap = audienceProfile.value
+        const confusionPreview = ap.coreConfusions.slice(0, 3).map((c, i) => `${i + 1}. ${c}`).join('\n')
+        return `\n【受众画像校准层】（评分基于客观量表，以下信息仅用于调整"评分→点赞"的映射关系）
+- 赛道：${ap.niche}
+- 核心受众：${ap.targetAudience}
+- 受众核心困惑：\n${confusionPreview}\n- 共鸣触发模式：${ap.resonancePatterns}
+- 信任建立方式：${ap.trustBuilders}
+${ap.summary ? `- 画像摘要：${ap.summary}` : ''}
 
-      // 匿名统计：只给点赞量分布范围，不给个体对应关系
-      const similarLikes = refSamples.map(r => r.actualLikes).sort((a, b) => a - b)
-      const likeStats = similarLikes.length > 0
-        ? `\n参考样本群体统计（匿名化，不代表逐一对应）：最低 ${similarLikes[0]?.toLocaleString() || 0} / 中位 ${similarLikes[Math.floor(similarLikes.length / 2)]?.toLocaleString() || 0} / 最高 ${similarLikes[similarLikes.length - 1]?.toLocaleString() || 0}`
-        : ''
+校准原则：同样的7维评分，如果内容精准命中了这群受众的困惑和共鸣模式，实际点赞会显著高于模型基线；反之，虽然内容质量不低但与受众错位，点赞会低于基线。请据此做上下浮动。`
+      })() : ''
 
-      // 自动推导桶边界
-       const buckets = deriveBuckets(scriptRecords.value)
-      const bucketStr = buckets.map((b, i) =>
-        `  ${i + 1}. ${b.label}`
-      ).join('\n')
+      const buckets = deriveBuckets(scriptRecords.value)
+      const bucketStr = buckets.map((b, i) => `  ${i + 1}. ${b.label}`).join('\n')
 
-      const sysPrompt = `你是短视频点赞量预测专家。基于新文稿的7维评分和样本库统计特征，预估点赞量。
+      const sysPrompt = `你是短视频点赞量预测专家。
 
-⚠️ 重要盲预测原则：你看到的参考样本经过了匿名化处理——你只能看到每个样本的综合评分和维度相似度，看不到它们各自的真实点赞量。你拿到的"群体统计分布"只是让你了解样本库的整体量级，不代表任何个体的对应关系。请基于新稿自身的7维评分特征做出独立判断。
+⚠️ 数据驱动预测：评分基于客观内容质量量表（7维Likert），你需要结合数学模型和受众画像，把"客观分数"映射为"对特定受众的预估点赞量"。
+
+【数学模型基线】（基于${likeModel.sampleCount}条样本的log-线性回归, R²=${(likeModel.r2 * 100).toFixed(0)}%）
+- 综合${newComposite}分 → 模型预估: ${modelBaseline.toLocaleString()}赞 (区间 ${modelRange.low.toLocaleString()} ~ ${modelRange.high.toLocaleString()})
+${viewsBaseline != null ? `- 预估播放量: ${viewsBaseline.toLocaleString()} (R²=${viewsModel ? (viewsModel.r2 * 100).toFixed(0) : 0}%)` : ''}
+
+【历史评分→点赞对照表】
+${bucketTable}
+${audienceCalibration}
+${calibrationNote}
+请结合以上数据做出判断。数学模型可能因样本分布不均或非线性因素而偏差；受众校准层帮你理解"这个分对这群人意味着什么"；偏差校准层告诉你"最近的预测够不够准"。
 
 输出格式：
 
 ## 预估点赞量
-写 "8000 - 12000" 格式的范围
+写 "8000 - 12000" 格式的范围（可参考模型区间但不必严格一致）
 
 ## 置信度
 写 高/中/低（一句话理由）
 
-## 概率分布（各桶概率加起来必须 = 100%，样本少时分布应更平均）
+## 概率分布（各桶概率加起来必须 = 100%）
 ${bucketStr}
-格式示例:
+格式:
 <${buckets[0]?.label || '1k'}: X%
-${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
 ...
-
-其中主预测桶标注 **粗体**，如 **${buckets.length >= 3 ? buckets[Math.floor(buckets.length / 2)].label : '中位'}: 45%**
+主预测桶标注 **粗体**
 
 ## 预测依据
-逐条列出（3-5条），必须以 - 开头，重点引用新稿自身的7维评分特征而非参考样本
+逐条列出（3-5条），以 - 开头，需包含受众匹配度分析
 
 ## 改进建议
-逐条列出（2-3条），必须以 - 开头
+逐条列出（2-3条），以 - 开头
 
 ## 反事实分析
-如果实际点赞量远高于预估（>2x），可能说明什么？
+如果实际点赞远高于预估（>2x），可能说明什么？
 如果远低于预估（<0.5x），可能说明什么？（各列1-2条）`
 
       const aiResult = await callAI(sysPrompt,
-        `【新文稿】\n平台: ${platform}\n综合评分: ${newComposite}分\n\n【7维评分】\n${dimScoreSummary}\n\n【匿名化参考样本（仅评分特征，不含实际点赞量）】\n${blindRefSummary}\n${likeStats}\n\n请基于新稿自身特征盲预估点赞量。`
+        `【新文稿】\n平台: ${platform}\n综合评分: ${newComposite}分\n\n【7维评分】\n${dimScoreSummary}\n\n【历史参考样本（含实际点赞量）】\n${refSummary}\n\n请结合数据驱动模型、受众画像校准、偏差校准和内容特征做出预估。`
       )
 
       const rangeSection = extractSection(aiResult, '预估点赞量')
@@ -3392,7 +3568,8 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
       const probSection = extractSection(aiResult, '概率分布')
       const counterSection = extractSection(aiResult, '反事实分析')
 
-      let minLikes = 0, maxLikes = 0
+      // 解析点赞区间——如果AI解析失败，回退到模型预测
+      let minLikes = modelRange.low, maxLikes = modelRange.high
       if (rangeSection) {
         const nums = rangeSection.match(/[\d,]+/g)?.map(s => parseInt(s.replace(/,/g, ''), 10)) || []
         if (nums.length >= 2) { minLikes = Math.min(nums[0], nums[1]); maxLikes = Math.max(nums[0], nums[1]) }
@@ -3427,8 +3604,14 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
         bucketProbabilities: bucketProbs.length > 0 ? bucketProbs : undefined,
         confidence: confidenceSection?.trim() || undefined,
         counterfactuals: counterSection ? counterSection.split('\n').filter(l => l.trim().startsWith('-') || l.trim().match(/^\d+\./)).map(l => l.replace(/^[\s]*[-*]*\s*\d*[\.\、\)]*\s*/, '')) : undefined,
-        predictedAt: new Date().toLocaleString('zh-CN')
-      }
+        predictedAt: new Date().toLocaleString('zh-CN'),
+        // 新增：回归模型元数据
+        estimatedViews: viewsBaseline,
+        estimatedViewsRange: viewsRange ? { low: viewsRange.low, high: viewsRange.high } : undefined,
+        likeModelR2: likeModel.r2,
+        viewsModelR2: viewsModel?.r2 ?? null,
+        scoreRangeBuckets: scoreBuckets
+      } as any
       lastPrediction.value = result
 
       // 追加到不可变预测历史
@@ -3526,7 +3709,7 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
       // 主平台样本
       const mainScript = buildSample(entry.platform, actualLikes, actualViews)
       scriptRecords.value.unshift(mainScript)
-      autoDecomposeScript(mainScript).catch(() => {})
+      autoDecomposeScript(mainScript).catch(() => { })
 
       // 额外平台样本（复用同一份评分，不再调用 AI）
       let additionalCount = 0
@@ -3534,7 +3717,7 @@ ${buckets[0]?.label || '1k'}-${buckets[1]?.label || '5k'}: X%
         for (const ap of additionalPlatforms) {
           const extraScript = buildSample(ap.platform, ap.likes, ap.views)
           scriptRecords.value.unshift(extraScript)
-          autoDecomposeScript(extraScript).catch(() => {})
+          autoDecomposeScript(extraScript).catch(() => { })
           additionalCount++
         }
       }
@@ -3677,7 +3860,7 @@ ${bestRefs ? '参考样本：\n' + bestRefs : ''}
       console.log('[ai-retro] 完成', { id: script.id, total: scriptRecords.value.length })
 
       // 后台拆解 + 刷新画像
-      autoDecomposeScript(script).catch(() => {})
+      autoDecomposeScript(script).catch(() => { })
       setTimeout(() => {
         if (scriptRecords.value.filter(r => r.scores && r.compositeScore > 0).length >= 3) {
           analyzeCorrelations().catch(err => console.warn('[ai-retro] 相关性分析失败', err))
