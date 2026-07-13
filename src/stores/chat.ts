@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatSession, ChatMessage, AIModel, WebSearchContext, DocumentContext, ChatFolder } from '@/types/chat'
 import { DEFAULT_DEEPSEEK_MODEL } from '@/types/chat'
-import { generateId, sendChatMessageStream, performWebSearch, analyzeFileContent } from '@/services/deepseek'
+import { generateId, sendChatMessageStream, performWebSearch, analyzeFileContent, rewriteShortQuery } from '@/services/deepseek'
 import { ElMessage } from 'element-plus'
 import { useChatFavoritesStore } from './chatFavorites'
 
@@ -321,6 +321,13 @@ export const useChatStore = defineStore('chat', () => {
     return models.value.find(m => m.isDefault) || models.value[0]
   })
 
+  /** 获取分析专用模型（优先 analysis 类型，回退到 chat 类型，参数低温度） */
+  const analysisModel = computed<AIModel>(() => {
+    const analysis = models.value.find(m => m.type === 'analysis')
+    if (analysis) return analysis
+    return models.value.find(m => m.isDefault) || models.value[0]
+  })
+
   /** 切换默认模型 */
   function setDefaultModel(modelId: string) {
     const model = models.value.find(m => m.id === modelId)
@@ -338,7 +345,8 @@ export const useChatStore = defineStore('chat', () => {
     const newModel: AIModel = {
       ...model,
       id: 'model_' + Date.now(),
-      isDefault: false
+      isDefault: false,
+      type: model.type || 'chat'
     }
     models.value.push(newModel)
     saveModels()
@@ -418,7 +426,7 @@ export const useChatStore = defineStore('chat', () => {
       currentAbortController.abort()
       currentAbortController = null
     }
-    // 第三步：强制立即停止所有流式消息，不依赖 abort 传播
+    // 第三步：强制立即停止所有流式消息，优雅降级
     const session = currentSession.value
     if (session) {
       let changed = false
@@ -427,7 +435,12 @@ export const useChatStore = defineStore('chat', () => {
           console.error('[ChatStore] 强制停止流式消息:', msg.id)
           msg.isStreaming = false
           msg.reasoningContent = ''
-          if (!msg.content) msg.content = '[已停止]'
+          // 优雅降级：有内容则保留，没内容才提示
+          if (msg.content && msg.content.length > 20) {
+            msg.content = msg.content + '\n\n> ⚠ 已停止生成'
+          } else if (!msg.content || msg.content.startsWith('等待') || msg.content.startsWith('深度思考')) {
+            msg.content = '> ⚠ 已停止生成'
+          }
           changed = true
         }
       }
@@ -458,6 +471,23 @@ export const useChatStore = defineStore('chat', () => {
     let finalUserContent = userContent
     if (uploadedFileContent && uploadedFileName) {
       finalUserContent = analyzeFileContent(uploadedFileContent, uploadedFileName, userContent)
+    }
+
+    // 简略追问改写：当消息很短（< 7 字）且有历史时，消解指代词
+    if (!uploadedFileContent && userContent.length < 7 && deepThinkingEnabled.value) {
+      const session = currentSession.value
+      if (session && session.messages.length >= 2) {
+        const lastMsgs = session.messages.slice(-4).map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+        try {
+          const rewritten = await rewriteShortQuery(model, userContent, lastMsgs)
+          if (rewritten !== userContent) {
+            finalUserContent = rewritten
+          }
+        } catch { /* 改写失败用原消息 */ }
+      }
     }
 
     // 添加用户消息
@@ -555,6 +585,8 @@ export const useChatStore = defineStore('chat', () => {
           msg.isFavorited = useChatFavoritesStore().isFavorited(msg.id)
           saveSessions()
           currentAbortController = null
+          // 首轮对话结束后异步生成标题
+          checkAndGenerateTitle(session.id)
         },
         (error: Error) => {
           // 流错误：仅在未被停止时才更新状态
@@ -565,7 +597,8 @@ export const useChatStore = defineStore('chat', () => {
           if (!msg?.isStreaming) { currentAbortController = null; return }
           msg.isStreaming = false
           if (!fullContent) {
-            msg.content = `[错误] ${error.message}`
+            const friendlyMsg = getFriendlyErrorMessage(error)
+            msg.content = `[错误] ${friendlyMsg}`
           }
           saveSessions()
           currentAbortController = null
@@ -590,32 +623,102 @@ export const useChatStore = defineStore('chat', () => {
       if (!msg?.isStreaming) return
       msg.isStreaming = false
       if (!fullContent) {
-        msg.content = `[错误] ${e.message || '请求失败'}`
+        const friendlyMsg = getFriendlyErrorMessage(e instanceof Error ? e : new Error(e.message || '请求失败'))
+        msg.content = `[错误] ${friendlyMsg}`
       }
       saveSessions()
       currentAbortController = null
     }
   }
 
-  /** 构建 API 消息历史（限制长度，防止上下文爆炸） */
+  /** 构建 API 消息历史（三层预算，防止上下文爆炸） */
   function buildApiMessageHistory(messages: ChatMessage[]): ChatMessage[] {
     const valid = messages.filter(m => !m.isStreaming)
-    // 限制总字符数约 16K tokens（中文字符约1:1），防止上下文过大
-    const MAX_CHARS = 16000
+    // DeepSeek V4 支持 128K，保守分配三层预算（按中文字符约 1:1 token 估算）
+    const TOTAL_BUDGET = 28000    // 总 ~28K 字符
+    const SYSTEM_BUDGET = 5000    // System Prompt 保留
+    const CONTEXT_BUDGET = 12000  // 文件夹/检索上下文保留
+    // 历史对话预算 = 总 - System - 上下文
+    const HISTORY_BUDGET = TOTAL_BUDGET - SYSTEM_BUDGET - CONTEXT_BUDGET
+
     let totalChars = 0
     const result: ChatMessage[] = []
     // 从后往前保留最近消息
     for (let i = valid.length - 1; i >= 0; i--) {
       const msg = valid[i]
       const len = msg.content.length + (msg.reasoningContent?.length || 0)
-      if (totalChars + len > MAX_CHARS && result.length > 1) {
-        // 保留至少一条用户消息和助手消息
+      if (totalChars + len > HISTORY_BUDGET && result.length > 1) {
         break
       }
       totalChars += len
       result.unshift(msg)
     }
     return result
+  }
+
+  /** 统一错误消息格式化 */
+  function getFriendlyErrorMessage(e: Error): string {
+    if (e.name === 'AbortError') return '请求已取消'
+    const msg = e.message || ''
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return '网络连接失败，请检查网络'
+    if (msg.includes('401') || msg.includes('403')) return 'API Key 无效，请检查模型设置'
+    if (msg.includes('429')) return '请求频率过高，请稍后重试'
+    if (msg.includes('413')) return '上下文过长，请开启新对话'
+    if (msg.includes('timeout') || msg.includes('超时')) return '请求超时，请稍后重试'
+    return msg || '未知错误'
+  }
+
+  /** 首轮对话后异步生成 AI 标题（不阻塞主流程） */
+  async function checkAndGenerateTitle(sessionId: string) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    // 只有自动生成的标题才替换（"新对话"或"文档对话 - xxx"）
+    const isAutoTitle = session.title === '新对话' || session.title.startsWith('文档对话 - ')
+    if (!isAutoTitle) return
+    // 至少有一轮完整问答
+    const userMsgs = session.messages.filter(m => m.role === 'user')
+    const aiMsgs = session.messages.filter(m => m.role === 'assistant' && !m.isStreaming)
+    if (userMsgs.length === 0 || aiMsgs.length === 0) return
+
+    const model = currentModel.value
+    if (!model.apiKey) return
+
+    // 延迟 1s 再请求，避免和流结束事件竞争
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    try {
+      const firstQuery = userMsgs[0].content.slice(0, 60)
+      const firstAnswer = aiMsgs[0].content.slice(0, 80)
+      const response = await fetch(model.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${model.apiKey}`
+        },
+        body: JSON.stringify({
+          model: model.modelParam,
+          messages: [
+            { role: 'system', content: '为以下对话生成一个简洁标题（不超过 15 字）。只输出标题，不要任何解释或标点。' },
+            { role: 'user', content: `用户：${firstQuery}\nAI：${firstAnswer}\n\n标题：` }
+          ],
+          max_tokens: 30,
+          temperature: 0.5
+        }),
+        signal: AbortSignal.timeout(8000)
+      })
+      if (!response.ok) return
+      const data = await response.json()
+      const title = data.choices?.[0]?.message?.content?.trim().slice(0, 20)
+      if (title && title.length >= 2) {
+        const s = sessions.value.find(s => s.id === sessionId)
+        if (s && (s.title === '新对话' || s.title.startsWith('文档对话 - '))) {
+          s.title = title
+          saveSessions()
+        }
+      }
+    } catch {
+      // 标题生成失败不影响主流程
+    }
   }
 
   /** 在会话中更新消息 */
@@ -841,6 +944,7 @@ export const useChatStore = defineStore('chat', () => {
     models,
     currentModel,
     modelList,
+    analysisModel,
     setDefaultModel,
     addCustomModel,
     removeModel,

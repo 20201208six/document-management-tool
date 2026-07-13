@@ -22,6 +22,20 @@ export interface ChatMessage {
   isFavorited: boolean
   /** 是否正在流式生成 */
   isStreaming: boolean
+  /** 检索摘要（文件夹引用时填充，展示 AI 读取了哪些文件） */
+  searchSummary?: SearchSummary
+}
+
+/** 检索摘要 */
+export interface SearchSummary {
+  /** 当前已选文件夹数 */
+  foldersScanned: number
+  /** 匹配的文件数 */
+  filesMatched: number
+  /** 搜索的关键词 */
+  keywords: string
+  /** 匹配的文件名列表（最多 10 个） */
+  matchedFiles: string[]
 }
 
 // ===== 对话会话类型 =====
@@ -53,6 +67,9 @@ export interface ChatFolder {
 
 // ===== AI 模型类型 =====
 
+/** 模型用途分类 */
+export type ModelType = 'chat' | 'analysis'
+
 /** AI 模型配置 */
 export interface AIModel {
   id: string
@@ -66,6 +83,8 @@ export interface AIModel {
   isDefault: boolean
   /** 模型参数名称（发送给 API 时使用的 model 值） */
   modelParam: string
+  /** 模型用途分类：chat（对话/创意，高温度）| analysis（分析/评分，低温度+结构化输出） */
+  type: ModelType
 }
 
 // ===== 对话收藏类型 =====
@@ -138,7 +157,8 @@ export const DEFAULT_DEEPSEEK_MODEL: AIModel = {
   apiKey: '',
   supportDeepThinking: true,
   isDefault: true,
-  modelParam: 'deepseek-v4-pro'
+  modelParam: 'deepseek-v4-pro',
+  type: 'chat'
 }
 
 /** DeepSeek 深度思考模型（旧版兼容） */
@@ -150,5 +170,6 @@ export const DEEPSEEK_REASONER_MODEL: AIModel = {
   apiKey: '',
   supportDeepThinking: true,
   isDefault: false,
-  modelParam: 'deepseek-reasoner'
+  modelParam: 'deepseek-reasoner',
+  type: 'chat'
 }

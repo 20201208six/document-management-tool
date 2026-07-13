@@ -323,6 +323,35 @@
         </el-button>
       </el-tooltip>
 
+      <el-tooltip :content="folderContextEnabled ? '关闭文件夹引用' : '引用已添加文件夹（临时+固定）的内容，可搜索/总结/整理'" placement="bottom">
+        <el-button
+          size="small"
+          :type="folderContextEnabled ? 'primary' : 'default'"
+          :class="{ 'toggle-active': folderContextEnabled }"
+          @click="toggleFolderContext"
+          :loading="folderContextLoading"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          文件夹
+        </el-button>
+      </el-tooltip>
+
+      <!-- 文件夹引用指示 -->
+      <el-tooltip v-if="folderContextEnabled && folderContextFiles.length > 0" placement="bottom">
+        <template #content>
+          <div style="max-width:300px">
+            <p><strong>已引用文件夹 ({{ folderContextFiles.length }} 个文件)：</strong></p>
+            <p style="font-size:12px;color:#909399;max-height:150px;overflow-y:auto">
+              <span v-for="f in folderContextFiles.slice(0, 20)" :key="f.path" style="display:block">{{ f.name }}</span>
+              <span v-if="folderContextFiles.length > 20">... 还有 {{ folderContextFiles.length - 20 }} 个文件</span>
+            </p>
+          </div>
+        </template>
+        <el-tag size="small" type="success" @close="folderContextEnabled = false" closable>
+          {{ folderContextFiles.length }} 个文件
+        </el-tag>
+      </el-tooltip>
+
       <!-- 文档引用指示 -->
       <el-tooltip v-if="chatStore.documentContext" placement="bottom">
         <template #content>
@@ -396,7 +425,7 @@
         v-model="inputText"
         type="textarea"
         :rows="2"
-        placeholder="输入您的问题，AI 助手将为您解答..."
+        :placeholder="folderContextEnabled ? '可对文件夹中的文件进行搜索、总结、整理…' : '输入您的问题，AI 助手将为您解答...'"
         resize="none"
         @keydown="handleInputKeydown"
         :disabled="isStreaming"
@@ -481,9 +510,11 @@ import { Search } from '@element-plus/icons-vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatFavoritesStore } from '@/stores/chatFavorites'
+import { useFileStore } from '@/stores/file'
 
 const chatStore = useChatStore()
 const chatFavoritesStore = useChatFavoritesStore()
+const fileStore = useFileStore()
 
 // 输入状态
 const inputText = ref('')
@@ -494,6 +525,11 @@ const isStreaming = computed(() => {
 // 文件上传状态
 const uploadedFile = ref<{ name: string; content: string } | null>(null)
 const isUploading = ref(false)
+
+// 文件夹引用状态
+const folderContextEnabled = ref(false)
+const folderContextLoading = ref(false)
+const folderContextFiles = ref<{ name: string; path: string; folder: string }[]>([])
 
 // 对话框状态
 const showFavoritesDialog = ref(false)
@@ -677,6 +713,185 @@ function scrollToBottom() {
 watch(() => chatStore.messages.length, () => scrollToBottom())
 watch(() => chatStore.messages.map(m => m.content).join(''), () => scrollToBottom())
 
+// ===== 文件夹引用功能 =====
+
+/** 切换文件夹引用开关 */
+async function toggleFolderContext() {
+  folderContextEnabled.value = !folderContextEnabled.value
+  if (folderContextEnabled.value) {
+    await refreshFolderIndex()
+  }
+}
+
+/** 递归扫描文件夹，收集所有文件 */
+async function scanFolderRecursive(dirPath: string, maxDepth: number = 10): Promise<{ name: string; path: string }[]> {
+  if (maxDepth <= 0) return []
+  const files: { name: string; path: string }[] = []
+  try {
+    const entries = await window.electronAPI.readDirectory(dirPath)
+    for (const entry of entries) {
+      if (entry.isDirectory) {
+        const subFiles = await scanFolderRecursive(entry.path, maxDepth - 1)
+        files.push(...subFiles)
+      } else {
+        files.push({ name: entry.name, path: entry.path })
+      }
+    }
+  } catch {
+    // 跳过无法读取的目录
+  }
+  return files
+}
+
+/** 扫描所有临时+固定文件夹，构建文件索引 */
+async function refreshFolderIndex() {
+  folderContextLoading.value = true
+  const files: { name: string; path: string; folder: string }[] = []
+  const validPaths = fileStore.folderPaths.filter(p => p.isValid)
+  
+  for (const fp of validPaths) {
+    try {
+      const folderLabel = fp.group === '临时' ? `[临时] ${fp.label}` : `[${fp.group}] ${fp.label}`
+      const nestedFiles = await scanFolderRecursive(fp.path)
+      for (const f of nestedFiles) {
+        // 路径中截断父目录，只保留相对路径作为显示名
+        const relPath = f.path.startsWith(fp.path) ? f.path.slice(fp.path.length).replace(/^[\\/]/, '') : f.name
+        files.push({ name: relPath, path: f.path, folder: folderLabel })
+      }
+    } catch {
+      // 跳过无法读取的文件夹
+    }
+  }
+  
+  folderContextFiles.value = files
+  folderContextLoading.value = false
+  
+  if (files.length === 0 && folderContextEnabled.value) {
+    ElMessage.warning('所有文件夹为空或无法读取，请先添加文件夹')
+  }
+}
+
+/** 文件分块：按语义边界切分，避免截断导致的信息丢失 */
+function chunkFileContent(content: string, chunkSize = 500, overlap = 100): string[] {
+  const chunks: string[] = []
+  let start = 0
+  while (start < content.length) {
+    let end = Math.min(start + chunkSize, content.length)
+    // 尽量在句号/换行处断开
+    if (end < content.length) {
+      const searchSlice = content.slice(end, Math.min(end + 60, content.length))
+      const match = searchSlice.match(/[。！？\n\r\.!\?]/)
+      if (match && match.index !== undefined && match.index < 50) {
+        end = end + match.index + 1
+      }
+    }
+    chunks.push(content.slice(start, end).trim())
+    start = Math.max(start, end - overlap)
+  }
+  return chunks
+}
+
+/** 检测搜索意图关键词 */
+function detectSearchIntent(message: string): string | null {
+  const patterns = [
+    /(?:找|搜索|查找|搜)(?:一下|到|出)?[「"'\s]*([^「"'，。,.\n]{2,30}?)[」"'\s]*(?:相关|有关|的)?(?:文件|文档|内容|的)/,
+    /(?:有没有|有没|是否有)(?:关于)?\s*[「"'\s]*([^「"'，。,.\n]{2,30}?)[」"'\s]*(?:的)?(?:文件|文档|内容)/,
+    /(?:帮我|请|麻烦)(?:找|搜索|查找|搜|看看)(?:一下|一找)?[「"'\s]*([^「"'，。,.\n]{2,30}?)[」"'\s]*/,
+  ]
+  for (const p of patterns) {
+    const m = message.match(p)
+    if (m) return m[1].trim()
+  }
+  return null
+}
+
+/** 检查是否为总结/整理指令 */
+function isSummarizeIntent(message: string): boolean {
+  return /(?:总结|整理|归纳|概括|汇总|梳理)(?:一下)?(?:.*)(?:文件夹|文件|内容|文档)/.test(message) ||
+    /(?:这个|这些)?文件夹(?:里)?(?:都)?(?:有|包含)(?:什么|哪些)/.test(message)
+}
+
+/** 检测 AI 回复中的文件读取请求 */
+function detectFileReadRequest(aiResponse: string): string | null {
+  const patterns = [
+    /(?:请|让|帮)(?:我|你)?(?:读取|查看|打开|读出)(?:一下)?\s*[「"'\s]*([^「"'，。,.\n]{2,60}?)[」"'\s]*/,
+    /需要\s*(?:读取|查看)\s*[「"'\s]*([^「"'，。,.\n]{2,60}?)[」"'\s]*/,
+    /(?:读取|查看|打开)\s*(?:文件)?\s*[「"'\s]*([^「"'，。,.\n]{2,60}?)[」"'\s]*/,
+    /(?:请|让|帮)(?:我|你)?(?:搜索|查找|搜)(?:一下)?\s*[「"'\s]*([^「"'，。,.\n]{2,30}?)[」"'\s]*(?:相关|有关|的)?/,
+  ]
+  for (const p of patterns) {
+    const m = aiResponse.match(p)
+    if (m) return m[1].trim()
+  }
+  return null
+}
+
+/** 构建发送给AI的文件夹上下文（AI 自主决策模式） */
+async function buildFolderContextForMessage(userMessage: string): Promise<string> {
+  const byFolder = new Map<string, string[]>()
+  for (const f of folderContextFiles.value) {
+    if (!byFolder.has(f.folder)) byFolder.set(f.folder, [])
+    byFolder.get(f.folder)!.push(f.name)
+  }
+
+  let ctx = '你已接入用户本地文件夹系统。当前可用的文件如下：\n\n'
+
+  // 文件索引（直接列出，不加限制）
+  for (const [folder, files] of byFolder) {
+    ctx += `📁 ${folder}（${files.length} 个文件）\n`
+    for (const name of files.slice(0, 30)) {
+      ctx += `  - ${name}\n`
+    }
+    if (files.length > 30) ctx += `  ... 还有 ${files.length - 30} 个\n`
+    ctx += '\n'
+  }
+
+  ctx += `使用规则：
+- 如果用户的问题可以通过这些文件回答，先判断是否需要搜索或读取文件内容
+- 需要搜索时，请告诉我搜索关键词，我会执行搜索后将结果返回给你
+- 需要查看文件内容时，请说"请读取 [文件名]"，我会读取后将内容返回给你
+- 如果用户的问题不涉及这些文件，请直接正常回答
+- 回答时如果参考了某个文件，请标注文件来源\n\n`
+
+  // 快速搜索检测：如果用户消息中明确要求搜索，先执行搜索
+  const searchKeyword = detectSearchIntent(userMessage)
+  if (searchKeyword) {
+    ctx += `---\n系统自动搜索：\n`
+    try {
+      const allResults: { fileName: string; path: string; matches: string[] }[] = []
+      for (const fp of fileStore.folderPaths.filter(p => p.isValid)) {
+        try {
+          const results = await window.electronAPI.searchInFiles(fp.path, searchKeyword)
+          for (const r of results) {
+            allResults.push({ fileName: r.fileName, path: r.path, matches: r.matches || [] })
+          }
+        } catch {}
+      }
+      if (allResults.length > 0) {
+        ctx += `搜索关键词「${searchKeyword}」：共 ${allResults.length} 个文件匹配。\n\n`
+        for (const r of allResults.slice(0, 10)) {
+          ctx += `📄 ${r.fileName}\n`
+          for (const m of r.matches.slice(0, 3)) {
+            ctx += `   ${m}\n`
+          }
+          ctx += '\n'
+        }
+        if (allResults.length > 10) ctx += `... 还有 ${allResults.length - 10} 个匹配文件\n`
+        ctx += '\n基于以上搜索结果回答用户。如需要某文件详细内容，请告知文件名。\n\n'
+      } else {
+        ctx += `未找到包含「${searchKeyword}」的文件。请如实告知用户。\n\n`
+      }
+    } catch {
+      ctx += '搜索出错。\n\n'
+    }
+  }
+
+  ctx += `---\n用户消息：`
+  return ctx
+}
+
+// ===== 文件夹引用功能结束 =====
+
 // 发送消息
 async function handleSend() {
   const text = inputText.value.trim()
@@ -684,15 +899,39 @@ async function handleSend() {
 
   if (isStreaming.value) return
 
-  const content = text || (uploadedFile.value ? '请分析以上文件内容' : '')
+  let content = text || (uploadedFile.value ? '请分析以上文件内容' : '')
   inputText.value = ''
 
   const fileContent = uploadedFile.value?.content
   const fileName = uploadedFile.value?.name
   uploadedFile.value = null
 
+  // 如果启用了文件夹引用，先刷新索引再构建上下文
+  if (folderContextEnabled.value && folderContextFiles.value.length > 0) {
+    await refreshFolderIndex()  // 确保文件索引最新
+    const folderCtx = await buildFolderContextForMessage(content)
+    if (folderCtx) {
+      content = folderCtx + content
+    }
+  }
+
   try {
     await chatStore.sendMessage(content, null, fileContent, fileName)
+    // 设置检索摘要
+    if (folderContextEnabled.value && folderContextFiles.value.length > 0) {
+      const session = chatStore.currentSession
+      const userMsg = session?.messages.filter(m => m.role === 'user').pop()
+      if (userMsg && !userMsg.searchSummary) {
+        const validPaths = fileStore.folderPaths.filter(p => p.isValid)
+        const searchKeyword = detectSearchIntent(text || '') || ''
+        userMsg.searchSummary = {
+          foldersScanned: validPaths.length,
+          filesMatched: folderContextFiles.value.length,
+          keywords: searchKeyword || '文件索引',
+          matchedFiles: folderContextFiles.value.slice(0, 10).map(f => f.name)
+        }
+      }
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '发送失败')
   }
@@ -701,8 +940,16 @@ async function handleSend() {
 // 追问
 async function handleFollowUp(messageId: string) {
   if (isStreaming.value) return
-  const text = inputText.value.trim() || '请进一步说明'
+  let text = inputText.value.trim() || '请进一步说明'
   inputText.value = ''
+
+  // 追问时也带文件夹上下文
+  if (folderContextEnabled.value && folderContextFiles.value.length > 0) {
+    const folderCtx = await buildFolderContextForMessage(text)
+    if (folderCtx) {
+      text = folderCtx + text
+    }
+  }
 
   try {
     await chatStore.sendMessage(text, messageId)

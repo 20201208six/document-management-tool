@@ -203,122 +203,97 @@
         >
       </div>
 
-      <!-- 受众画像 -->
-      <div class="ad-divider">
+
+      <!-- 创作者信息（赛道 + 老师年龄） -->
+      <div class="ad-divider" :class="{ 'ad-highlight-shine': highlightSetup }">
         <span class="add-line"></span>
-        <span class="add-label">🎯 当前账号受众画像</span>
+        <span class="add-label">✏️ 创作者信息（录入文案前必填）</span>
         <span class="add-line"></span>
       </div>
 
-      <!-- 已配置：展示结果 -->
-      <div v-if="store.audienceProfile && !editingAudience" class="ad-ap">
-        <div class="adap-row">
-          <span class="adap-label">赛道</span
-          ><span class="adap-value">{{ store.audienceProfile.niche }}</span>
-        </div>
-        <div class="adap-row">
-          <span class="adap-label">核心受众</span
-          ><span class="adap-value">{{
-            store.audienceProfile.targetAudience
-          }}</span>
-        </div>
-        <div class="adap-section-title">受众核心困惑</div>
-        <div class="adap-tags">
-          <span
-            v-for="(c, i) in store.audienceProfile.coreConfusions"
-            :key="'conf' + i"
-            class="adap-tag"
-            >{{ c }}</span
-          >
-        </div>
-        <div class="adap-row">
-          <span class="adap-label">共鸣触发</span
-          ><span class="adap-value">{{
-            store.audienceProfile.resonancePatterns
-          }}</span>
-        </div>
-        <div class="adap-row">
-          <span class="adap-label">信任建立</span
-          ><span class="adap-value">{{
-            store.audienceProfile.trustBuilders
-          }}</span>
-        </div>
-        <div class="adap-row">
-          <span class="adap-label">避免话题</span
-          ><span class="adap-value">{{
-            store.audienceProfile.avoidTopics
-          }}</span>
-        </div>
-        <div class="adap-summary">
-          <span>💡</span><span>{{ store.audienceProfile.summary }}</span>
-        </div>
-        <div class="adap-actions">
-          <el-button size="small" @click="editingAudience = true"
-            >修改</el-button
-          >
-          <el-button
-            size="small"
-            type="danger"
-            plain
-            @click="store.audienceProfile = null"
-            >清除</el-button
-          >
-        </div>
-      </div>
-
-      <!-- 未配置 / 编辑中 -->
-      <div v-else class="ad-ap-edit">
+      <div class="ad-ap-edit" :class="{ 'ad-highlight-shine': highlightSetup }">
         <div class="adae-field">
-          <label class="adae-label">赛道关键词</label>
+          <label class="adae-label">赛道</label>
           <el-input
-            v-model="audienceNiche"
+            v-model="creatorTrack"
             size="small"
-            placeholder="如：玄学/国学、职场成长、育儿..."
-            @keyup.enter="handleGenerateAudience"
+            placeholder="如：家庭教育、职场转型、玄学/国学..."
           />
         </div>
         <div class="adae-field">
-          <label class="adae-label"
-            >补充描述 <span class="adae-optional">（可选）</span></label
-          >
+          <label class="adae-label">老师年龄</label>
           <el-input
-            v-model="audienceNotes"
+            v-model.number="creatorAge"
             size="small"
-            placeholder="如：用传统智慧解释当代困境..."
+            type="number"
+            placeholder="如：32"
+            :min="18"
+            :max="80"
           />
         </div>
-        <div
-          class="adae-hint"
-          :class="{ warn: store.scriptRecords.length === 0 }"
-        >
+        <div class="adae-field">
+          <label class="adae-label">老师性别</label>
+          <el-radio-group v-model="creatorGender" size="small">
+            <el-radio value="male">男</el-radio>
+            <el-radio value="female">女</el-radio>
+          </el-radio-group>
+        </div>
+        <div class="adae-hint">
           {{
-            store.scriptRecords.length > 0
-              ? `AI 将基于已有 ${store.scriptRecords.length} 条文稿内容反推受众画像、核心困惑和共鸣模式`
-              : "暂无文稿样本，AI 将仅基于关键词推断（建议先录入几条文稿以获更准结果）"
+            store.creatorProfile
+              ? `当前：${store.creatorProfile.track} · ${store.creatorProfile.teacherAge}岁${store.creatorProfile.gender ? ' · ' + (store.creatorProfile.gender === 'male' ? '男' : '女') : ''}`
+              : "设置赛道、年龄和性别后，AI 将据此评测文案的人设锚定层（年龄匹配度 + 赛道信任度 + 吸引力）"
           }}
         </div>
         <div class="adae-actions">
           <el-button
             size="small"
             type="primary"
-            @click="handleGenerateAudience"
-            :loading="store.audienceLoading"
-            :disabled="!audienceNiche.trim()"
+            @click="handleSaveCreator"
+            :disabled="!creatorTrack.trim() || !creatorAge"
           >
-            {{
-              store.audienceLoading
-                ? "AI 分析中..."
-                : store.audienceProfile
-                  ? "重新分析"
-                  : "AI 分析受众"
-            }}
+            {{ store.creatorProfile ? "更新" : "保存" }}
           </el-button>
-          <el-button
-            v-if="store.audienceProfile"
-            size="small"
-            @click="editingAudience = false"
-            >取消</el-button
-          >
+        </div>
+      </div>
+
+      <!-- 赛道人群画像（保存创作者信息后自动生成） -->
+      <div v-if="store.trackAudienceProfile || store.trackAudienceLoading" class="ad-divider">
+        <span class="add-line"></span>
+        <span class="add-label">
+          🎯 赛道信任画像 ·
+          <template v-if="store.trackAudienceProfile">{{ store.trackAudienceProfile.track }}</template>
+          <template v-else>AI 分析中...</template>
+        </span>
+        <span class="add-line"></span>
+      </div>
+
+      <!-- 生成中 -->
+      <div v-if="store.trackAudienceLoading && !store.trackAudienceProfile" class="adap-card" style="text-align: center; padding: 24px; color: #6b7280;">
+        <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+        <div>AI 正在分析「{{ store.creatorProfile?.track }}」赛道的受众信任特征...</div>
+      </div>
+
+      <!-- 已生成 -->
+      <div v-if="store.trackAudienceProfile" class="adap-card">
+        <div class="adap-row">
+          <span class="adap-label">受众特征</span>
+          <span class="adap-value">{{ store.trackAudienceProfile.audienceDescription }}</span>
+        </div>
+        <div class="adap-section-title">✓ 信任要素</div>
+        <div class="adap-tags">
+          <span v-for="(f, i) in store.trackAudienceProfile.trustFactors" :key="'tf' + i" class="adap-tag adap-tag-trust">{{ f }}</span>
+        </div>
+        <div class="adap-section-title">⚠ 信任雷区</div>
+        <div class="adap-tags">
+          <span v-for="(f, i) in store.trackAudienceProfile.trustRedFlags" :key="'tr' + i" class="adap-tag adap-tag-red">{{ f }}</span>
+        </div>
+        <div class="adap-row">
+          <span class="adap-label">共鸣切入</span>
+          <span class="adap-value">{{ store.trackAudienceProfile.resonanceEntry }}</span>
+        </div>
+        <div class="adap-summary">
+          <span>💡</span><span>{{ store.trackAudienceProfile.summary }}</span>
         </div>
       </div>
 
@@ -358,36 +333,57 @@ const newAccountName = ref("");
 const importInput = ref<HTMLInputElement | null>(null);
 const predictKey = ref(0); // 账号切换时刷新 KeepAlive
 
-// ===== 受众画像配置 =====
-const audienceNiche = ref("");
-const audienceNotes = ref("");
-const editingAudience = ref(false);
+// ===== 创作者信息（赛道 + 老师年龄 + 性别）=====
+const creatorTrack = ref("");
+const creatorAge = ref<number | undefined>(undefined);
+const creatorGender = ref<'male' | 'female'>('male');
+const highlightSetup = ref(false);
 
-// 账号切换/画像加载时同步关键词
+// 账号切换/画像加载时同步
 watch(
-  () => store.audienceProfile,
+  () => store.creatorProfile,
   (val) => {
     if (val) {
-      audienceNiche.value = val.niche;
+      creatorTrack.value = val.track;
+      creatorAge.value = val.teacherAge;
+      creatorGender.value = val.gender || 'male';
     } else {
-      audienceNiche.value = "";
+      creatorTrack.value = "";
+      creatorAge.value = undefined;
+      creatorGender.value = 'male';
     }
   },
   { immediate: true },
 );
 
-async function handleGenerateAudience() {
-  if (!audienceNiche.value.trim()) return;
-  try {
-    await store.generateAudienceProfile(
-      audienceNiche.value.trim(),
-      audienceNotes.value.trim() || undefined,
-    );
-    editingAudience.value = false;
-    ElMessage.success("受众画像已更新，将自动应用于后续评分");
-  } catch (e: any) {
-    ElMessage.error(e.message || "分析失败");
-  }
+// 监听 store 信号：自动弹出账号设置对话框
+watch(
+  () => store.showAccountSetup,
+  (val) => {
+    if (val) {
+      showAccountDialog.value = true;
+      highlightSetup.value = true;
+      // 延迟复位，让闪耀动画播放
+      setTimeout(() => { highlightSetup.value = false; store.showAccountSetup = false }, 3000);
+    }
+  },
+);
+
+function handleSaveCreator() {
+  if (!creatorTrack.value.trim() || !creatorAge.value) return;
+  const track = creatorTrack.value.trim()
+  store.creatorProfile = {
+    track,
+    teacherAge: creatorAge.value,
+    gender: creatorGender.value,
+    updatedAt: Date.now(),
+  };
+  store.saveCreatorProfile();
+  highlightSetup.value = false;
+  ElMessage.success("创作者信息已保存，AI 正在分析赛道受众特征...")
+  store.generateTrackAudienceProfile(track)
+    .then(() => ElMessage.success("赛道人群画像已更新"))
+    .catch(() => ElMessage.warning("画像生成失败，不影响正常使用"))
 }
 
 const componentMap = {
@@ -502,7 +498,6 @@ function handleAccountSwitch(cmd: string) {
   if (cmd === store.currentAccountId) return;
   store.switchAccount(cmd);
   predictKey.value++; // 刷新 KeepAlive
-  editingAudience.value = false; // 重置画像编辑状态
   ElMessage.success("已切换到：" + (store.currentAccount?.name || ""));
 }
 function handleAddAccount() {
@@ -884,6 +879,14 @@ function handleDeleteAccount(accountId: string) {
   border-radius: 10px;
   font-weight: 500;
 }
+.adap-tag-trust {
+  background: #eaf7ea;
+  color: #1a8c1a;
+}
+.adap-tag-red {
+  background: #fff0f0;
+  color: #d43c3c;
+}
 .adap-summary {
   display: flex;
   gap: 6px;
@@ -907,6 +910,11 @@ function handleDeleteAccount(accountId: string) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.adap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .adae-field {
   display: flex;
@@ -934,5 +942,15 @@ function handleDeleteAccount(accountId: string) {
 .adae-actions {
   display: flex;
   gap: 6px;
+}
+
+/* 闪耀高亮动画：提示用户必须关注此区域 */
+@keyframes adShine {
+  0%, 100% { box-shadow: 0 0 4px rgba(230, 162, 60, 0.3); border-color: #e2e8f0; }
+  50% { box-shadow: 0 0 18px rgba(230, 162, 60, 0.7), 0 0 36px rgba(230, 162, 60, 0.3); border-color: #e6a23c; }
+}
+.ad-highlight-shine {
+  animation: adShine 0.8s ease-in-out 4;
+  border-radius: 6px;
 }
 </style>

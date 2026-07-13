@@ -29,16 +29,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useCreatorModeStore } from '@/stores/creatorMode'
+import { useEventBus } from '@/services/eventBus'
 import VideoClipper from '@/components/creator/VideoClipper.vue'
 import WorkflowPanel from '@/components/creator/WorkflowPanel.vue'
 
 const store = useCreatorModeStore()
+const { on } = useEventBus()
 
 const currentTab = computed(() =>
   store.subMode === 'work-state' ? VideoClipper : WorkflowPanel
 )
+
+// 监听子模式切换事件（事件驱动示例）
+on('creator:ui:subModeChanged', ({ mode }) => {
+  const label = mode === 'work-state' ? '工作状态' : '官方工作流'
+  ElMessage.info(`已切换到「${label}」模式`)
+})
+
+// 监听工作流执行完成事件（跨组件通知示例）
+on('creator:workflow:executionCompleted', ({ successCount, errorCount }) => {
+  if (errorCount === 0) {
+    ElMessage.success(`工作流执行完毕：${successCount} 个节点全部成功`)
+  } else {
+    ElMessage.warning(`工作流执行完毕：${successCount} 成功, ${errorCount} 失败`)
+  }
+})
 </script>
 
 <style scoped>

@@ -37,6 +37,22 @@
         </details>
       </div>
 
+      <!-- 检索摘要 -->
+      <div v-if="!message.isStreaming && message.searchSummary" class="cm-search-summary">
+        <details>
+          <summary class="cm-search-toggle">
+            <el-icon><Search /></el-icon>
+            <span>📊 扫描 {{ message.searchSummary.foldersScanned }} 个文件夹 · 匹配 {{ message.searchSummary.filesMatched }} 个文件</span>
+            <span class="cm-search-kw" v-if="message.searchSummary.keywords">（{{ message.searchSummary.keywords }}）</span>
+          </summary>
+          <div class="cm-search-detail">
+            <div v-for="f in message.searchSummary.matchedFiles" :key="f" class="cm-search-file">
+              📄 {{ f }}
+            </div>
+          </div>
+        </details>
+      </div>
+
       <!-- 气泡 -->
       <div class="cm-bubble">
         <div class="cm-content" v-html="renderedContent"></div>
@@ -68,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import MarkdownIt from 'markdown-it'
 import type { ChatMessage } from '@/types/chat'
 
@@ -85,12 +101,63 @@ defineEmits<{
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true, typographer: true })
 
+// 打字机效果：逐字显示流式内容
+const displayedLength = ref(0)
+let typewriterTimer: ReturnType<typeof setInterval> | null = null
+
+const streamingContent = computed(() => {
+  if (!props.message.isStreaming) return props.message.content
+  const full = props.message.content || ''
+  return full.slice(0, displayedLength.value)
+})
+
+watch(() => props.message.isStreaming, (isStreaming) => {
+  if (isStreaming) {
+    displayedLength.value = 0
+    startTypewriter()
+  } else {
+    stopTypewriter()
+    displayedLength.value = Number.MAX_SAFE_INTEGER // 显示全部
+  }
+}, { immediate: true })
+
+watch(() => props.message.content, (newContent) => {
+  if (props.message.isStreaming && newContent) {
+    // 不重置，让打字机自己赶上
+  }
+})
+
+function startTypewriter() {
+  stopTypewriter()
+  typewriterTimer = setInterval(() => {
+    const fullLen = (props.message.content || '').length
+    if (displayedLength.value >= fullLen) {
+      stopTypewriter()
+      return
+    }
+    // CJK 友好：每次增加 2-4 个字符
+    const step = Math.min(2 + Math.floor(Math.random() * 3), fullLen - displayedLength.value)
+    displayedLength.value += step
+  }, 50)
+}
+
+function stopTypewriter() {
+  if (typewriterTimer) {
+    clearInterval(typewriterTimer)
+    typewriterTimer = null
+  }
+}
+
+onBeforeUnmount(() => {
+  stopTypewriter()
+})
+
 const renderedContent = computed(() => {
-  const content = props.message.content
+  const content = props.message.isStreaming ? streamingContent.value : props.message.content
   if (!content && props.message.isStreaming) {
     return '<span class="cm-thinking">思考中...</span>'
   }
-  return md.render(content)
+  return md.render(content || '')
 })
 </script>
 
@@ -237,5 +304,23 @@ const renderedContent = computed(() => {
   padding: 8px 10px; font-size: 12px; line-height: 1.6; color: #5a5a7a;
   background: #fefefe; white-space: pre-wrap; word-break: break-word;
   max-height: 220px; overflow-y: auto; border-top: 1px solid #e8e6f0;
+}
+
+/* ===== 检索摘要 ===== */
+.cm-search-summary { margin-bottom: 8px; }
+.cm-search-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+  font-size: 12px; color: #606266; cursor: pointer; user-select: none;
+  background: #f5f7fa; border-radius: 6px;
+}
+.cm-search-toggle:hover { background: #ebeef5; }
+.cm-search-kw { font-size: 11px; color: #409eff; }
+.cm-search-detail {
+  margin-top: 6px; padding: 6px 10px; background: #fafafa;
+  border-radius: 6px; max-height: 160px; overflow-y: auto;
+}
+.cm-search-file {
+  font-size: 12px; color: #606266; padding: 2px 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 </style>

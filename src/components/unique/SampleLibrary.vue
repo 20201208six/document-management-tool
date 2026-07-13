@@ -1,6 +1,6 @@
 <template>
   <div class="sample-library">
-    <!-- 工具栏：标题 + 导入/导出/恢复 + 阈值过滤（始终可见） -->
+    <!-- 工具栏：标题 + 导入/导出/快照 + 阈值过滤（始终可见） -->
     <div class="sl-toolbar">
       <span class="sl-toolbar-title">历史样本库</span>
       <div class="sl-toolbar-actions">
@@ -15,9 +15,39 @@
         <button class="sl-btn sl-btn-outline" @click="$emit('export-json')">
           <span>💾</span> 导出JSON
         </button>
-        <button class="sl-btn sl-btn-danger" @click="$emit('reset-builtin')">
-          <span>↩️</span> 恢复初始样本
+        <!-- 快照操作 -->
+        <button class="sl-btn sl-btn-outline" @click="handleCreateSnapshot" :disabled="store.scriptRecords.length === 0">
+          <span>📸</span> 添加快照
         </button>
+        <el-popover placement="bottom" :width="280" trigger="click">
+          <template #reference>
+            <button class="sl-btn sl-btn-outline" :disabled="store.snapshots.length === 0">
+              <span>⏮️</span> 恢复快照
+            </button>
+          </template>
+          <div class="sl-snap-list">
+            <div v-if="store.snapshots.length === 0" class="sl-snap-empty">暂无快照</div>
+            <div v-for="snap in store.snapshots" :key="snap.id" class="sl-snap-item">
+              <div class="sl-snap-info" @click="handleRestoreSnapshot(snap.id)">
+                <span class="sl-snap-name">{{ snap.name }}</span>
+                <span class="sl-snap-meta">{{ snap.scriptCount }}条 · {{ snap.createdAt }}</span>
+              </div>
+              <div class="sl-snap-actions">
+                <button class="sl-snap-btn restore" title="恢复到此快照" @click.stop="handleRestoreSnapshot(snap.id)">恢复</button>
+                <button class="sl-snap-btn rename" title="重命名" @click.stop="handleRenameSnapshot(snap)">✏</button>
+                <button class="sl-snap-btn delete" title="删除快照" @click.stop="handleDeleteSnapshot(snap.id)">✕</button>
+              </div>
+            </div>
+          </div>
+          <div v-if="store.snapshots.length > 0" class="sl-snap-sep"></div>
+          <div class="sl-snap-item sn-reset" @click="$emit('reset-builtin')">
+            <div class="sl-snap-info">
+              <span class="sl-snap-name">↩ 初始样本</span>
+              <span class="sl-snap-meta">恢复为系统内置初始样本</span>
+            </div>
+            <span class="sl-snap-arrow">→</span>
+          </div>
+        </el-popover>
       </div>
     </div>
 
@@ -189,6 +219,55 @@ const selectedRecord = computed(() =>
 
 function selectScript(r: ScriptRecord) {
   selectedId.value = selectedId.value === r.id ? null : r.id
+}
+
+// ===== 快照操作 =====
+
+async function handleCreateSnapshot() {
+  try {
+    const { value: name } = await ElMessageBox.prompt(
+      '请输入快照名称（留空则使用时间戳）',
+      '添加快照',
+      { confirmButtonText: '保存', cancelButtonText: '取消', inputPlaceholder: '如：刷量前备份、改版前…' }
+    )
+    const snap = store.createSnapshot(name || undefined)
+    ElMessage.success(`快照已保存：${snap.name}（${snap.scriptCount} 条样本）`)
+  } catch { /* 取消 */ }
+}
+
+async function handleRestoreSnapshot(snapshotId: string) {
+  try {
+    await ElMessageBox.confirm(
+      '恢复到该快照将覆盖当前所有样本数据，确定继续？',
+      '确认恢复',
+      { type: 'warning', confirmButtonText: '恢复', cancelButtonText: '取消' }
+    )
+    const ok = store.restoreSnapshot(snapshotId)
+    if (ok) ElMessage.success('已从快照恢复')
+    else ElMessage.error('快照数据异常')
+  } catch { /* 取消 */ }
+}
+
+async function handleDeleteSnapshot(snapshotId: string) {
+  try {
+    await ElMessageBox.confirm('确定删除此快照？不可恢复', '确认删除', { type: 'warning' })
+    store.deleteSnapshot(snapshotId)
+    ElMessage.success('快照已删除')
+  } catch { /* 取消 */ }
+}
+
+async function handleRenameSnapshot(snap: typeof store.snapshots[0]) {
+  try {
+    const { value: newName } = await ElMessageBox.prompt(
+      '修改快照名称',
+      '重命名',
+      { confirmButtonText: '确定', cancelButtonText: '取消', inputValue: snap.name }
+    )
+    if (newName && newName.trim()) {
+      store.renameSnapshot(snap.id, newName.trim())
+      ElMessage.success('已重命名')
+    }
+  } catch { /* 取消 */ }
 }
 
 // 播放量编辑
@@ -492,4 +571,25 @@ async function handleDelete(id: string) {
 .slc-views-input::-webkit-inner-spin-button { display: none; }
 .slc-views-ok { border: none; background: #16a34a; color: #fff; font-size: 10px; width: 16px; height: 16px; border-radius: 3px; cursor: pointer; padding: 0; line-height: 16px; }
 .slc-views-cancel { border: none; background: #e5e7eb; color: #6b7280; font-size: 10px; width: 16px; height: 16px; border-radius: 3px; cursor: pointer; padding: 0; line-height: 16px; }
+
+/* 快照弹窗列表 */
+.sl-snap-list { max-height: 320px; overflow-y: auto; }
+.sl-snap-empty { font-size: 12px; color: #9ca3af; text-align: center; padding: 16px 0; }
+.sl-snap-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s; }
+.sl-snap-item:hover { background: #f3f4f6; }
+.sl-snap-info { flex: 1; min-width: 0; }
+.sl-snap-name { font-size: 13px; font-weight: 500; color: #303133; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-snap-meta { font-size: 11px; color: #9ca3af; }
+.sl-snap-sep { height: 1px; background: #e5e7eb; margin: 4px 0; }
+.sl-snap-item.sn-reset { color: #f56c6c; }
+.sl-snap-item.sn-reset .sl-snap-name { color: #f56c6c; }
+.sl-snap-arrow { font-size: 11px; color: #9ca3af; }
+.sl-snap-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.sl-snap-btn { border: 1px solid #e5e7eb; background: #fff; border-radius: 3px; padding: 2px 6px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+.sl-snap-btn.restore { color: #1a4cff; border-color: #d4e0ff; }
+.sl-snap-btn.restore:hover { background: #eef3ff; }
+.sl-snap-btn.rename { color: #6b7280; }
+.sl-snap-btn.rename:hover { background: #f3f4f6; }
+.sl-snap-btn.delete { color: #f56c6c; border-color: #fde8e8; }
+.sl-snap-btn.delete:hover { background: #fef2f2; }
 </style>

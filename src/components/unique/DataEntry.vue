@@ -1,51 +1,15 @@
 <template>
   <div class="de-root">
-    <!-- 受众画像横幅 -->
+    <!-- 创作者信息横幅（录入文案前必须配置） -->
     <div
-      v-if="!store.audienceProfile && !quickProfileOpen"
+      v-if="!store.creatorProfile"
       class="de-audience-bar"
-      @click="quickProfileOpen = true"
+      style="border-left-color: #e6a23c;"
     >
-      <span class="deab-icon">🎯</span>
+      <span class="deab-icon">⚠️</span>
       <div class="deab-text">
-        <span class="deab-title">配置受众画像，让点赞预测更精准</span>
-        <span class="deab-sub">告诉 AI 你的观众是谁，预测才准</span>
-      </div>
-      <span class="deab-action">去设置 →</span>
-    </div>
-
-    <!-- 快速配置弹窗 -->
-    <div v-if="quickProfileOpen" class="de-quick-audience">
-      <div class="dqa-head">
-        <span class="dqah-title">快速配置受众画像</span>
-        <span class="dqah-desc">输入赛道关键词，AI 立即推断受众画像</span>
-      </div>
-      <div class="dqa-body">
-        <input
-          v-model="quickNiche"
-          class="dqa-input"
-          placeholder="输入赛道关键词，如：玄学/国学、职场成长..."
-          @keyup.enter="handleQuickAudience"
-        />
-        <div class="dqa-btns">
-          <button
-            class="dqa-btn primary"
-            :disabled="!quickNiche.trim() || quickAudienceLoading"
-            @click="handleQuickAudience"
-          >
-            {{ quickAudienceLoading ? "分析中..." : "确认分析" }}
-          </button>
-          <button class="dqa-btn" @click="quickProfileOpen = false">
-            取消
-          </button>
-        </div>
-      </div>
-      <div class="dqa-foot">
-        {{
-          store.scriptRecords.length > 0
-            ? `AI 将基于已有 ${store.scriptRecords.length} 条文稿 + 关键词进行分析`
-            : "暂无文稿，AI 将基于关键词推断（建议先录入几条文稿）"
-        }}
+        <span class="deab-title">请先配置「赛道」和「老师年龄」</span>
+        <span class="deab-sub">录入文案前必须设置，AI 将据此评测年龄匹配度和赛道信任度</span>
       </div>
     </div>
 
@@ -356,26 +320,8 @@ const store = useUniqueModeStore();
 const submitMsg = ref("");
 const submitOk = ref(true);
 
-// 快速受众画像
-const quickProfileOpen = ref(false);
-const quickNiche = ref("");
-const quickAudienceLoading = ref(false);
-async function handleQuickAudience() {
-  if (!quickNiche.value.trim()) return;
-  quickAudienceLoading.value = true;
-  try {
-    await store.generateAudienceProfile(quickNiche.value.trim());
-    quickProfileOpen.value = false;
-    quickNiche.value = "";
-    ElMessage.success("受众画像已配置");
-  } catch (e: any) {
-    ElMessage.error("分析失败: " + (e.message || "未知错误"));
-  } finally {
-    quickAudienceLoading.value = false;
-  }
-}
 
-// 模式
+// 表单提交
 const entryMode = ref<"single" | "batch">("single");
 const multiPlatform = ref(false);
 function toggleMulti() {
@@ -486,6 +432,8 @@ async function handleSubmit() {
       : "样本保存成功，AI 正在后台评分";
     submitOk.value = true;
   } catch (e: any) {
+    // 创作者信息未配置 → 对话框已自动弹出，不显示错误不清理表单
+    if (e.message === 'CREATOR_NOT_CONFIGURED') return
     submitMsg.value = "保存失败: " + (e.message || "未知错误");
     submitOk.value = false;
   }
@@ -589,6 +537,7 @@ async function handleBatchSubmit() {
   const tasks = batchPreview.value.slice();
   const CONCURRENCY = 3;
   const failed: string[] = [];
+  let creatorNotConfigured = false
   for (let i = 0; i < tasks.length; i += CONCURRENCY) {
     const chunk = tasks.slice(i, i + CONCURRENCY);
     const results = await Promise.allSettled(
@@ -604,10 +553,18 @@ async function handleBatchSubmit() {
       ),
     );
     for (const r of results) {
-      if (r.status === "rejected") failed.push(r.reason?.message || "未知错误");
+      if (r.status === "rejected") {
+        if (r.reason?.message === 'CREATOR_NOT_CONFIGURED') {
+          creatorNotConfigured = true
+          break
+        }
+        failed.push(r.reason?.message || "未知错误")
+      };
       batchDoneCount.value++;
     }
+    if (creatorNotConfigured) break
   }
+  if (creatorNotConfigured) { batchLoading.value = false; batchProgress.value = false; return }
   batchLoading.value = false;
   batchProgress.value = false;
   if (failed.length > 0) {

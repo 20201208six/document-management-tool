@@ -63,20 +63,43 @@ function buildApiMessages(messages: ChatMessage[], systemPrompt?: string) {
   return apiMessages
 }
 
-/** 构建系统提示词 */
-function buildSystemPrompt(deepThinking: boolean, documentContext?: string, webResults?: string): string {
-  let prompt = '你是一个专业的文案创作助手，帮助用户分析、撰写和优化各类文案内容。'
+/**
+ * 构建系统提示词（仅角色定义 + 行为准则，不放数据）
+ * 所有数据类上下文统一通过 buildUserContext 注入到用户消息中，
+ * 避免 System Prompt 膨胀导致角色定位被稀释。
+ */
+function buildSystemPrompt(deepThinking: boolean): string {
+  let prompt = `你是一个专业的文案创作助手，帮助用户分析、撰写和优化各类文案内容。
+
+行为准则：
+1. 回答要具体、可落地，提供实际可用的文案示例，避免空泛套话
+2. 如果用户提供了参考资料（文档/文件/搜索结果），优先基于这些素材回答并注明来源
+3. 如果需要更多信息才能给出好答案，主动向用户询问
+4. 用与用户消息相同的语言风格回复
+5. 文案例子应注明适用场景（如：适合抖音口播 / 适合公众号推文 / 适合产品详情页）`
+  
   if (deepThinking) {
-    // 精简思考指令：聚焦核心维度，减少无意义的发散
-    prompt += '请在回答前简要推理分析（考虑受众、风格、结构三个核心维度），然后给出精炼实用的建议。注意：推理过程应简洁直接，避免过度展开。'
-  }
-  if (documentContext) {
-    prompt += `\n\n用户当前编辑的文档内容：\n\n${documentContext}`
-  }
-  if (webResults) {
-    prompt += `\n\n互联网最新相关信息：\n\n${webResults}`
+    prompt += `\n\n推理要求：回答前简要分析受众、风格、结构三个核心维度，推理过程简洁直接，避免过度展开。`
   }
   return prompt
+}
+
+/**
+ * 构建用户侧上下文（文档引用 + 联网搜索结果）
+ * 统一放在用户消息头部，与 System Prompt 职责分离。
+ */
+function buildUserContext(options: {
+  documentContext?: string
+  webResults?: string
+}): string {
+  let ctx = ''
+  if (options.documentContext) {
+    ctx += `[参考文档]\n${options.documentContext}\n\n`
+  }
+  if (options.webResults) {
+    ctx += `[联网搜索结果]\n${options.webResults}\n\n`
+  }
+  return ctx ? ctx + '---\n请基于以上参考资料回答：\n' : ''
 }
 
 /**
@@ -93,8 +116,21 @@ export async function sendChatMessage(
 ): Promise<string> {
   const { deepThinking = false, documentContext, webSearch } = options
 
-  const systemPrompt = buildSystemPrompt(deepThinking, documentContext, webSearch?.results)
+  // System 只放角色定义，不放数据
+  const systemPrompt = buildSystemPrompt(deepThinking)
   const apiMessages = buildApiMessages(messageHistory, systemPrompt)
+
+  // 数据类上下文统一注入到用户消息侧
+  const userCtx = buildUserContext({
+    documentContext,
+    webResults: webSearch?.results
+  })
+  if (userCtx && apiMessages.length > 0) {
+    const lastUserIdx = apiMessages.map(m => m.role).lastIndexOf('user')
+    if (lastUserIdx >= 0) {
+      apiMessages[lastUserIdx].content = userCtx + apiMessages[lastUserIdx].content
+    }
+  }
 
   // V4 模型通过 thinking 参数控制思考模式，旧模型切换到 deepseek-reasoner
   const isV4 = model.modelParam.includes('v4')
@@ -109,17 +145,14 @@ export async function sendChatMessage(
   }
 
   if (isV4) {
-    // V4: 使用 thinking 对象控制，默认 disabled 保证非思考模式速度
     if (deepThinking) {
       body.thinking = { type: 'enabled' }
       body.reasoning_effort = 'high'
-      // 思考模式不支持 temperature/top_p，不传
     } else {
       body.thinking = { type: 'disabled' }
       body.temperature = 1.0
     }
   } else {
-    // 旧模型
     body.temperature = deepThinking ? 0.3 : 1.0
     body.max_tokens = deepThinking ? 4096 : 2048
   }
@@ -165,8 +198,21 @@ export async function sendChatMessageStream(
 ): Promise<void> {
   const { deepThinking = false, documentContext, webSearch } = options
 
-  const systemPrompt = buildSystemPrompt(deepThinking, documentContext, webSearch?.results)
+  // System 只放角色定义，不放数据
+  const systemPrompt = buildSystemPrompt(deepThinking)
   const apiMessages = buildApiMessages(messageHistory, systemPrompt)
+
+  // 数据类上下文统一注入到用户消息侧
+  const userCtx = buildUserContext({
+    documentContext,
+    webResults: webSearch?.results
+  })
+  if (userCtx && apiMessages.length > 0) {
+    const lastUserIdx = apiMessages.map(m => m.role).lastIndexOf('user')
+    if (lastUserIdx >= 0) {
+      apiMessages[lastUserIdx].content = userCtx + apiMessages[lastUserIdx].content
+    }
+  }
 
   // V4 模型通过 thinking 参数控制思考模式，旧模型切换到 deepseek-reasoner
   const isV4 = model.modelParam.includes('v4')
@@ -373,4 +419,156 @@ export function analyzeFileContent(fileContent: string, fileName: string, userQu
   }
   prompt += `\n\n用户的问题：${userQuery}\n请基于以上文件内容进行分析和回答。`
   return prompt
+}
+
+/**
+ * 查询扩展：将用户输入的关键词扩展为 3-5 个语义相关的变体，
+ * 用于提升全局搜索的召回率。
+ * 返回空数组表示扩展失败（调用方应回退到原始关键词）。
+ */
+export async function expandQuery(model: Pick<AIModel, 'apiUrl' | 'apiKey' | 'modelParam'>, keyword: string): Promise<string[]> {
+  if (!model.apiKey || !keyword.trim()) return []
+  try {
+    const response = await fetch(model.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.apiKey}`
+      },
+      body: JSON.stringify({
+        model: model.modelParam,
+        messages: [
+          { role: 'system', content: '你是一个搜索关键词扩展助手。将用户输入扩展为3-5个语义相关的搜索词，每行一个。只输出搜索词，不要任何解释。' },
+          { role: 'user', content: `将以下搜索词扩展为3-5个同义或相关的搜索词：${keyword}` }
+        ],
+        max_tokens: 80,
+        temperature: 0.3
+      }),
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!response.ok) return []
+    const data = await response.json()
+    const text = data.choices?.[0]?.message?.content?.trim()
+    if (!text) return []
+    // 解析每行，过滤空行和原关键词
+    const terms: string[] = text.split('\n')
+      .map((t: string) => t.replace(/^[\d.\s\-•]+\s*/, '').trim())
+      .filter((t: string) => !!(t && t !== keyword && t.length >= 2)) as string[]
+    const uniqueTerms = Array.from(new Set(terms)).slice(0, 5)
+    return uniqueTerms
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 查询改写：将用户的简略追问消解为完整问题。
+ * 当用户消息很短（< 7 字）且有上一轮对话上下文时调用。
+ * 消解"它""这个""那"等指代词，补全省略信息。
+ * 返回改写后的完整问题，或原始消息（改写失败时）。
+ */
+export async function rewriteShortQuery(
+  model: Pick<AIModel, 'apiUrl' | 'apiKey' | 'modelParam'>,
+  userMessage: string,
+  lastMessages: { role: string; content: string }[]
+): Promise<string> {
+  if (userMessage.length >= 7) return userMessage
+  if (lastMessages.length < 2) return userMessage
+  if (!model.apiKey) return userMessage
+
+  const context = lastMessages.slice(-3).map(m => `${m.role}: ${m.content.slice(0, 200)}`).join('\n')
+  try {
+    const response = await fetch(model.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.apiKey}`
+      },
+      body: JSON.stringify({
+        model: model.modelParam,
+        messages: [
+          { role: 'system', content: '将用户的简略追问改写为完整问题。结合前文对话上下文，消解"它""这个""那""他""她"等指代词。只输出改写后的一句话问题，不要解释，不要加标点外的任何内容。' },
+          { role: 'user', content: `前文对话：\n${context}\n\n简略追问：${userMessage}\n\n完整问题：` }
+        ],
+        max_tokens: 100,
+        temperature: 0
+      }),
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!response.ok) return userMessage
+    const data = await response.json()
+    const rewritten = data.choices?.[0]?.message?.content?.trim()
+    return (rewritten && rewritten.length >= 3) ? rewritten : userMessage
+  } catch {
+    return userMessage
+  }
+}
+
+/**
+ * 文本嵌入：将文本转换为向量表示。
+ * 使用 OpenAI 兼容的 /v1/embeddings 端点。
+ * 部分模型（如 DeepSeek）可能需要单独的 embedding 模型端点。
+ */
+export async function computeEmbedding(
+  text: string,
+  model: Pick<AIModel, 'apiUrl' | 'apiKey'>,
+  modelParam = 'text-embedding-3-small'
+): Promise<number[] | null> {
+  if (!model.apiKey || !text.trim()) return null
+  try {
+    // 将 /chat/completions 替换为 /embeddings
+    const embeddingUrl = model.apiUrl.replace(/\/chat\/completions$/, '/embeddings')
+    const response = await fetch(embeddingUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${model.apiKey}`
+      },
+      body: JSON.stringify({
+        model: modelParam,
+        input: text.slice(0, 8000) // 限制输入长度
+      }),
+      signal: AbortSignal.timeout(15000)
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    return data.data?.[0]?.embedding || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 余弦相似度计算
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0
+  let dot = 0, normA = 0, normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dot / denom
+}
+
+/**
+ * 在样本库中找到与目标文本最相似的 Top-K 条记录
+ */
+export function findSimilar(
+  targetEmbedding: number[],
+  samples: { embedding: number[]; id: string; content: string }[],
+  topK = 5
+): { id: string; content: string; similarity: number }[] {
+  return samples
+    .filter(s => s.embedding && s.embedding.length > 0)
+    .map(s => ({
+      id: s.id,
+      content: s.content.slice(0, 200),
+      similarity: cosineSimilarity(targetEmbedding, s.embedding)
+    }))
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, topK)
+    .filter(s => s.similarity > 0.3) // 相似度阈值
 }

@@ -31,6 +31,9 @@
         <el-button size="small" type="primary" @click="runWorkflow" :loading="store.isWorkflowRunning" :disabled="store.isWorkflowRunning">
           执行工作流
         </el-button>
+        <el-button size="small" @click="resumeWorkflow" :disabled="store.isWorkflowRunning" v-if="hasCheckpoint">
+          <el-icon><RefreshRight /></el-icon> 恢复执行
+        </el-button>
         <el-button size="small" @click="clearCanvas" :disabled="store.isWorkflowRunning">清空画布</el-button>
       </div>
 
@@ -126,6 +129,10 @@
           <div class="node-header">
             <span class="node-icon">{{ nodeIcon(node.type) }}</span>
             <span class="node-label">{{ node.label }}</span>
+            <!-- Agent 模式徽章 -->
+            <span v-if="supportsAgentMode(node) && getAgentConfig(node).mode !== 'automatic'" class="node-agent-badge" :title="'Agent 模式: ' + (getAgentConfig(node).mode === 'interactive' ? '交互' : '审核')">
+              🧠
+            </span>
             <!-- 执行状态指示器 -->
             <span v-if="node.config.result" class="node-status" :class="'status-' + node.config.result.status">
               {{ statusEmoji(node.config.result.status) }}
@@ -139,6 +146,9 @@
               <template v-else-if="node.config.result.status === 'success'">{{ truncate(node.config.result.output, 50) }}</template>
               <template v-else-if="node.config.result.status === 'error'">
                 <span class="result-error">{{ truncate(node.config.result.error || '未知错误', 40) }}</span>
+                <el-button size="small" type="warning" text class="node-retry-btn" @click.stop="retryNode(node.id)">
+                  重试
+                </el-button>
               </template>
             </div>
           </div>
@@ -366,12 +376,57 @@
           </div>
         </template>
 
+        <!-- Agent 配置（支持 agent 模式的节点） -->
+        <template v-if="selectedNode && supportsAgentMode(selectedNode)">
+          <div class="config-divider"></div>
+          <div class="config-group">
+            <label class="config-label config-label-section">🤖 Agent 配置</label>
+          </div>
+          <div class="config-group">
+            <label class="config-label">运行模式</label>
+            <el-select v-model="agentConfig.mode" size="small" @change="saveAgentConfig">
+              <el-option label="自动模式" value="automatic" />
+              <el-option label="交互模式" value="interactive" />
+              <el-option label="审核模式" value="review" />
+            </el-select>
+            <span class="config-hint">
+              {{ agentConfig.mode === 'automatic' ? '直接生成，出错自动重试' : agentConfig.mode === 'interactive' ? '生成后展示，支持反馈修改' : '生成后暂停，等待人工确认' }}
+            </span>
+          </div>
+          <div class="config-group">
+            <label class="config-label">最大重试次数</label>
+            <el-input-number v-model="agentConfig.maxRetries" :min="0" :max="10" size="small" @change="saveAgentConfig" />
+          </div>
+          <div class="config-group" v-if="agentConfig.mode === 'interactive' || agentConfig.mode === 'review'">
+            <label class="config-label">最大对话轮次</label>
+            <el-input-number v-model="agentConfig.maxTurns" :min="1" :max="10" size="small" @change="saveAgentConfig" />
+          </div>
+          <div class="config-group config-checkbox">
+            <el-checkbox v-model="agentConfig.enableCheckpoint" size="small" @change="saveAgentConfig">
+              启用检查点（断点续传）
+            </el-checkbox>
+          </div>
+          <div class="config-group config-checkbox" v-if="agentConfig.mode === 'review'">
+            <el-checkbox v-model="agentConfig.requireConfirmation" size="small" @change="saveAgentConfig">
+              完成后需要用户确认
+            </el-checkbox>
+          </div>
+        </template>
+
         <!-- 执行结果详情 -->
         <div v-if="selectedNode.config.result && selectedNode.config.result.status !== 'idle'" class="config-group">
           <label class="config-label">执行结果</label>
           <div class="result-detail" :class="'result-' + selectedNode.config.result.status">
             <template v-if="selectedNode.config.result.status === 'success'">
-              {{ selectedNode.config.result.output }}
+              <div class="result-output">{{ selectedNode.config.result.output }}</div>
+              <div v-if="selectedNode.config.result.data?.agentTurns" class="agent-turns-summary">
+                <el-divider />
+                <span class="turns-label">Agent 对话轮次: {{ (selectedNode.config.result.data.agentTurns || []).length }} 轮</span>
+                <div v-for="(turn, ti) in (selectedNode.config.result.data.agentTurns || [])" :key="ti" class="turn-entry" :class="'turn-' + turn.role">
+                  <span class="turn-role">{{ turn.role === 'assistant' ? '🤖 AI' : turn.role === 'user' ? '👤 用户' : '⚙️ 系统' }}</span>
+                  <span class="turn-content">{{ truncate(turn.content, 100) }}</span>
+                </div>
+              </div>
             </template>
             <template v-else-if="selectedNode.config.result.status === 'error'">
               {{ selectedNode.config.result.error }}
@@ -380,6 +435,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Agent 审核对话框 -->
+    <el-dialog
+      v-model="showReviewDialog"
+      :title="'Agent 审核 — ' + reviewData.nodeLabel"
+      width="650px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      destroy-on-close
+    >
+      <div class="review-info">
+        <span class="review-turn">第 {{ reviewData.turn }}/{{ reviewData.maxTurns }} 轮</span>
+      </div>
+      <div class="review-content">
+        <div class="review-label">AI 生成内容：</div>
+        <div class="review-text">{{ reviewData.output }}</div>
+      </div>
+      <div class="review-feedback" v-if="!reviewApproved">
+        <div class="review-label">修改意见（通过则留空）：</div>
+        <el-input
+          v-model="reviewFeedback"
+          type="textarea"
+          :rows="3"
+          placeholder="输入修改意见，例如：让语气更活泼一些、缩短到 200 字以内..."
+        />
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="submitReview(true)" type="primary">
+            通过审核
+          </el-button>
+          <el-button @click="submitReview(false)" type="warning" :disabled="!reviewFeedback.trim()">
+            提交修改意见
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -388,9 +481,12 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCreatorModeStore, type NodeConfig } from '@/stores/creatorMode'
 import { useChatStore } from '@/stores/chat'
+import { useEventBus } from '@/services/eventBus'
+import { loadCheckpoint, getAgentConfig, setAgentConfig, supportsAgentMode, submitAgentReview, cancelAgentReview, type AgentConfig } from '@/services/creatorAgent'
 
 const store = useCreatorModeStore()
 const chatStore = useChatStore()
+const { on, emit } = useEventBus()
 
 const canvasContainerRef = ref<HTMLElement | null>(null)
 const canvasW = ref(3000)
@@ -414,6 +510,38 @@ const selectedNode = computed(() => {
   return store.workflowNodes.find(n => n.id === store.selectedNodeId) || null
 })
 
+// 检查点状态
+const hasCheckpoint = computed(() => loadCheckpoint() !== null)
+
+// Agent 配置
+const agentConfig = reactive<AgentConfig>({
+  mode: 'automatic',
+  maxRetries: 2,
+  enableCheckpoint: true,
+  requireConfirmation: false,
+  maxTurns: 3
+})
+
+// Agent 审核对话框
+const showReviewDialog = ref(false)
+const reviewApproved = ref(false)
+const reviewFeedback = ref('')
+const reviewData = reactive({
+  nodeId: '',
+  nodeLabel: '',
+  output: '',
+  turn: 1,
+  maxTurns: 3
+})
+
+function submitReview(approved: boolean) {
+  if (!approved && !reviewFeedback.value.trim()) return
+  submitAgentReview(reviewData.nodeId, approved, approved ? undefined : reviewFeedback.value.trim())
+  showReviewDialog.value = false
+  reviewFeedback.value = ''
+  reviewApproved.value = false
+}
+
 // 当选中节点变化时，同步配置面板
 watch(() => store.selectedNodeId, (newId) => {
   const node = store.workflowNodes.find(n => n.id === newId)
@@ -421,6 +549,9 @@ watch(() => store.selectedNodeId, (newId) => {
     editNodeLabel.value = node.label
     Object.assign(nodeConfig, { ...node.config })
     delete (nodeConfig as any).result // 不显示 result 在编辑中
+    // 同步 Agent 配置
+    const ac = getAgentConfig(node)
+    Object.assign(agentConfig, ac)
   }
 })
 
@@ -543,6 +674,33 @@ onMounted(() => {
   window.addEventListener('mouseup', onWindowMouseUp)
   window.addEventListener('keydown', onWindowKeyDown)
   window.addEventListener('keyup', onWindowKeyUp)
+
+  // ===== 事件驱动框架：监听工作流执行事件 =====
+  on('creator:workflow:executionStarted', ({ totalNodes }) => {
+    ElMessage.info(`工作流开始执行，共 ${totalNodes} 个节点`)
+  })
+
+  on('creator:workflow:nodeExecutionStarted', ({ label }) => {
+    // 画布自动追踪正在执行的节点，无需手动轮询
+  })
+
+  on('creator:workflow:nodeExecutionCompleted', ({ label, result }) => {
+    if (result.status === 'error') {
+      ElMessage.error(`节点「${label}」执行失败: ${result.error}`)
+    }
+  })
+
+  // Agent 审核请求
+  on('creator:workflow:agentReviewRequested', ({ nodeId, nodeLabel, output, turn, maxTurns }) => {
+    reviewData.nodeId = nodeId
+    reviewData.nodeLabel = nodeLabel
+    reviewData.output = output
+    reviewData.turn = turn
+    reviewData.maxTurns = maxTurns
+    reviewFeedback.value = ''
+    reviewApproved.value = false
+    showReviewDialog.value = true
+  })
 })
 
 onUnmounted(() => {
@@ -680,6 +838,35 @@ function saveConfig() {
   const cfg: NodeConfig = { ...nodeConfig }
   delete (cfg as any).result
   store.updateNodeConfig(store.selectedNodeId, cfg)
+  // 同步 Agent 配置
+  const node = store.workflowNodes.find(n => n.id === store.selectedNodeId)
+  if (node && supportsAgentMode(node)) {
+    setAgentConfig(node, { ...agentConfig })
+  }
+}
+
+function saveAgentConfig() {
+  if (!store.selectedNodeId) return
+  const node = store.workflowNodes.find(n => n.id === store.selectedNodeId)
+  if (node) {
+    setAgentConfig(node, { ...agentConfig })
+  }
+}
+
+async function retryNode(nodeId: string) {
+  try {
+    await store.retryNode(nodeId)
+  } catch (e: any) {
+    ElMessage.error(`重试失败: ${e.message || e}`)
+  }
+}
+
+async function resumeWorkflow() {
+  try {
+    await store.resumeWorkflow()
+  } catch (e: any) {
+    ElMessage.error(`恢复执行失败: ${e.message || e}`)
+  }
 }
 
 async function selectFileForNode() {
@@ -1167,5 +1354,144 @@ function resetView() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Agent 节点徽章 */
+.node-agent-badge {
+  font-size: 12px;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+/* 节点重试按钮 */
+.node-retry-btn {
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* 配置面板分隔线 */
+.config-divider {
+  height: 1px;
+  background: #e4e7ed;
+  margin: 4px 0;
+}
+
+/* 配置面板 checkbox 项 */
+.config-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+/* 配置面板 section 标题 */
+.config-label-section {
+  font-size: 13px;
+  font-weight: 600;
+  color: #409eff;
+}
+
+/* 配置面板 hint */
+.config-hint {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.4;
+}
+
+/* 执行结果输出 */
+.result-output {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Agent 对话轮次 */
+.agent-turns-summary {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.turns-label {
+  font-weight: 600;
+  color: #409eff;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.turn-entry {
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: #f5f7fa;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.turn-entry.turn-assistant {
+  background: #ecf5ff;
+  border-left: 2px solid #409eff;
+}
+
+.turn-entry.turn-user {
+  background: #f0f9eb;
+  border-left: 2px solid #67c23a;
+}
+
+.turn-entry.turn-system {
+  background: #fdf6ec;
+  border-left: 2px solid #e6a23c;
+}
+
+.turn-role {
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: #606266;
+}
+
+.turn-content {
+  color: #303133;
+  line-height: 1.4;
+}
+
+/* Agent 审核对话框 */
+.review-info {
+  margin-bottom: 12px;
+}
+
+.review-turn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.review-content {
+  margin-bottom: 16px;
+}
+
+.review-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.review-text {
+  padding: 12px;
+  background: #fafbfc;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-feedback {
+  margin-top: 16px;
 }
 </style>

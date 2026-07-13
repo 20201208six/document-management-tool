@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed, watch } from 'vue'
 import type { SubtitleSegment } from '@/services/asr'
+import { eventBus } from '@/services/eventBus'
+import type {} from '@/types/creatorEvents'
+import { getAgentConfig, saveCheckpoint, loadCheckpoint, clearCheckpoint, executeAgentNode, agentDialogueLoop, createReviewPause, cancelAgentReview } from '@/services/creatorAgent'
 
 // ===== 类型定义 =====
 
@@ -124,6 +127,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
 
   function switchSubMode(mode: CreatorSubMode) {
     subMode.value = mode
+    eventBus.emit('creator:ui:subModeChanged', { mode })
   }
 
   // ===== 视频源管理（批量导入） =====
@@ -195,6 +199,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     }
     importedVideos.value.push(video)
     if (!activeVideoId.value) activeVideoId.value = id
+    eventBus.emit('creator:video:imported', { videoId: id, videoName: file.name, videoPath: path })
     return video
   }
 
@@ -205,10 +210,13 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (activeVideoId.value === videoId) {
       activeVideoId.value = importedVideos.value[0]?.id || null
     }
+    eventBus.emit('creator:video:removed', { videoId, videoName: video?.name || '未知' })
   }
 
   function setActiveVideo(videoId: string) {
     activeVideoId.value = videoId
+    const video = importedVideos.value.find(v => v.id === videoId)
+    eventBus.emit('creator:video:activated', { videoId, videoName: video?.name || null })
   }
 
   function setVideoMeta(videoId: string, duration: number, width: number, height: number) {
@@ -218,6 +226,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     video.width = width
     video.height = height
     video.ratio = calcRatio(width, height)
+    eventBus.emit('creator:video:metaLoaded', { videoId, duration, width, height, ratio: video.ratio })
   }
 
   function calcRatio(w: number, h: number): string {
@@ -236,6 +245,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (!video) return
     video.subtitles = subtitles
     video.asrStatus = 'done'
+    eventBus.emit('creator:asr:completed', { videoId, subtitleCount: subtitles.length })
   }
 
   function setAsrStatus(videoId: string, status: ImportedVideo['asrStatus'], error?: string) {
@@ -243,6 +253,11 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (!video) return
     video.asrStatus = status
     if (error) video.asrError = error
+    if (status === 'processing') {
+      eventBus.emit('creator:asr:started', { videoId, videoName: video.name })
+    } else if (status === 'error') {
+      eventBus.emit('creator:asr:error', { videoId, error: error || '未知错误' })
+    }
   }
 
   /** 尝试恢复已缓存的字幕（只从存储目录加载） */
@@ -355,6 +370,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     }
     clips.value.push(clip)
     saveClips()
+    eventBus.emit('creator:clip:created', { clipId: clip.id, startTime, endTime, label: clip.label })
     return clip
   }
 
@@ -363,6 +379,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     timeline.value.clips = timeline.value.clips.filter(id => id !== clipId)
     saveClips()
     saveTimeline()
+    eventBus.emit('creator:clip:removed', { clipId })
   }
 
   function updateClipTime(clipId: string, start: number, end: number) {
@@ -373,6 +390,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       clip.duration = end - start
       clip.label = `${formatTime(start)} - ${formatTime(end)}`
       saveClips()
+      eventBus.emit('creator:clip:updated', { clipId, startTime: start, endTime: end })
     }
   }
 
@@ -396,12 +414,14 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (!timeline.value.clips.includes(clipId)) {
       timeline.value.clips.push(clipId)
       saveTimeline()
+      eventBus.emit('creator:track:clipAdded', { clipId })
     }
   }
 
   function removeFromTimeline(clipId: string) {
     timeline.value.clips = timeline.value.clips.filter(id => id !== clipId)
     saveTimeline()
+    eventBus.emit('creator:track:clipRemoved', { clipId })
   }
 
   function reorderTimeline(fromIndex: number, toIndex: number) {
@@ -409,6 +429,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     const [moved] = arr.splice(fromIndex, 1)
     arr.splice(toIndex, 0, moved)
     saveTimeline()
+    eventBus.emit('creator:track:reordered', { fromIndex, toIndex })
   }
 
   function getTimelineClips(): VideoClip[] {
@@ -475,6 +496,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       if (searchHistory.value.length > 20) searchHistory.value.pop()
       localStorage.setItem(SEARCH_KEY, JSON.stringify(searchHistory.value))
     }
+    eventBus.emit('creator:search:changed', { query: q })
   }
 
   // ===== 格式工具 =====
@@ -522,18 +544,22 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     const node: WorkflowNode = { id: 'node_' + Date.now(), type, label, x, y, config: {} }
     workflowNodes.value.push(node)
     saveWorkflow()
+    eventBus.emit('creator:workflow:nodeAdded', { nodeId: node.id, type, label })
     return node
   }
 
   function removeNode(nodeId: string) {
+    const node = workflowNodes.value.find(n => n.id === nodeId)
     workflowNodes.value = workflowNodes.value.filter(n => n.id !== nodeId)
     workflowEdges.value = workflowEdges.value.filter(e => e.fromNodeId !== nodeId && e.toNodeId !== nodeId)
     saveWorkflow()
+    if (node) eventBus.emit('creator:workflow:nodeRemoved', { nodeId, label: node.label })
   }
 
   function updateNodePosition(nodeId: string, x: number, y: number) {
     const node = workflowNodes.value.find(n => n.id === nodeId)
     if (node) { node.x = x; node.y = y; saveWorkflow() }
+    eventBus.emit('creator:workflow:nodeMoved', { nodeId, x, y })
   }
 
   function edgeExists(fromNodeId: string, toNodeId: string): boolean {
@@ -547,12 +573,14 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     const edge: WorkflowEdge = { id: 'edge_' + Date.now(), fromNodeId, toNodeId, label }
     workflowEdges.value.push(edge)
     saveWorkflow()
+    eventBus.emit('creator:workflow:edgeAdded', { edgeId: edge.id, fromNodeId, toNodeId })
     return edge
   }
 
   function removeEdge(edgeId: string) {
     workflowEdges.value = workflowEdges.value.filter(e => e.id !== edgeId)
     saveWorkflow()
+    eventBus.emit('creator:workflow:edgeRemoved', { edgeId })
   }
 
   function removeEdgesForNode(nodeId: string) {
@@ -560,7 +588,10 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     saveWorkflow()
   }
 
-  function selectNode(nodeId: string | null) { selectedNodeId.value = nodeId }
+  function selectNode(nodeId: string | null) { 
+    selectedNodeId.value = nodeId 
+    eventBus.emit('creator:workflow:nodeSelected', { nodeId })
+  }
   function setCanvasOffset(x: number, y: number) { canvasOffset.x = x; canvasOffset.y = y }
   function setCanvasScale(s: number) { canvasScale.value = Math.max(0.3, Math.min(3, s)) }
 
@@ -570,6 +601,7 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     if (node) {
       node.config = { ...node.config, ...config }
       saveWorkflow()
+      eventBus.emit('creator:workflow:nodeConfigured', { nodeId, label: node.label })
     }
   }
 
@@ -662,11 +694,29 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     workflowLogs.value.push(`[${new Date().toLocaleTimeString()}] ${msg}`)
   }
 
-  async function executeWorkflow() {
+  async function executeWorkflow(resumeFromCheckpoint = false) {
     if (isWorkflowRunning.value) return
     isWorkflowRunning.value = true
     workflowLogs.value = []
-    resetAllNodeResults()
+
+    // 检查点恢复
+    let startIndex = 0
+    if (resumeFromCheckpoint) {
+      const checkpoint = loadCheckpoint()
+      if (checkpoint && checkpoint.completedNodeIds.length > 0) {
+        // 恢复已完成节点的状态
+        for (const nodeId of checkpoint.completedNodeIds) {
+          const node = workflowNodes.value.find(n => n.id === nodeId)
+          if (node) {
+            setNodeResult(nodeId, 'success', '(从检查点恢复)')
+          }
+        }
+        startIndex = checkpoint.currentIndex
+        addWorkflowLog(`从检查点恢复: 已完成 ${checkpoint.completedNodeIds.length} 个节点，从第 ${startIndex + 1} 个开始`)
+      } else {
+        addWorkflowLog('未找到检查点，从头开始执行')
+      }
+    }
 
     const ordered = getTopologicalOrder()
     if (ordered.length === 0) {
@@ -675,27 +725,132 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
       return
     }
 
-    addWorkflowLog(`开始执行工作流 (共 ${ordered.length} 个节点)`)
+    // 如果不是从检查点恢复，重置所有结果
+    if (!resumeFromCheckpoint || startIndex === 0) {
+      resetAllNodeResults()
+    }
 
-    for (const node of ordered) {
+    addWorkflowLog(`开始执行工作流 (共 ${ordered.length} 个节点)`)
+    eventBus.emit('creator:workflow:executionStarted', { totalNodes: ordered.length })
+
+    let successCount = 0
+    let errorCount = 0
+
+    for (let i = startIndex; i < ordered.length; i++) {
+      const node = ordered[i]
       setNodeResult(node.id, 'running', '执行中...')
       addWorkflowLog(`执行节点: ${node.label}`)
-      await new Promise(r => setTimeout(r, 200)) // 短暂延迟让 UI 更新
+      eventBus.emit('creator:workflow:nodeExecutionStarted', { nodeId: node.id, label: node.label })
+      await new Promise(r => setTimeout(r, 200))
 
       try {
         const upstreamResults = getUpstreamResults(node.id)
-        const result = await executeNode(node, upstreamResults)
+        const agentConfig = getAgentConfig(node)
+
+        // Agent 模式：使用 agent 执行引擎（支持重试）
+        let result: { output: string; data?: any }
+        if (agentConfig.maxRetries > 0) {
+          const agentResult = await executeAgentNode(node, {
+            upstreamResults,
+            env: {},
+            checkpoint: resumeFromCheckpoint ? loadCheckpoint() || undefined : undefined
+          }, executeNodeCore)
+          if (agentResult.status === 'error') throw new Error(agentResult.error)
+          result = { output: agentResult.output, data: agentResult.data }
+        } else {
+          result = await executeNodeCore(node, upstreamResults)
+        }
+
         setNodeResult(node.id, 'success', result.output, undefined, result.data)
         addWorkflowLog(`  ✓ ${node.label} 完成`)
+        eventBus.emit('creator:workflow:nodeExecutionCompleted', {
+          nodeId: node.id, label: node.label,
+          result: { status: 'success', output: result.output, data: result.data }
+        })
+        successCount++
+
+        // 保存检查点
+        if (agentConfig.enableCheckpoint && i < ordered.length - 1) {
+          saveCheckpoint({
+            id: 'ckpt_' + Date.now(),
+            completedNodeIds: ordered.slice(0, i + 1).map(n => n.id),
+            currentIndex: i + 1,
+            envSnapshot: {},
+            createdAt: Date.now()
+          })
+        }
       } catch (e: any) {
         const errMsg = e.message || String(e)
         setNodeResult(node.id, 'error', '', errMsg)
         addWorkflowLog(`  ✗ ${node.label} 失败: ${errMsg}`)
+        eventBus.emit('creator:workflow:nodeExecutionCompleted', {
+          nodeId: node.id, label: node.label,
+          result: { status: 'error', output: '', error: errMsg }
+        })
+        errorCount++
+
+        // 失败时保留检查点（已完成节点），方便重试
+        if (i > 0) {
+          saveCheckpoint({
+            id: 'ckpt_' + Date.now(),
+            completedNodeIds: ordered.slice(0, i).map(n => n.id),
+            currentIndex: i,
+            envSnapshot: {},
+            createdAt: Date.now()
+          })
+        }
       }
     }
 
+    // 全部执行完毕，清除检查点
+    clearCheckpoint()
     isWorkflowRunning.value = false
     addWorkflowLog('工作流执行完毕')
+    eventBus.emit('creator:workflow:executionCompleted', { successCount, errorCount })
+  }
+
+  /**
+   * 单独重试一个失败的节点
+   */
+  async function retryNode(nodeId: string) {
+    const node = workflowNodes.value.find(n => n.id === nodeId)
+    if (!node || !node.config.result || node.config.result.status !== 'error') return
+
+    const upstreamResults = getUpstreamResults(nodeId)
+    setNodeResult(nodeId, 'running', '重试中...')
+    addWorkflowLog(`重试节点: ${node.label}`)
+    eventBus.emit('creator:workflow:nodeExecutionStarted', { nodeId: node.id, label: node.label })
+
+    try {
+      const result = await executeNodeCore(node, upstreamResults)
+      setNodeResult(nodeId, 'success', result.output, undefined, result.data)
+      addWorkflowLog(`  ✓ ${node.label} 重试成功`)
+      eventBus.emit('creator:workflow:nodeExecutionCompleted', {
+        nodeId: node.id, label: node.label,
+        result: { status: 'success', output: result.output, data: result.data }
+      })
+    } catch (e: any) {
+      const errMsg = e.message || String(e)
+      setNodeResult(nodeId, 'error', '', errMsg)
+      addWorkflowLog(`  ✗ ${node.label} 重试失败: ${errMsg}`)
+      eventBus.emit('creator:workflow:nodeExecutionCompleted', {
+        nodeId: node.id, label: node.label,
+        result: { status: 'error', output: '', error: errMsg }
+      })
+    }
+  }
+
+  /** 从检查点恢复执行 */
+  async function resumeWorkflow() {
+    await executeWorkflow(true)
+  }
+
+  /** 核心节点执行函数（独立于 agent 重试逻辑） */
+  async function executeNodeCore(
+    node: WorkflowNode,
+    upstreamResults: NodeExecResult[]
+  ): Promise<{ output: string; data?: any }> {
+    return executeNode(node, upstreamResults)
   }
 
   async function executeNode(
@@ -876,17 +1031,21 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
           else if (r.output) context += `\n${r.output}`
         }
 
-        // 动态导入 DeepSeek 服务和 chat store
-        const { sendChatMessage } = await import('@/services/deepseek')
-        const { useChatStore } = await import('@/stores/chat')
-        const chatStore = useChatStore()
+        const fullPrompt = context
+          ? `基于以下内容，${prompt}\n\n内容：\n${context}`
+          : prompt
+
+        // 动态导入 DeepSeek 服务
+        const deepseek = await import('@/services/deepseek')
+
+        // 获取模型配置
+        const chatStore = (await import('@/stores/chat')).useChatStore()
         const modelKey = cfg.modelId || 'deepseek-default'
-         let model: any = chatStore.models.find(m => m.id === modelKey)
+        let model: any = chatStore.models.find(m => m.id === modelKey)
         if (!model) {
           model = chatStore.currentModel
         }
         if (!model) {
-          // fallback: 使用默认的 deepseek-v4-pro
           model = {
             id: 'deepseek-default',
             name: 'DeepSeek V4 Pro',
@@ -899,11 +1058,28 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
           }
         }
 
-        const fullPrompt = context
-          ? `基于以下内容，${prompt}\n\n内容：\n${context}`
-          : prompt
+        // Agent 模式判断
+        const agentCfg = getAgentConfig(node)
+        if (agentCfg.mode === 'interactive' || agentCfg.mode === 'review') {
+          // 使用 Agent 对话循环
+          const result = await agentDialogueLoop(
+            fullPrompt,
+            { upstreamResults, env: {} },
+            createReviewPause(node.id, node.label, agentCfg.maxTurns),
+            async (promptText, _ctx) => {
+              const response = await deepseek.sendChatMessage(model, [
+                { id: 'temp', role: 'user', content: promptText, deepThinking: false, reasoningContent: '', timestamp: '', followUpTo: null, followUpIds: [], isFavorited: false, isStreaming: false }
+              ])
+              return response
+            },
+            agentCfg.maxTurns
+          )
+          if (result.status === 'error') throw new Error(result.error)
+          return { output: result.output, data: { prompt: fullPrompt, aiResponse: result.output, agentTurns: result.turns } }
+        }
 
-        const response = await sendChatMessage(model, [
+        // 自动模式：直接生成
+        const response = await deepseek.sendChatMessage(model, [
           { id: 'temp', role: 'user', content: fullPrompt, deepThinking: false, reasoningContent: '', timestamp: '', followUpTo: null, followUpIds: [], isFavorited: false, isStreaming: false }
         ])
         return { output: response, data: { prompt: fullPrompt, aiResponse: response } }
@@ -1059,7 +1235,15 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
 
   function stopWorkflow() {
     isWorkflowRunning.value = false
+    // 取消所有正在等待 Agent 审核的节点
+    for (const node of workflowNodes.value) {
+      if (node.config.result?.status === 'running') {
+        cancelAgentReview(node.id)
+        setNodeResult(node.id, 'error', '', '工作流已被用户中止')
+      }
+    }
     addWorkflowLog('工作流已被用户中止')
+    eventBus.emit('creator:workflow:executionStopped', {})
   }
 
   // ===== 视频文件夹导航（对齐基础模式 FolderPath 结构） =====
@@ -1308,6 +1492,8 @@ export const useCreatorModeStore = defineStore('creatorMode', () => {
     getTopologicalOrder, getUpstreamResults,
     isWorkflowRunning, workflowLogs,
     executeWorkflow, executeNode, stopWorkflow,
+    // Agent 功能
+    retryNode, resumeWorkflow, executeNodeCore,
     canvasOffset, canvasScale,
     setCanvasOffset, setCanvasScale,
 

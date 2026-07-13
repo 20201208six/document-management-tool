@@ -27,6 +27,13 @@
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="用途" width="80">
+        <template #default="{ row }">
+          <el-tag size="small" :type="row.type === 'analysis' ? 'warning' : ''">
+            {{ row.type === 'analysis' ? '分析' : '对话' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="API Key" width="150">
         <template #default="{ row }">
           <span v-if="row.apiKey" style="color:#67c23a;font-size:12px">已设置</span>
@@ -118,6 +125,15 @@
             <el-switch v-model="newModelForm.supportDeepThinking" />
             <span class="form-tip">是否支持深度思考模式</span>
           </el-form-item>
+          <el-form-item label="模型用途">
+            <el-radio-group v-model="newModelForm.type">
+              <el-radio value="chat">对话</el-radio>
+              <el-radio value="analysis">分析</el-radio>
+            </el-radio-group>
+            <div class="form-tip" style="margin-top:4px">
+              对话：高温度、创意生成；分析：低温度、结构化输出
+            </div>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="handleAddModel">确认添加</el-button>
           </el-form-item>
@@ -142,6 +158,12 @@
         </el-form-item>
         <el-form-item label="深度思考">
           <el-switch v-model="editingModel.supportDeepThinking" />
+        </el-form-item>
+        <el-form-item label="模型用途">
+          <el-radio-group v-model="editingModel.type">
+            <el-radio value="chat">对话</el-radio>
+            <el-radio value="analysis">分析</el-radio>
+          </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -176,6 +198,14 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <!-- 数据画布 Tab -->
+      <el-tab-pane label="数据画布" name="datagraph">
+        <div class="datagraph-section">
+          <p class="section-desc">管理不同数据之间的关联关系。默认隔离，连线后数据互通。</p>
+          <DataGraphCanvas />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </el-dialog>
 </template>
@@ -184,8 +214,9 @@
 import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
-import type { AIModel } from '@/types/chat'
+import type { AIModel, ModelType } from '@/types/chat'
 import { buildModelRequestBody } from '@/services/deepseek'
+import DataGraphCanvas from '@/components/DataGraphCanvas.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -302,7 +333,8 @@ const newModelForm = reactive({
   apiUrl: '',
   apiKey: '',
   modelParam: '',
-  supportDeepThinking: false
+  supportDeepThinking: false,
+  type: 'chat' as ModelType
 })
 
 function handleAddModel() {
@@ -331,7 +363,8 @@ function handleAddModel() {
     apiUrl: newModelForm.apiUrl.trim(),
     apiKey: newModelForm.apiKey.trim(),
     modelParam: newModelForm.modelParam.trim() || newModelForm.name.trim(),
-    supportDeepThinking: newModelForm.supportDeepThinking
+    supportDeepThinking: newModelForm.supportDeepThinking,
+    type: newModelForm.type
   })
 
   ElMessage.success('模型添加成功')
@@ -343,6 +376,7 @@ function handleAddModel() {
   newModelForm.apiKey = ''
   newModelForm.modelParam = ''
   newModelForm.supportDeepThinking = false
+  newModelForm.type = 'chat'
 }
 
 function handleRemove(model: AIModel) {
@@ -505,5 +539,14 @@ async function testAsrConfig() {
   background: #fef0f0;
   color: #f56c6c;
   border: 1px solid #fde2e2;
+}
+
+/* 数据画布 */
+.datagraph-section {
+  height: 520px;
+}
+.datagraph-section :deep(.graph-canvas) {
+  height: 480px;
+  min-height: 480px;
 }
 </style>

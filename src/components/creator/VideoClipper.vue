@@ -14,9 +14,14 @@
           <el-icon><Management /></el-icon> 字幕管理
         </el-button>
         <el-divider direction="vertical" />
-        <el-input v-model="searchInput" size="small" placeholder="搜索字幕/片段..." style="width:180px" clearable @input="onSearch" @clear="store.setSearchQuery('')">
+        <el-input v-model="searchInput" size="small" placeholder="搜索字幕/片段..." style="width:180px" clearable @input="onSearch" @clear="store.setSearchQuery(''); vectorIndex.lastSearchResults = []">
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
+        <el-tooltip content="语义搜索：基于含义匹配，速度较慢但更准确" placement="bottom">
+          <el-button size="small" :type="semanticMode ? 'primary' : ''" circle @click="toggleSemanticMode" :loading="vectorIndex.isBuilding">
+            <el-icon><MagicStick /></el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
       <div class="toolbar-right">
         <span class="clip-count">片段: {{ store.clips.length }} | 轨道: {{ store.timeline.clips.length }} | 总长: {{ store.formatTime(store.timelineTotalDuration) }}</span>
@@ -348,11 +353,15 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useCreatorModeStore, type VideoClip } from '@/stores/creatorMode'
+import { useVectorIndexStore } from '@/stores/vectorIndex'
 import { exportJianyingProject, buildProject, openJianying } from '@/services/jianying'
 import type { SubtitleSegment } from '@/services/asr'
+import { useEventBus } from '@/services/eventBus'
 import VideoFolderBrowser from '@/components/creator/VideoFolderBrowser.vue'
 
 const store = useCreatorModeStore()
+const vectorIndex = useVectorIndexStore()
+const { on, emit } = useEventBus()
 
 // ===== 侧边栏拖拽调整大小 =====
 const sidebarWidth = ref(240)
@@ -729,6 +738,57 @@ function batchClip() {
 // ===== 搜索 =====
 const searchInput = ref('')
 const storageInput = ref(store.storagePath)
+const semanticMode = ref(false)
+let semanticTimer: ReturnType<typeof setTimeout> | null = null
+
+function toggleSemanticMode() {
+  semanticMode.value = !semanticMode.value
+  if (semanticMode.value) {
+    // 开启语义模式时预构建向量索引
+    buildVectorIndexIfNeeded()
+    ElMessage.info('已开启语义搜索，搜索将基于含义匹配')
+  } else {
+    ElMessage.info('已切换为关键词搜索')
+  }
+  // 如果有当前搜索词，重新搜索
+  if (searchInput.value.trim()) {
+    onSearch(searchInput.value)
+  }
+}
+
+/** 构建向量索引（如果未构建） */
+async function buildVectorIndexIfNeeded() {
+  if (vectorIndex.totalEntryCount > 0) return
+  // 收集所有已识别字幕
+  const allSubs: Array<{
+    videoId: string; videoName: string; text: string; startTime: number; endTime: number
+  }> = []
+  for (const video of store.importedVideos) {
+    if (video.asrStatus === 'done' && video.subtitles.length > 0) {
+      for (const sub of video.subtitles) {
+        allSubs.push({
+          videoId: video.id,
+          videoName: video.name,
+          text: sub.text,
+          startTime: sub.startTime,
+          endTime: sub.endTime
+        })
+      }
+    }
+  }
+  if (allSubs.length > 0) {
+    await vectorIndex.buildFromSubtitles(allSubs)
+    if (vectorIndex.embeddedCount > 0) {
+      ElMessage.success(`向量索引已就绪: ${vectorIndex.embeddedCount} 条`)
+    }
+  }
+}
+
+/** 语义搜索（防抖） */
+async function doSemanticSearch(query: string) {
+  if (vectorIndex.isBuilding) return
+  await vectorIndex.semanticSearch(query, 20)
+}
 
 // ===== 字幕多选 =====
 const selectedSubIndices = ref(new Set<number>())
@@ -748,6 +808,51 @@ onMounted(() => {
   document.addEventListener('keydown', onGlobalKeydown)
   // 初始化可用字幕条计数
   store.scanSubtitleCacheCount()
+  
+  // ===== 事件驱动框架示例：监听跨组件事件 =====
+  
+  // ASR 完成后自动切换到字幕 Tab
+  on('creator:asr:completed', () => {
+    rightTab.value = 'subtitles'
+  })
+  
+  // ASR 开始处理时提示
+  on('creator:asr:started', ({ videoName }) => {
+    ElMessage.info(`正在对「${videoName}」进行语音识别...`)
+  })
+  
+  // ASR 处理失败
+  on('creator:asr:error', ({ error }) => {
+    ElMessage.error(`语音识别失败: ${error}`)
+  })
+
+  // 视频导入后自动构建向量索引（异步，不阻塞 UI）
+  on('creator:video:imported', () => {
+    if (semanticMode.value) {
+      buildVectorIndexIfNeeded()
+    }
+  })
+
+  // ASR 完成后增量更新向量索引
+  on('creator:asr:completed', ({ videoId }) => {
+    if (semanticMode.value) {
+      const video = store.importedVideos.find(v => v.id === videoId)
+      if (video && video.subtitles.length > 0) {
+        const subs = video.subtitles.map((sub, i) => ({
+          videoId: video.id,
+          videoName: video.name,
+          text: sub.text,
+          startTime: sub.startTime,
+          endTime: sub.endTime
+        }))
+        vectorIndex.buildFromSubtitles(subs).then(() => {
+          if (vectorIndex.embeddedCount > 0) {
+            ElMessage.success(`语义索引已更新: ${vectorIndex.embeddedCount} 条`)
+          }
+        })
+      }
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -908,9 +1013,31 @@ function batchDeleteOneClip(clipId: string) {
 
 function onSearch(val: string) {
   store.setSearchQuery(val)
+  if (semanticMode.value && val.trim()) {
+    // 防抖语义搜索
+    if (semanticTimer) clearTimeout(semanticTimer)
+    semanticTimer = setTimeout(() => doSemanticSearch(val), 300)
+  }
 }
 
 const displaySubtitles = computed(() => {
+  // 语义模式：使用语义搜索结果
+  if (semanticMode.value && vectorIndex.lastSearchResults.length > 0) {
+    return vectorIndex.lastSearchResults
+      .filter(r => r.entry.sourceType === 'subtitle')
+      .map(r => ({
+        videoId: r.entry.videoId,
+        videoName: r.entry.videoName,
+        segment: {
+          id: r.entry.id,
+          text: r.entry.text,
+          startTime: r.entry.startTime || 0,
+          endTime: r.entry.endTime || 0,
+          words: []
+        } as SubtitleSegment
+      }))
+  }
+  // 关键词模式：使用 store 的搜索
   if (store.searchQuery) return store.searchedSubtitles
   if (!store.activeVideo) return []
   return store.activeVideo.subtitles.map(s => ({
@@ -921,6 +1048,15 @@ const displaySubtitles = computed(() => {
 })
 
 const displayClips = computed(() => {
+  // 语义模式：使用语义搜索结果
+  if (semanticMode.value && vectorIndex.lastSearchResults.length > 0) {
+    const clipResults = vectorIndex.lastSearchResults
+      .filter(r => r.entry.sourceType === 'clip')
+    if (clipResults.length > 0) {
+      return clipResults.map(r => store.clips.find(c => c.id === r.entry.clipId)).filter(Boolean) as VideoClip[]
+    }
+  }
+  // 关键词模式
   if (store.searchQuery) return store.searchedClips
   return store.clips
 })
@@ -1468,6 +1604,7 @@ async function startExport() {
   exportStep.value = 'progress'
   exportStatus.value = 'generating'
   exportMessage.value = '正在生成剪映工程文件...'
+  emit('creator:export:started', { projectName: name })
 
   try {
     const timelineClips = store.getTimelineClips()

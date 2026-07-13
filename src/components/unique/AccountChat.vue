@@ -431,28 +431,12 @@ function buildContext(): string {
   return parts.join("\n");
 }
 
-/** 用受众画像构建系统提示上下文 */
+/** 用创作者信息构建系统提示上下文 */
 function buildProfileContext(): string {
-  const ap = store.audienceProfile;
-  if (!ap) return "";
-  const parts: string[] = ["\n【账号受众画像】"];
-  parts.push(`赛道：${ap.niche}`);
-  parts.push(`核心受众：${ap.targetAudience}`);
-  if (ap.coreConfusions.length > 0) {
-    parts.push(
-      `受众核心困惑：${ap.coreConfusions.map((c, i) => `${i + 1}. ${c}`).join("；")}`,
-    );
-  }
-  if (ap.resonancePatterns) parts.push(`共鸣触发模式：${ap.resonancePatterns}`);
-  if (ap.trustBuilders) parts.push(`信任建立方式：${ap.trustBuilders}`);
-  if (ap.summary) parts.push(`画像摘要：${ap.summary}`);
-  if (ap.dimensionWeightHints?.length) {
-    const hints = ap.dimensionWeightHints
-      .map((h) => `${h.dimension}(${h.direction}) $\"{h.reason}\"`)
-      .join("；");
-    parts.push(`维度重要度建议：${hints}`);
-  }
-  return parts.join("\n");
+  const cp = store.creatorProfile;
+  if (!cp) return "";
+  const genderText = cp.gender === 'male' ? '男' : cp.gender === 'female' ? '女' : '';
+  return `\n【创作者信息】\n赛道：${cp.track}\n年龄：${cp.teacherAge}岁${genderText ? '\n性别：' + genderText : ''}`;
 }
 
 /** 预测复盘数据上下文（帮助AI评估自身建议的可信度） */

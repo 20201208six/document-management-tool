@@ -930,6 +930,10 @@ async function handlePredict() {
     ElMessage.warning("请输入待预估的文稿");
     return;
   }
+  if (!store.creatorProfile) {
+    store.showAccountSetup = true;
+    return;
+  }
   if (store.scriptRecords.length === 0) {
     ElMessage.warning("请先在「录入数据」中添加历史样本");
     return;
@@ -938,6 +942,7 @@ async function handlePredict() {
     viewingHistoryId.value = null; // 新预测清除历史查看
     await store.predictLikes(predContent.value.trim(), predPlatform.value);
   } catch (e: any) {
+    if (e.message === 'CREATOR_NOT_CONFIGURED') return
     ElMessage.error("预测失败: " + (e.message || "未知错误"));
   }
 }

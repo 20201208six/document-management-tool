@@ -38,28 +38,10 @@
       💡 {{ suggestions[0] }}
     </div>
 
-    <!-- 受众画像摘要（画像影响预测校准） -->
-    <div
-      class="pd-audience-bar"
-      :class="{ 'pd-audience-missing': audienceSummary.isMissing }"
-      @click="audienceSummary.isMissing && $emit('openAccountSettings')"
-      :style="audienceSummary.isMissing ? 'cursor: pointer;' : ''"
-    >
-      <span class="pd-audience-icon">{{
-        audienceSummary.isMissing ? "⚡" : "👥"
-      }}</span>
-      <span class="pd-audience-text" :title="audienceSummary.tooltip">{{
-        audienceSummary.text
-      }}</span>
-      <span
-        class="pd-audience-stale"
-        v-if="audienceSummary.isStale"
-        title="画像生成后样本库增加了 {{ audienceSummary.newSampleCount }} 条新数据，画像可能已过时"
-        >⚠️ 画像可能过时</span
-      >
-      <span class="pd-audience-action" v-if="audienceSummary.isMissing"
-        >去配置 →</span
-      >
+    <!-- 创作者信息摘要 -->
+    <div class="pd-audience-bar" v-if="creatorInfo">
+      <span class="pd-audience-icon">�</span>
+      <span class="pd-audience-text">{{ creatorInfo }}</span>
     </div>
 
     <!-- 图表区：7维雷达图 + 概率分布 + 评分-点赞回归散点 -->
@@ -215,6 +197,78 @@
             </div>
           </div>
         </el-collapse-item>
+
+        <!-- 五层评测详情 -->
+        <el-collapse-item name="evaluation" v-if="evaluation">
+          <template #title>
+            <div class="pd-panel-header">
+              <span class="pd-panel-icon">📊</span> 五层评测详情
+            </div>
+          </template>
+          <div class="pd-eval-detail">
+            <!-- 结构链 -->
+            <div class="pd-eval-layer">
+              <div class="pd-eval-layer-title">🏗️ 结构链 · 贯穿基因</div>
+              <div class="pd-eval-node-row" v-for="node in structNodes" :key="node.label">
+                <span class="pd-eval-node-label">{{ node.label }}</span>
+                <span class="pd-eval-node-score">{{ node.score }}分</span>
+                <span class="pd-eval-gene-tags">
+                  <span class="pd-eval-gene" :class="{ active: node.contrast }">反差</span>
+                  <span class="pd-eval-gene" :class="{ active: node.cognition }">破认知</span>
+                  <span class="pd-eval-gene" :class="{ active: node.resonance }">高共鸣</span>
+                </span>
+                <span class="pd-eval-node-reason">{{ node.reason }}</span>
+              </div>
+            </div>
+            <!-- 人设锚定 -->
+            <div class="pd-eval-layer" v-if="evaluation.persona">
+              <div class="pd-eval-layer-title">👤 人设锚定</div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">年龄匹配</span>
+                <span class="pd-eval-node-score">{{ evaluation.persona.ageMatch }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.persona.ageFeedback }}</span>
+              </div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">赛道信任</span>
+                <span class="pd-eval-node-score">{{ evaluation.persona.trackTrust }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.persona.trackTrustFeedback }}</span>
+              </div>
+            </div>
+            <!-- 结果价值 -->
+            <div class="pd-eval-layer" v-if="evaluation.value">
+              <div class="pd-eval-layer-title">💡 结果价值</div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">实用性</span>
+                <span class="pd-eval-node-score">{{ evaluation.value.practicality }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.value.practicalityFeedback }}</span>
+              </div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">收获感</span>
+                <span class="pd-eval-node-score">{{ evaluation.value.gain }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.value.gainFeedback }}</span>
+              </div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">易执行</span>
+                <span class="pd-eval-node-score">{{ evaluation.value.easyExecute }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.value.easyExecuteFeedback }}</span>
+              </div>
+            </div>
+            <!-- 转化效果 -->
+            <div class="pd-eval-layer" v-if="evaluation.conversion">
+              <div class="pd-eval-layer-title">🚀 转化效果</div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">吸引力（这次想看）</span>
+                <span class="pd-eval-node-score">{{ evaluation.conversion.attractiveness }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.conversion.attractivenessFeedback }}</span>
+              </div>
+              <div class="pd-eval-node-row">
+                <span class="pd-eval-node-label">信任度（下次还看）</span>
+                <span class="pd-eval-node-score">{{ evaluation.conversion.trust }}分</span>
+                <span class="pd-eval-node-reason">{{ evaluation.conversion.trustFeedback }}</span>
+              </div>
+            </div>
+          </div>
+        </el-collapse-item>
       </el-collapse>
     </div>
   </div>
@@ -274,30 +328,11 @@ defineEmits<{ openAccountSettings: [] }>();
 
 const activePanels = ref<string[]>([]);
 
-// 受众画像摘要 + 过期检测 + 无画像引导
-const audienceSummary = computed(() => {
-  const ap = store.audienceProfile;
-  // 无画像时返回引导状态（非 null，保证模板渲染）
-  if (!ap) {
-    return {
-      text: "未配置受众画像 — 配置后预测更精准",
-      tooltip: "点击查看如何配置受众画像，帮助 AI 理解你的观众是谁",
-      isStale: false,
-      newSampleCount: 0,
-      isMissing: true as const,
-    };
-  }
-  const currentCount = store.scriptRecords.length;
-  const genCount = ap.generatedWithSampleCount ?? 0;
-  const newCount = Math.max(0, currentCount - genCount);
-  const isStale = newCount >= 5;
-  return {
-    text: `赛道：${ap.niche} | 受众：${ap.targetAudience}`,
-    tooltip: `画像摘要：${ap.summary}\n生成时样本数：${genCount}，当前样本数：${currentCount}`,
-    isStale,
-    newSampleCount: newCount,
-    isMissing: false as const,
-  };
+// 创作者信息
+const creatorInfo = computed(() => {
+  const cp = store.creatorProfile;
+  if (!cp) return null;
+  return `赛道：${cp.track} | 年龄：${cp.teacherAge}岁`;
 });
 
 // 图表 refs
@@ -365,6 +400,22 @@ const weakestDimText = computed(() => {
   }));
   dims.sort((a, b) => a.score - b.score);
   return dims.length > 0 ? `${dims[0].label} ${dims[0].score}分` : "";
+});
+
+// 五层评测数据
+const evaluation = computed(() => props.prediction.evaluation || null);
+
+const structNodes = computed(() => {
+  if (!evaluation.value) return [];
+  const s = evaluation.value.structure;
+  return [
+    { label: '选题', score: s.topic.score, contrast: s.topic.contrast, cognition: s.topic.cognition, resonance: s.topic.resonance, reason: s.topic.feedback },
+    { label: '话题', score: s.angle.score, contrast: s.angle.contrast, cognition: s.angle.cognition, resonance: s.angle.resonance, reason: s.angle.feedback },
+    { label: '开头', score: s.opening.score, contrast: s.opening.contrast, cognition: s.opening.cognition, resonance: s.opening.resonance, reason: s.opening.feedback },
+    { label: '衔接', score: s.transition.score, contrast: s.transition.contrast, cognition: s.transition.cognition, resonance: s.transition.resonance, reason: s.transition.feedback },
+    { label: '内容', score: s.body.score, contrast: s.body.contrast, cognition: s.body.cognition, resonance: s.body.resonance, reason: s.body.feedback },
+    { label: '落地', score: s.landing.score, contrast: s.landing.contrast, cognition: s.landing.cognition, resonance: s.landing.resonance, reason: s.landing.feedback },
+  ];
 });
 
 const probHasData = computed(
@@ -1115,5 +1166,62 @@ onBeforeUnmount(() => {
   .pd-charts {
     grid-template-columns: 1fr;
   }
+}
+
+/* 五层评测详情 */
+.pd-eval-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pd-eval-layer {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+.pd-eval-layer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.pd-eval-node-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.pd-eval-node-label {
+  font-weight: 500;
+  color: #475569;
+  min-width: 90px;
+}
+.pd-eval-node-score {
+  font-weight: 600;
+  color: #6366f1;
+  min-width: 42px;
+}
+.pd-eval-node-reason {
+  color: #64748b;
+  flex: 1;
+}
+.pd-eval-gene-tags {
+  display: flex;
+  gap: 4px;
+}
+.pd-eval-gene {
+  font-size: 10px;
+  padding: 0px 5px;
+  border-radius: 3px;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+.pd-eval-gene.active {
+  background: #dbeafe;
+  color: #2563eb;
+  font-weight: 500;
 }
 </style>
