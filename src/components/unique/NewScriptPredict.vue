@@ -261,10 +261,7 @@
       <!-- /nsp-main -->
 
       <!-- ===== 右栏：AI 写稿 + 系统进化看板 + 预测历史 ===== -->
-      <div
-        class="nsp-sidebar"
-        v-if="store.evolutionMetrics || store.predictionHistory.length > 0"
-      >
+      <div class="nsp-sidebar">
         <!-- AI 写稿 -->
         <div class="nsp-side-gen">
           <div class="nsp-sg-toggle" @click="showSideGen = !showSideGen">
@@ -273,7 +270,7 @@
             <span class="nsp-sg-title">AI 写稿</span>
             <span class="nsp-sg-badge">免费</span>
           </div>
-          <div v-if="showSideGen" class="nsp-sg-panel">
+          <div v-show="showSideGen" class="nsp-sg-panel">
             <div class="nsp-sg-field">
               <label class="nsp-sg-label">话题输入</label>
               <textarea
@@ -839,20 +836,19 @@ function dimLabel(key: string): string {
   return config?.label || key;
 }
 
-/** 最弱维度 */
+/** 最弱逻辑层 */
 const weakestDim = computed(() => {
-  const scores = store.lastPrediction?.scores;
-  if (!scores) return "--";
-  let minKey = "";
-  let minVal = Infinity;
-  for (const d of SCORING_DIMENSION_CONFIG) {
-    const v = scores[d.key];
-    if (v < minVal) {
-      minVal = v;
-      minKey = d.label;
-    }
-  }
-  return `${minKey} (${minVal}分)`;
+  const fl = store.lastPrediction?.evaluation?.fiveLogic?.scores;
+  if (!fl) return "--";
+  const logicLayers = [
+    { label: '流量逻辑', score: fl.traffic },
+    { label: '平台逻辑', score: fl.platform },
+    { label: '用户逻辑', score: fl.user },
+    { label: '商业逻辑', score: fl.business },
+    { label: '传播逻辑', score: fl.spread },
+  ];
+  logicLayers.sort((a, b) => a.score - b.score);
+  return `${logicLayers[0].label} (${logicLayers[0].score}分)`;
 });
 
 /** 账号专属优化建议项 */
@@ -954,7 +950,7 @@ function handleClear() {
 }
 
 // ===== AI 写稿（侧边栏） =====
-const showSideGen = ref(false);
+const showSideGen = ref(true);
 const genTopic = ref("");
 const genPlatform = ref<Platform>("抖音");
 const genTargetLikes = ref<number | null>(null);
@@ -1257,13 +1253,16 @@ function scoreTagText(s: number): string {
   height: 100%;
   overflow: hidden;
   padding-bottom: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ===== 左右双栏布局 ===== */
 .nsp-layout {
   display: flex;
   gap: 14px;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 .nsp-main {
@@ -1273,6 +1272,7 @@ function scoreTagText(s: number): string {
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
 }
 .nsp-sidebar {
   width: 270px;
@@ -3203,7 +3203,7 @@ function scoreTagText(s: number): string {
   border-radius: 12px;
   border: 1px solid #eef2f6;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
+  /* overflow: hidden; */
   margin-bottom: 10px;
 }
 .nsp-sg-toggle {

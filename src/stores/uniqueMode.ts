@@ -173,6 +173,40 @@ export interface SnapshotEntry {
   customCriteria: Record<string, string>
 }
 
+/** 五逻辑报告层：将七维评分 + 五层评测映射为业务逻辑分值 */
+export interface FiveLogicScores {
+  /** 流量逻辑：当前人群是否爱看（话题引力+完播设计+防跳失） */
+  traffic: number
+  /** 平台逻辑：不同平台规则/违禁词/人群喜好的适配度 */
+  platform: number
+  /** 用户逻辑：用户认不认可、喜不喜欢、有没有感受 */
+  user: number
+  /** 商业逻辑：内容是否具有价值（获得感+稀缺性+行动力） */
+  business: number
+  /** 传播逻辑：赛道-开头-价值-时长-易懂-落脚，各节点传播势能 */
+  spread: number
+}
+
+export interface FiveLogicReport {
+  scores: FiveLogicScores
+  /** 平台合规检查结果 */
+  platformCheck: PlatformCompliance | null
+  /** 各逻辑层的详细分析（AI 输出） */
+  analysis: Record<string, string>
+}
+
+/** 平台合规检查结果 */
+export interface PlatformCompliance {
+  /** 是否包含违禁词/敏感词 */
+  hasViolation: boolean
+  /** 违禁词列表 */
+  violations: string[]
+  /** 平台风格匹配度（0-100） */
+  styleMatch: number
+  /** 平台优化建议 */
+  suggestions: string[]
+}
+
 /** 结构链节点评测 */
 export interface StructureNodeEval {
   score: number        // 0-100
@@ -234,6 +268,8 @@ export interface TextEvaluation {
   compositeScore: number
   /** 综合评述 */
   summary: string
+  /** 五逻辑报告层（七维+评测→业务逻辑映射） */
+  fiveLogic?: FiveLogicReport
 }
 
 /** 评分维度标签配置 */
@@ -389,6 +425,8 @@ export interface ScriptRecord {
   modelVersion?: string
   /** 内容拆解结果（录入时自动生成） */
   decomposition?: ContentDecomposition
+  /** 五逻辑报告层（七维+评测→业务逻辑映射，录入/重评时自动生成） */
+  fiveLogic?: FiveLogicReport
   /** @deprecated 评分已与画像解耦，不再追踪此标记 */
   scoredWithProfile?: boolean
   /** 五层完整评测结果 */
@@ -1850,12 +1888,79 @@ export const useUniqueModeStore = defineStore('uniqueMode', () => {
 
   function scriptsByPlatform(platform: Platform): ScriptRecord[] { return scriptRecords.value.filter(s => s.platform === platform) }
 
-  const sortedScripts = computed(() => [...scriptRecords.value].sort((a, b) => b.actualLikes - a.actualLikes))
+  // ---- 样本排序 ----
+  type SortField = 'date' | 'likes' | 'views' | 'score' | 'likeRate' | 'title'
+  type SortOrder = 'asc' | 'desc'
+  const sortField = ref<SortField>('date')
+  const sortOrder = ref<SortOrder>('desc')
+  const platformFilter = ref<Platform | null>(null)
+
+  function setSort(field: SortField) {
+    if (sortField.value === field) {
+      sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
+    } else {
+      sortField.value = field
+      sortOrder.value = 'desc'
+    }
+  }
+
+  function setPlatformFilter(p: Platform | null) {
+    platformFilter.value = platformFilter.value === p ? null : p
+  }
+
+  /** 每一步计数（供排序栏显示缺失提示） */
+  const sortDataCompleteness = computed(() => {
+    const total = scriptRecords.value.length
+    const withViews = scriptRecords.value.filter(r => r.views != null).length
+    const withScore = scriptRecords.value.filter(r => r.compositeScore > 0).length
+    return { total, withViews, withScore }
+  })
+
+  const sortedScripts = computed(() => {
+    const list = [...scriptRecords.value]
+    const field = sortField.value
+    const order = sortOrder.value
+
+    list.sort((a, b) => {
+      let va: number, vb: number
+      switch (field) {
+        case 'likes':
+          va = a.actualLikes; vb = b.actualLikes
+          break
+        case 'views':
+          va = a.views ?? -1; vb = b.views ?? -1
+          break
+        case 'score':
+          va = a.compositeScore; vb = b.compositeScore
+          break
+        case 'likeRate':
+          va = a.likeRate ?? (a.views ? a.actualLikes / a.views : -1)
+          vb = b.likeRate ?? (b.views ? b.actualLikes / b.views : -1)
+          break
+        case 'date':
+          va = new Date(a.updatedAt || a.createdAt).getTime()
+          vb = new Date(b.updatedAt || b.createdAt).getTime()
+          break
+        case 'title':
+          return order === 'desc'
+            ? b.content.localeCompare(a.content, 'zh')
+            : a.content.localeCompare(b.content, 'zh')
+      }
+      return order === 'desc' ? vb - va : va - vb
+    })
+    return list
+  })
+
+  /** 平台筛选后的排序列表 */
+  const platformFilteredScripts = computed(() => {
+    if (!platformFilter.value) return sortedScripts.value
+    return sortedScripts.value.filter(r => r.platform === platformFilter.value)
+  })
 
   /** 按各平台高赞阈值过滤后的样本（仅显示达标样本） */
   const thresholdFilteredScripts = computed(() => {
     const thresholds = highLikeThresholds.value
-    return sortedScripts.value.filter(r => r.actualLikes >= (thresholds[r.platform] ?? 500))
+    return platformFilteredScripts.value.filter(r => r.actualLikes >= (thresholds[r.platform] ?? 500))
   })
 
   const platformStats = computed(() => {
@@ -3225,6 +3330,7 @@ ${originalContent}
         record.scores = evaluation.contentQuality
         record.compositeScore = evaluation.compositeScore
         record.modelVersion = getCurrentModelId()
+        record.fiveLogic = evaluation.fiveLogic  // 五逻辑报告层
         record.analysis = evaluation.summary
         record.updatedAt = new Date().toLocaleString('zh-CN')
 
@@ -3271,6 +3377,7 @@ ${originalContent}
       record.scores = evaluation.contentQuality
       record.compositeScore = evaluation.compositeScore
       record.modelVersion = getCurrentModelId()
+      record.fiveLogic = evaluation.fiveLogic  // 五逻辑报告层
       record.analysis = evaluation.summary
       record.updatedAt = new Date().toLocaleString('zh-CN')
       saveScripts()
@@ -3289,15 +3396,10 @@ ${originalContent}
   /** 统一评测 prompt */
   const UNIFIED_EVALUATION_PROMPT = `你是短视频文案评估专家。请对以下文稿完成五层评测。每题1-5分（精确到0.5级），每题附一句话理由。
 
-## 第一层：结构链 + 贯穿基因
-
-请沿「选题→话题→开头→衔接→内容→落地」六个节点逐一评测，每个节点判断：
-- 得分（1-5）：该节点的质量
-- 是否有「反差」：打破受众预期
-- 是否有「破认知」：提供新的理解维度
-- 是否有「高共鸣」：击中情绪或身份认同
-
-## 第二层：七维内容质量
+⚠️ 传播链关注：在评测过程中，请特别关注以下传播逻辑节点——
+- 时长节奏：内容的密度和时长是否匹配？有没有废话段或"赶节奏"的感觉？
+- 易懂度：目标受众能不能轻松理解？有没有过高的认知门槛（专业术语/复杂逻辑）？
+- 落脚记忆：最后几句话有没有让人"记住"或"想转发"的力量？结尾是否白开水？
 
 ${SCORING_DIMENSION_CONFIG.map(d =>
     `【${d.label}】${d.desc}
@@ -3308,6 +3410,13 @@ ${SCORING_DIMENSION_CONFIG.map(d =>
   5 = ${d.rubric[4]}`
   ).join('\n')}
 
+## 第一层：结构链 + 贯穿基因
+
+请沿「选题→话题→开头→衔接→内容→落地」六个节点逐一评测，每个节点判断：
+- 得分（1-5）：该节点的质量
+- 是否有「反差」：打破受众预期
+- 是否有「破认知」：提供新的理解维度
+- 是否有「高共鸣」：击中情绪或身份认同
 ## 第三层：人设锚定
 - 年龄匹配度：这个年龄的人说这些话合适吗？措辞、阅历、表达方式是否符合
 - 赛道信任度：在这个赛道下，受众凭什么信你说的？是否有信任支撑
@@ -3464,6 +3573,104 @@ trust: 3 | 内容不错但对创作者的信任感没有建立起来
     return { score: 60, feedback: '' }
   }
 
+  /** 七维 + 五层评测 → 五逻辑报告映射（纯本地计算，不依赖 AI） */
+  function mapToFiveLogic(
+    scores: ScoringDimensions,
+    persona: PersonaEval,
+    value: ValueEval,
+    platformCheck: PlatformCompliance | null
+  ): FiveLogicReport {
+    // 各逻辑层权重配置
+    // 流量逻辑：话题引力+完播设计+防跳失 → hook + originality + structure
+    const traffic = Math.round(
+      scores.hook * 0.45 +
+      scores.originality * 0.30 +
+      scores.structure * 0.25
+    )
+
+    // 平台逻辑：合规检查+平台匹配+推荐友好 → polish + platformCheck
+    const platformBase = scores.polish * 0.5
+    const platformScore = platformCheck
+      ? Math.round(platformBase * 0.5 + platformCheck.styleMatch * 0.5)
+      : Math.round(platformBase)
+
+    // 用户逻辑：共鸣度+情绪张力+信任感 → empathy + socialResonance + trackTrust
+    const user = Math.round(
+      scores.empathy * 0.35 +
+      scores.socialResonance * 0.30 +
+      persona.trackTrust * 0.25 +
+      persona.ageMatch * 0.10
+    )
+
+    // 商业逻辑：获得感+稀缺性+行动力 → density + originality + value
+    const business = Math.round(
+      scores.density * 0.30 +
+      scores.originality * 0.25 +
+      value.practicality * 0.20 +
+      value.gain * 0.15 +
+      value.easyExecute * 0.10
+    )
+
+    // 传播逻辑：赛道卡位+开头+价值+时长+易懂+落脚 → hook + structure + polish + empathy + socialResonance
+    const spread = Math.round(
+      scores.hook * 0.25 +
+      scores.empathy * 0.20 +
+      scores.socialResonance * 0.20 +
+      scores.structure * 0.20 +
+      scores.polish * 0.15
+    )
+
+    // 构建各逻辑层的文字分析
+    const analysis: Record<string, string> = {
+      traffic: buildLogicAnalysis('流量逻辑', traffic, [
+        { label: '话题引力', score: scores.hook },
+        { label: '人设差异', score: scores.originality },
+        { label: '节奏掌控', score: scores.structure }
+      ]),
+      platform: buildLogicAnalysis('平台逻辑', platformScore, [
+        { label: '执行质量', score: scores.polish },
+        { label: '平台匹配', score: platformCheck?.styleMatch ?? 60 }
+      ]),
+      user: buildLogicAnalysis('用户逻辑', user, [
+        { label: '沉浸共鸣', score: scores.empathy },
+        { label: '传播共鸣', score: scores.socialResonance },
+        { label: '赛道信任', score: persona.trackTrust },
+        { label: '年龄匹配', score: persona.ageMatch }
+      ]),
+      business: buildLogicAnalysis('商业逻辑', business, [
+        { label: '干货密度', score: scores.density },
+        { label: '人设差异', score: scores.originality },
+        { label: '实用性', score: value.practicality },
+        { label: '收获感', score: value.gain }
+      ]),
+      spread: buildLogicAnalysis('传播逻辑', spread, [
+        { label: '开场钩子', score: scores.hook },
+        { label: '节奏掌控', score: scores.structure },
+        { label: '执行质量', score: scores.polish },
+        { label: '沉浸共鸣', score: scores.empathy },
+        { label: '传播共鸣', score: scores.socialResonance }
+      ])
+    }
+
+    return {
+      scores: { traffic, platform: platformScore, user, business, spread },
+      platformCheck,
+      analysis
+    }
+  }
+
+  /** 构建单个逻辑层的文字分析 */
+  function buildLogicAnalysis(
+    name: string,
+    totalScore: number,
+    dims: Array<{ label: string; score: number }>
+  ): string {
+    const parts = dims.map(d => `${d.label}: ${d.score}分`)
+    const avg = Math.round(dims.reduce((s, d) => s + d.score, 0) / dims.length)
+    const level = totalScore >= 80 ? '优秀' : totalScore >= 65 ? '良好' : totalScore >= 50 ? '一般' : '需提升'
+    return `${name}综合 ${totalScore} 分（${level}）| ${parts.join(' | ')}`
+  }
+
   /** 计算五层综合分 */
   function calcFullCompositeScore(
     contentQuality: ScoringDimensions,
@@ -3558,7 +3765,52 @@ trust: 3 | 内容不错但对创作者的信任感没有建立起来
     const rawText = await callAI(prompt, userContent, 0.15)
     const evaluation = parseEvaluation(rawText)
 
+    // 七维 + 五层评测 → 五逻辑报告映射（不依赖合规检查，先出基本报告）
+    const fiveLogic = mapToFiveLogic(evaluation.contentQuality, evaluation.persona, evaluation.value, null)
+    evaluation.fiveLogic = fiveLogic
+
+    // 后台补充平台合规检查（不阻塞，完成后更新 fiveLogic）
+    runPlatformComplianceCheck(record.content, record.platform).then(compliance => {
+      if (compliance) {
+        const updated = mapToFiveLogic(evaluation.contentQuality, evaluation.persona, evaluation.value, compliance)
+        evaluation.fiveLogic = updated
+      }
+    }).catch(() => {})
+
     return evaluation
+  }
+
+  /** 平台合规检查：违禁词扫描 + 平台风格匹配 */
+  async function runPlatformComplianceCheck(content: string, platform: Platform): Promise<PlatformCompliance | null> {
+    try {
+      const prompt = `你是短视频平台内容审核助手。请对以下文稿的【${platform}】平台合规性进行检查。
+
+输出纯JSON（不要markdown包裹）：
+{
+  "hasViolation": true或false,
+  "violations": ["违禁词或敏感表述（如果无则空数组）"],
+  "styleMatch": 0-100的整数（该文稿风格与${platform}平台主流风格的匹配度）,
+  "suggestions": ["平台优化建议1", "建议2"]
+}
+
+平台风格参考：
+${PLATFORM_SCORING_GUIDE[platform]}
+
+请简洁判断，不要过度敏感。`
+
+      const raw = await callAI('', prompt + '\n\n文稿内容：\n' + content, 0.05)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) return null
+      const parsed = JSON.parse(jsonMatch[0])
+      return {
+        hasViolation: !!parsed.hasViolation,
+        violations: Array.isArray(parsed.violations) ? parsed.violations : [],
+        styleMatch: typeof parsed.styleMatch === 'number' ? Math.max(0, Math.min(100, parsed.styleMatch)) : 70,
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3) : []
+      }
+    } catch {
+      return null // 合规检查失败不阻塞评测
+    }
   }
 
   /** 清理分析文本（兼容旧格式） */
@@ -3874,9 +4126,9 @@ ${calibrationNote}
 
 ## 概率分布（各桶概率加起来必须 = 100%）
 ${bucketStr}
-格式:
-<${buckets[0]?.label || '1k'}: X%
-...
+格式（每行一个桶，主预测桶用 **粗体**）：
+${buckets[0]?.label || '1k'}: X%
+${buckets.length > 1 ? buckets.slice(1).map(b => b.label + ': X%').join('\n') : ''}
 主预测桶标注 **粗体**
 
 ## 预测依据
@@ -3918,21 +4170,51 @@ ${bucketStr}
         else if (nums.length === 1) { minLikes = Math.round(nums[0] * 0.8); maxLikes = Math.round(nums[0] * 1.2) }
       }
 
-      // 解析概率分布
+      // 概率分布解析（健壮版，支持多种 AI 输出格式）
       const bucketProbs: BucketProb[] = []
+      // 1) 先尝试从概率分布 section 解析
       if (probSection) {
         const lines = probSection.split('\n').filter(l => /%/.test(l))
         for (const line of lines) {
-          const pctMatch = line.match(/(\d+)%/); const labelMatch = line.match(/^[*-]*\s*(.+?)[：:]/)
-          if (pctMatch && labelMatch) {
-            bucketProbs.push({
-              bucket: labelMatch[1].trim().replace(/\*\*/g, ''),
-              label: labelMatch[1].trim().replace(/\*\*/g, ''),
-              probability: parseInt(pctMatch[1], 10),
-              isHeadline: /\*\*/.test(line)
-            })
-          }
+          const pctMatch = line.match(/(\d+)%/)
+          if (!pctMatch) continue
+          // 提取桶名：兜底取整行，优先用 "桶名: xx%" 或 "桶名 xx%" 前缀
+          let label = line.replace(/^\s*[-*\s]*/, '')
+          const colonIdx = label.search(/[：:]/)
+          if (colonIdx >= 0) label = label.slice(0, colonIdx)
+          label = label.replace(/\*\*/g, '').replace(/^\s*<|>/g, '').trim()
+          if (!label) continue
+          bucketProbs.push({
+            bucket: label,
+            label,
+            probability: parseInt(pctMatch[1], 10),
+            isHeadline: /\*\*/.test(line)
+          })
         }
+      }
+
+      // 如果 AI 没输出概率分布，用模型数据兜底生成
+      if (bucketProbs.length === 0 && buckets.length > 0) {
+        const mid = (modelRange.low + modelRange.high) / 2
+        for (const b of buckets) {
+          bucketProbs.push({ bucket: b.label, label: b.label, probability: 0, isHeadline: false })
+        }
+        let maxRaw = 0, headlineIdx = 0
+        for (let i = 0; i < bucketProbs.length; i++) {
+          const midBucket = (buckets[i].min + buckets[i].max) / 2
+          const raw = Math.exp(-Math.pow((midBucket - mid) / Math.max(mid * 0.8, 1), 2) * 0.5)
+          if (raw > maxRaw) { maxRaw = raw; headlineIdx = i }
+          bucketProbs[i].probability = 0
+          ;(bucketProbs[i] as any)._raw = raw
+        }
+        const total = bucketProbs.reduce((s, b) => s + ((b as any)._raw as number), 0) || 1
+        for (const bp of bucketProbs) {
+          bp.probability = Math.round(((bp as any)._raw as number) / total * 100)
+          delete (bp as any)._raw
+        }
+        bucketProbs[headlineIdx].isHeadline = true
+        const diff = 100 - bucketProbs.reduce((s, b) => s + b.probability, 0)
+        if (diff !== 0) bucketProbs[headlineIdx].probability += diff
       }
 
       const result: PredictionResult = {
@@ -4445,7 +4727,7 @@ ${bestRefs ? '参考样本：\n' + bestRefs : ''}
     isAnalyzing,
 
     // 点赞预测
-    scriptRecords, sortedScripts, thresholdFilteredScripts, platformStats,
+    scriptRecords, sortedScripts, sortField, sortOrder, setSort, platformFilter, setPlatformFilter, sortDataCompleteness, platformFilteredScripts, thresholdFilteredScripts, platformStats,
     isAnalyzingScript, isPredicting, isSummarizing, isGeneratingFramework, isValidatingWeights, isGeneratingBump,
     patternSummary, writingFramework, lastPrediction, predictionHistory, customWeights, customCriteria,
     pendingReviewCount, deviationTrend,

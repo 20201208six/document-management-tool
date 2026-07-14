@@ -1,5 +1,6 @@
 <template>
   <div class="ac-root">
+    <div class="ac-main">
     <!-- 消息区域 -->
     <div class="ac-body" ref="bodyEl">
       <!-- 空状态 -->
@@ -50,6 +51,7 @@
         :key="i"
         class="ac-msg-row"
         :class="msg.role"
+        :data-msg-idx="i"
       >
         <div class="ac-msg-inner">
           <div class="ac-msg-avatar">
@@ -157,6 +159,29 @@
       </div>
     </div>
 
+    <!-- 对话导航面板 -->
+    <div v-if="navOpen && messages.length >= 2" class="ac-nav">
+      <div class="ac-nav-header">
+        <span>对话导航</span>
+        <button class="ac-nav-close" @click="navOpen = false">✕</button>
+      </div>
+      <div class="ac-nav-list">
+        <button
+          v-for="item in navItems"
+          :key="item.idx"
+          class="ac-nav-item"
+          :class="{ highlighted: hoveredNavIdx === item.idx }"
+          @click="scrollToMsg(item.qIdx)"
+          @mouseenter="hoveredNavIdx = item.idx"
+          @mouseleave="hoveredNavIdx = null"
+        >
+          <span class="ac-nav-num">{{ item.turn }}</span>
+          <span class="ac-nav-label">{{ item.label }}</span>
+        </button>
+      </div>
+    </div>
+    </div>
+
     <!-- 拆解提示 -->
     <div
       v-if="store.decomposeEnabledForChat && !store.lastDecomposition"
@@ -186,6 +211,14 @@
         >
           <span class="actb-icon">📐</span>
           <span class="actb-label">内容拆解</span>
+        </button>
+        <button
+          class="ac-toggle-btn"
+          :class="{ active: navOpen }"
+          @click="navOpen = !navOpen"
+        >
+          <span class="actb-icon">🗺</span>
+          <span class="actb-label">导航</span>
         </button>
       </div>
     </div>
@@ -226,7 +259,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick } from "vue";
+import { ref, watch, onMounted, nextTick, computed } from "vue";
 import { ElMessage } from "element-plus";
 import {
   useUniqueModeStore,
@@ -252,6 +285,40 @@ const messages = ref<ChatMsg[]>([]);
 const deepThinkingEnabled = ref(false);
 const streamingContent = ref("");
 const streamingReasoning = ref("");
+
+// 对话导航
+const navOpen = ref(false);
+const hoveredNavIdx = ref<number | null>(null);
+
+const navItems = computed(() => {
+  const items: { idx: number; turn: number; qIdx: number; aIdx: number; label: string }[] = [];
+  let turn = 0;
+  for (let i = 0; i < messages.value.length; i++) {
+    if (messages.value[i].role === "user") {
+      turn++;
+      const qText = messages.value[i].content.replace(/\n/g, " ").slice(0, 36);
+      const aIdx = i + 1 < messages.value.length && messages.value[i + 1].role === "assistant" ? i + 1 : -1;
+      items.push({
+        idx: i,
+        turn,
+        qIdx: i,
+        aIdx,
+        label: qText + (messages.value[i].content.length > 36 ? "…" : ""),
+      });
+    }
+  }
+  return items;
+});
+
+function scrollToMsg(idx: number) {
+  const el = document.querySelector(`[data-msg-idx="${idx}"]`);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Brief highlight pulse
+    el.classList.add("ac-msg-flash");
+    setTimeout(() => el.classList.remove("ac-msg-flash"), 1200);
+  }
+}
 
 const LOCAL_KEY = () => `um-chat-${store.currentAccountId}`;
 
@@ -613,6 +680,12 @@ function scrollBottom() {
   background: #fff;
   border-radius: 16px;
   overflow: hidden;
+}
+
+.ac-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ===== 消息区 ===== */
@@ -1140,6 +1213,77 @@ function scrollBottom() {
 }
 .ac-textarea:disabled {
   opacity: 0.5;
+}
+
+/* ===== 对话导航面板 ===== */
+.ac-nav {
+  width: 200px;
+  flex-shrink: 0;
+  border-left: 1px solid #eef2f6;
+  display: flex;
+  flex-direction: column;
+  background: #fafbfc;
+}
+.ac-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  border-bottom: 1px solid #eef2f6;
+  flex-shrink: 0;
+}
+.ac-nav-close {
+  width: 22px; height: 22px;
+  border-radius: 6px; border: none;
+  background: transparent; color: #94a3b8;
+  font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.ac-nav-close:hover { background: #e2e8f0; color: #475569; }
+.ac-nav-list {
+  flex: 1; overflow-y: auto;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ac-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 8px;
+  border: none; background: transparent;
+  cursor: pointer; text-align: left;
+  font-family: inherit; font-size: 12px;
+  color: #64748b; line-height: 1.4;
+  transition: all 0.12s;
+}
+.ac-nav-item:hover,
+.ac-nav-item.highlighted {
+  background: #eef3ff; color: #1a4cff;
+}
+.ac-nav-num {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #e8ecf2; color: #64748b;
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ac-nav-item:hover .ac-nav-num,
+.ac-nav-item.highlighted .ac-nav-num {
+  background: #1a4cff; color: #fff;
+}
+.ac-nav-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0;
+}
+
+/* 跳转高亮脉冲 */
+.ac-msg-row.ac-msg-flash {
+  animation: ac-flash 1.2s ease-out;
+}
+@keyframes ac-flash {
+  0%   { background: rgba(26,76,255,0.12); }
+  100% { background: transparent; }
 }
 
 .ac-send {

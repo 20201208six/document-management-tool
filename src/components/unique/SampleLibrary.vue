@@ -57,8 +57,40 @@
       <span class="sl-empty-hint">点击「录入数据」添加已发布的口播文稿及点赞量</span>
     </div>
 
+    <template v-else>
+    <!-- 排序工具栏（单行紧凑型） -->
+    <div class="sl-sort-bar">
+      <div class="sl-sort-chips">
+        <button
+          v-for="p in platformFilterOptions"
+          :key="p.key"
+          class="sl-sort-chip sl-chip-platform"
+          :class="{ active: store.platformFilter === p.key }"
+          :title="p.key === null ? `全部平台 (${p.count} 条)` : `${p.label} (${p.count} 条)`"
+          @click="store.setPlatformFilter(p.key as Platform | null)"
+        >
+          {{ p.key === null ? '全部' : p.icon }}<span class="sl-chip-n">{{ p.count }}</span>
+        </button>
+        <span class="sl-sort-dot"></span>
+        <button
+          v-for="opt in sortOptions"
+          :key="opt.key"
+          class="sl-sort-chip sl-chip-sort"
+          :class="{ active: store.sortField === opt.key }"
+          @click="store.setSort(opt.key)"
+          :title="dataHintFor(opt.key)"
+        >
+          {{ opt.label }}
+          <span v-if="store.sortField === opt.key" class="sl-sort-dir">
+            {{ store.sortOrder === 'desc' ? '▼' : '▲' }}
+          </span>
+        </button>
+      </div>
+      <span class="sl-sort-count">{{ displayScripts.length }} 条</span>
+    </div>
+
     <!-- 主从视图：卡片列表 + 详情面板 -->
-    <div v-else class="sl-layout">
+    <div class="sl-layout">
       <!-- 左侧：样本卡片列表 -->
       <div class="sl-cards">
         <div v-if="displayScripts.length === 0" class="sl-no-match" v-show="thresholdFilter">
@@ -120,18 +152,24 @@
             <div class="sld-content">{{ selectedRecord.content }}</div>
           </div>
 
-          <!-- 7维评分 -->
+          <!-- 五逻辑传播评分 -->
           <div class="sld-section">
-            <div class="sld-section-title">🎯 7 维评分</div>
-            <div class="sld-scores">
-              <div v-for="d in SCORING_DIMENSION_CONFIG" :key="d.key" class="sld-score-row">
+            <div class="sld-section-title">🎯 五逻辑传播评分</div>
+            <div v-if="selectedRecord.fiveLogic" class="sld-scores">
+              <div v-for="d in fiveLogicBars" :key="d.key" class="sld-score-row">
                 <span class="sld-score-label">{{ d.label }}</span>
                 <div class="sld-score-track">
-                  <div class="sld-score-bar" :style="{ width: (selectedRecord.scores[d.key] || 0) + '%', background: d.color }"></div>
+                  <div class="sld-score-bar" :style="{ width: (selectedRecord.fiveLogic!.scores[d.key] || 0) + '%', background: d.color }"></div>
                 </div>
-                <span class="sld-score-val">{{ selectedRecord.scores[d.key] || 0 }}</span>
-                <span class="sld-score-warn" v-if="store.scoringDisagreements.some(dd => dd.key === d.key)" :title="'AI 3轮: ' + store.scoringDisagreements.find((dd: any) => dd.key === d.key)!.runs.join('/')">⚠</span>
+                <span class="sld-score-val">{{ selectedRecord.fiveLogic!.scores[d.key] || 0 }}</span>
               </div>
+              <!-- 平台合规提示 -->
+              <div v-if="selectedRecord.fiveLogic?.platformCheck?.hasViolation" class="sld-compliance-warn">
+                ⚠️ 检测到违禁风险: {{ selectedRecord.fiveLogic.platformCheck.violations.join('、') }}
+              </div>
+            </div>
+            <div v-else class="sld-content" style="color: #94a3b8; padding: 8px;">
+              该文稿尚未生成五逻辑报告（旧数据需重新评分）
             </div>
           </div>
 
@@ -187,13 +225,14 @@
         </div>
       </div>
     </div>
+  </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { useUniqueModeStore, PLATFORM_CONFIG, SCORING_DIMENSION_CONFIG, type ScriptRecord, type Platform } from '@/stores/uniqueMode'
+import { useUniqueModeStore, PLATFORM_CONFIG, type ScriptRecord, type Platform } from '@/stores/uniqueMode'
 
 defineEmits<{
   (e: 'export-json'): void
@@ -205,8 +244,46 @@ const store = useUniqueModeStore()
 const selectedId = ref<string | null>(null)
 const thresholdFilter = ref(false)
 
+// 排序选项
+const sortOptions = [
+  { key: 'date' as const, label: '时间' },
+  { key: 'likes' as const, label: '点赞' },
+  { key: 'views' as const, label: '播放', hint: `${store.sortDataCompleteness.withViews}/${store.sortDataCompleteness.total} 有数据` },
+  { key: 'score' as const, label: '评分', hint: `${store.sortDataCompleteness.withScore}/${store.sortDataCompleteness.total} 已评分` },
+  { key: 'likeRate' as const, label: '赞播比', hint: `${store.sortDataCompleteness.withViews}/${store.sortDataCompleteness.total} 有播量` },
+  { key: 'title' as const, label: '标题' },
+]
+
+// 平台筛选选项
+const platformFilterOptions = computed(() => [
+  { key: null, icon: '', label: '全部', count: store.scriptRecords.length },
+  ...(Object.keys(PLATFORM_CONFIG) as Platform[]).map(p => ({
+    key: p,
+    icon: PLATFORM_CONFIG[p].icon,
+    label: PLATFORM_CONFIG[p].label,
+    count: store.scriptRecords.filter(r => r.platform === p).length
+  }))
+])
+
+function dataHintFor(key: string): string {
+  const c = store.sortDataCompleteness
+  if (key === 'views' && c.withViews < c.total) return `${c.total - c.withViews} 条未填播放量，排在末尾`
+  if (key === 'likeRate' && c.withViews < c.total) return `${c.total - c.withViews} 条未填播放量，赞播比为估算`
+  if (key === 'score' && c.withScore < c.total) return `${c.total - c.withScore} 条未评分，排在末尾`
+  return ''
+}
+
+// 五逻辑条配置
+const fiveLogicBars = [
+  { key: 'traffic' as const, label: '流量逻辑', color: '#f56c6c' },
+  { key: 'platform' as const, label: '平台逻辑', color: '#e6a23c' },
+  { key: 'user' as const, label: '用户逻辑', color: '#67c23a' },
+  { key: 'business' as const, label: '商业逻辑', color: '#409eff' },
+  { key: 'spread' as const, label: '传播逻辑', color: '#9b59b6' },
+]
+
 const displayScripts = computed(() =>
-  thresholdFilter.value ? store.thresholdFilteredScripts : store.sortedScripts
+  thresholdFilter.value ? store.thresholdFilteredScripts : store.platformFilteredScripts
 )
 
 function meetsThreshold(r: ScriptRecord): boolean {
@@ -431,6 +508,38 @@ async function handleDelete(id: string) {
 .sl-filter-toggle.on .slft-switch::after { transform: translateX(12px); }
 .slft-label { font-weight: 500; }
 .slft-count { color: #1a4cff; font-weight: 600; }
+
+/* 排序工具栏 */
+.sl-sort-bar {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 4px 0; margin-bottom: 8px;
+}
+.sl-sort-chips { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.sl-sort-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
+  border: 1px solid #e8ecf1; background: #fff; color: #5a6b80;
+  cursor: pointer; font-family: inherit; transition: all 0.15s; white-space: nowrap;
+}
+.sl-sort-chip:hover { border-color: #a0b0cc; color: #2c3e50; }
+.sl-sort-chip.active { background: #1a4cff; color: #fff; border-color: #1a4cff; }
+.sl-sort-dir { font-size: 9px; }
+
+/* 平台芯片 */
+.sl-chip-platform { font-weight: 600; }
+.sl-chip-platform.active {
+  background: #eef2ff; color: #1a4cff; border-color: #a5b4fc;
+}
+.sl-chip-n { font-size: 9px; opacity: 0.65; margin-left: 1px; }
+.sl-sort-dot {
+  width: 3px; height: 3px; border-radius: 50%; background: #d0d5dd;
+  flex-shrink: 0; margin: 0 4px;
+}
+
+/* 排序芯片 */
+.sl-chip-sort { font-size: 11px; }
+
+.sl-sort-count { margin-left: auto; font-size: 10px; color: #a0b0c0; flex-shrink: 0; }
 
 /* 无达标样本提示 */
 .sl-no-match {

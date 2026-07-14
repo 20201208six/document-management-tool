@@ -47,9 +47,9 @@
     <!-- 图表区：7维雷达图 + 概率分布 + 评分-点赞回归散点 -->
     <div class="pd-charts pd-charts-3col">
       <div class="pd-chart-panel">
-        <div class="pd-chart-title">🎯 7 维评分</div>
+        <div class="pd-chart-title">🎯 五逻辑传播评分</div>
         <div ref="radarRef" class="pd-chart-inner"></div>
-        <div class="pd-hover-hint">悬停各维度查看详情</div>
+        <div class="pd-hover-hint">悬停各逻辑层查看详情</div>
       </div>
       <div class="pd-chart-panel">
         <div class="pd-chart-title">🎲 点赞量概率分布</div>
@@ -284,7 +284,7 @@ import {
   nextTick,
 } from "vue";
 import * as echarts from "echarts";
-import { SCORING_DIMENSION_CONFIG, PLATFORM_CONFIG } from "@/stores/uniqueMode";
+import { PLATFORM_CONFIG } from "@/stores/uniqueMode";
 import { useUniqueModeStore } from "@/stores/uniqueMode";
 import type { PredictionResult, Platform } from "@/stores/uniqueMode";
 
@@ -391,16 +391,23 @@ const confidenceShort = computed(() => {
   return c.slice(0, 2) || "--";
 });
 
-// 最薄弱维度
+// 五逻辑配置
+const FIVE_LOGIC_CONFIG = [
+  { key: 'traffic' as const, label: '流量逻辑', desc: '人群是否爱看', color: '#f56c6c' },
+  { key: 'platform' as const, label: '平台逻辑', desc: '平台规则适配度', color: '#e6a23c' },
+  { key: 'user' as const, label: '用户逻辑', desc: '认可度·喜好·感受', color: '#67c23a' },
+  { key: 'business' as const, label: '商业逻辑', desc: '内容价值', color: '#409eff' },
+  { key: 'spread' as const, label: '传播逻辑', desc: '赛道-开头-价值-时长-易懂-落脚', color: '#9b59b6' },
+] as const
+
+// 最薄弱逻辑层
 const weakestDimText = computed(() => {
-  const scores = props.prediction.scores;
-  const dims = SCORING_DIMENSION_CONFIG.map((d) => ({
-    label: d.label,
-    score: scores[d.key] || 0,
-  }));
-  dims.sort((a, b) => a.score - b.score);
-  return dims.length > 0 ? `${dims[0].label} ${dims[0].score}分` : "";
-});
+  const fl = props.prediction.evaluation?.fiveLogic?.scores
+  if (!fl) return ''
+  const dims = FIVE_LOGIC_CONFIG.map(d => ({ label: d.label, score: fl[d.key] || 0 }))
+  dims.sort((a, b) => a.score - b.score)
+  return dims.length > 0 ? `${dims[0].label} ${dims[0].score}分` : ''
+})
 
 // 五层评测数据
 const evaluation = computed(() => props.prediction.evaluation || null);
@@ -422,10 +429,14 @@ const probHasData = computed(
   () => (props.prediction.bucketProbabilities || []).length > 0,
 );
 
-// 雷达图配置
+// 五逻辑雷达图配置
 const radarOption = computed(() => {
-  const dims = SCORING_DIMENSION_CONFIG;
-  const scores = props.prediction.scores;
+  const fl = props.prediction.evaluation?.fiveLogic?.scores
+  const dims = FIVE_LOGIC_CONFIG
+  // 优先用 fiveLogic，没有则用 compositeScore 均分到五逻辑作为 fallback
+  const values = fl
+    ? dims.map(d => fl[d.key] || 0)
+    : dims.map(() => props.prediction.compositeScore || 0)
   return {
     tooltip: {},
     legend: { show: false },
@@ -435,7 +446,7 @@ const radarOption = computed(() => {
       indicator: dims.map((d) => ({ name: d.label, max: 100 })),
       axisName: {
         color: "#64748b",
-        fontSize: 11,
+        fontSize: 12,
         borderRadius: 3,
         padding: [2, 5],
       },
@@ -448,8 +459,8 @@ const radarOption = computed(() => {
         type: "radar",
         data: [
           {
-            value: dims.map((d) => Number(scores[d.key]) || 0),
-            name: "本稿评分",
+            value: values,
+            name: "传播五逻辑",
             areaStyle: { color: "rgba(99, 102, 241, 0.15)" },
             lineStyle: { color: "#6366f1", width: 2 },
             itemStyle: {
