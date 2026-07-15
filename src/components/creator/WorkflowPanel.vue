@@ -129,80 +129,51 @@
           <div class="wf-card">
             <div class="card-title">步骤 2：文案方向 / 画像配置</div>
 
-            <!-- 核心输入：文案方向 -->
-            <div class="step2-section">
-              <div class="step2-section-title">📝 文案方向</div>
-              <el-input
-                v-model="currentConv.topic"
-                type="textarea"
-                :rows="2"
-                placeholder="例如：「做一个关于时间管理的励志视频脚本」"
-              />
-            </div>
+            <!-- 文案方向 -->
+            <el-input
+              v-model="currentConv.topic"
+              type="textarea"
+              :rows="2"
+              placeholder="例如：「做一个关于时间管理的励志视频脚本」"
+              style="margin-bottom: 12px"
+            />
 
-            <!-- 人物画像行：人设 + 人群（并排） -->
-            <div class="step2-section">
-              <div class="step2-section-title">👤 受众画像</div>
-              <div class="step2-row">
-                <div class="step2-col">
-                  <span class="step2-field-label">人设画像 <span class="field-hint">你是谁</span></span>
-                  <el-input
-                    v-model="currentConv.speakerPersona"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="例：10年互联网运营老兵，擅长用自嘲讲干货"
-                    @change="onConvDirty"
-                  />
-                </div>
-                <div class="step2-col">
-                  <span class="step2-field-label">人群画像 <span class="field-hint">给谁看</span></span>
-                  <el-input
-                    v-model="currentConv.audiencePersona"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="例：25-35岁职场新人，焦虑但想进步"
-                    @change="onConvDirty"
-                  />
-                </div>
+            <!-- 受众画像：人设 + 人群（并排） -->
+            <div class="step2-row" style="margin-bottom: 10px">
+              <div class="step2-col">
+                <span class="step2-field-label">人设画像 <span class="field-hint">你是谁</span></span>
+                <el-input
+                  v-model="currentConv.speakerPersona"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="例：10年互联网运营老兵，擅长用自嘲讲干货"
+                  @change="onConvDirty"
+                />
+              </div>
+              <div class="step2-col">
+                <span class="step2-field-label">人群画像 <span class="field-hint">给谁看</span></span>
+                <el-input
+                  v-model="currentConv.audiencePersona"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="例：25-35岁职场新人，焦虑但想进步"
+                  @change="onConvDirty"
+                />
               </div>
             </div>
 
-            <!-- 高级配置（可折叠） -->
-            <details class="step2-advanced" open>
+            <!-- 高级配置（默认折叠） -->
+            <details class="step2-advanced">
               <summary class="step2-advanced-summary">
-                <span>⚙️ 高级配置</span>
-                <span class="field-hint">质量标准 · 创作者画像 · 平台 · 参考文案</span>
+                <span>⚙️ 更多配置</span>
+                <span class="field-hint">质量标准 · 创作者 · 参考文案 · 预设</span>
               </summary>
 
               <div class="step2-advanced-body">
-                <!-- 质量标准 -->
+                <!-- 创作者信息 + 平台 -->
                 <div class="step2-field">
-                  <span class="step2-field-label">质量标准 <span class="field-hint">告诉 AI 你的内容底线</span></span>
-                  <el-input
-                    v-model="currentConv.qualityStandard"
-                    type="textarea"
-                    :rows="2"
-                    placeholder="例：不要鸡汤、拒绝说教感、每段必须有具体案例"
-                    @change="onConvDirty"
-                  />
-                </div>
-
-                <!-- 创作者画像 + 平台（一行四个小字段） -->
-                <div class="step2-field">
-                  <span class="step2-field-label">创作者画像 &amp; 平台</span>
+                  <span class="step2-field-label">创作者信息 &amp; 平台</span>
                   <div class="step2-inline-grid">
-                    <div class="step2-inline-item">
-                      <span class="step2-mini-label">年龄</span>
-                      <el-input-number
-                        v-model="currentConv.creatorAge"
-                        :min="18"
-                        :max="80"
-                        size="small"
-                        controls-position="right"
-                        style="width: 100%"
-                        @change="onConvDirty"
-                      />
-                    </div>
                     <div class="step2-inline-item">
                       <span class="step2-mini-label">赛道</span>
                       <el-input
@@ -244,73 +215,74 @@
                   </div>
                 </div>
 
+                <!-- 质量标准 -->
+                <div class="step2-field">
+                  <span class="step2-field-label">质量标准</span>
+                  <el-input
+                    v-model="currentConv.qualityStandard"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="例：不要鸡汤、拒绝说教感、每段必须有具体案例"
+                    @change="onConvDirty"
+                  />
+                </div>
+
                 <!-- 参考文案 -->
                 <div class="step2-field">
                   <span class="step2-field-label">
                     参考文案 <span class="field-hint">选填，最多 5 条</span>
                   </span>
-                  <div
-                    v-for="(_, idx) in currentConv.referenceCopies"
-                    :key="idx"
-                    class="ref-copy-item"
-                  >
-                    <el-input
-                      :model-value="currentConv.referenceCopies[idx]"
-                      type="textarea"
-                      :rows="2"
-                      :placeholder="`参考文案 ${idx + 1}`"
-                      @update:model-value="
-                        (v: string) => updateReferenceCopy(idx, v)
-                      "
-                    />
-                    <el-button
-                      class="ref-copy-delete"
-                      size="small"
-                      text
-                      type="danger"
-                      @click="removeReferenceCopy(idx)"
+                  <div class="ref-copy-list">
+                    <div
+                      v-for="(_, idx) in currentConv.referenceCopies"
+                      :key="idx"
+                      class="ref-copy-tag"
                     >
-                      &times;
-                    </el-button>
+                      <el-input
+                        :model-value="currentConv.referenceCopies[idx]"
+                        size="small"
+                        :placeholder="`参考 ${idx + 1}`"
+                        @update:model-value="(v: string) => updateReferenceCopy(idx, v)"
+                      />
+                      <span class="ref-copy-remove" @click="removeReferenceCopy(idx)">✕</span>
+                    </div>
                   </div>
                   <el-button
-                    v-if="
-                      !currentConv.referenceCopies ||
-                      currentConv.referenceCopies.length < 5
-                    "
+                    v-if="!currentConv.referenceCopies || currentConv.referenceCopies.length < 5"
                     size="small"
                     text
                     type="primary"
+                    style="margin-top: 4px"
                     @click="addReferenceCopy"
                   >
-                    + 添加参考文案
+                    + 添加
                   </el-button>
                 </div>
 
                 <!-- 设置管理 -->
                 <div class="step2-field">
-                  <span class="step2-field-label">
-                    设置管理 <span class="field-hint">保存配置，下次一键加载</span>
-                  </span>
-                  <div style="display: flex; gap: 6px; align-items: center">
+                  <span class="step2-field-label">配置预设</span>
+                  <div class="settings-row">
                     <el-input
                       v-model="saveSettingsName"
                       size="small"
-                      placeholder="设置名称…"
-                      style="flex: 1"
+                      placeholder="输入名称保存当前配置…"
                       clearable
-                    />
-                    <el-button size="small" @click="saveCurrentSettings(saveSettingsName); saveSettingsName = ''">
-                      保存设置
-                    </el-button>
+                      @keyup.enter="saveCurrentSettings(saveSettingsName); saveSettingsName = ''"
+                    >
+                      <template #append>
+                        <el-button @click="saveCurrentSettings(saveSettingsName); saveSettingsName = ''">
+                          保存
+                        </el-button>
+                      </template>
+                    </el-input>
                   </div>
-                  <div v-if="savedSettings.length > 0" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px">
+                  <div v-if="savedSettings.length > 0" class="settings-tags">
                     <el-tag
                       v-for="s in savedSettings"
                       :key="s.name"
                       closable
                       size="small"
-                      type="info"
                       style="cursor: pointer"
                       @click="applySavedSetting(s.name)"
                       @close="deleteSavedSetting(s.name)"
@@ -4369,44 +4341,36 @@ onMounted(async () => {
   margin: 12px 0;
 }
 
-.ref-copy-item {
+.ref-copy-list {
   display: flex;
-  gap: 4px;
-  align-items: flex-start;
-  margin-bottom: 6px;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.ref-copy-item .el-textarea {
+.ref-copy-tag {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ref-copy-tag .el-input {
   flex: 1;
 }
 
-.ref-copy-delete {
+.ref-copy-remove {
+  cursor: pointer;
+  color: #c0c4cc;
+  font-size: 14px;
+  padding: 0 4px;
+  transition: color 0.15s;
   flex-shrink: 0;
-  font-size: 16px;
-  color: #909399;
-  padding: 2px 4px;
-  min-height: auto;
+}
+
+.ref-copy-remove:hover {
+  color: #f56c6c;
 }
 
 /* 步骤 2：重新设计的布局 */
-.step2-section {
-  margin-bottom: 12px;
-}
-
-.step2-section:last-child {
-  margin-bottom: 0;
-}
-
-.step2-section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .step2-row {
   display: flex;
   gap: 10px;
@@ -4469,7 +4433,7 @@ onMounted(async () => {
 /* 四列内联网格 */
 .step2-inline-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr 0.8fr 1fr;
+  grid-template-columns: 1.5fr 1fr 1fr;
   gap: 8px;
 }
 
@@ -4482,6 +4446,19 @@ onMounted(async () => {
   font-size: 11px;
   color: #909399;
   margin-bottom: 3px;
+}
+
+.settings-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-tags {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 /* 方案模式选择器（步骤6） */
