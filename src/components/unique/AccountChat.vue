@@ -263,8 +263,8 @@ import { ref, watch, onMounted, nextTick, computed } from "vue";
 import { ElMessage } from "element-plus";
 import {
   useUniqueModeStore,
-  SCORING_DIMENSION_CONFIG,
 } from "@/stores/uniqueMode";
+import { SCORING_DIMENSION_CONFIG } from "@/services/scriptEvaluator";
 import { useChatStore } from "@/stores/chat";
 import type { ChatMessage } from "@/types/chat";
 import { sendChatMessageStream } from "@/services/deepseek";

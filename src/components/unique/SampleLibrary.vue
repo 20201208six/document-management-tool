@@ -232,7 +232,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { useUniqueModeStore, PLATFORM_CONFIG, type ScriptRecord, type Platform } from '@/stores/uniqueMode'
+import { useUniqueModeStore, type ScriptRecord } from '@/stores/uniqueMode'
+import { PLATFORM_CONFIG, type Platform } from '@/services/scriptEvaluator'
 
 defineEmits<{
   (e: 'export-json'): void

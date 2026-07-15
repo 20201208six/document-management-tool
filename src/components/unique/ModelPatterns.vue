@@ -378,7 +378,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onActivated, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useUniqueModeStore, SCORING_DIMENSION_CONFIG } from '@/stores/uniqueMode'
+import { useUniqueModeStore } from '@/stores/uniqueMode'
+import { SCORING_DIMENSION_CONFIG } from '@/services/scriptEvaluator'
 
 const store = useUniqueModeStore()
 

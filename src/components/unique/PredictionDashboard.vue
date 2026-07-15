@@ -284,9 +284,10 @@ import {
   nextTick,
 } from "vue";
 import * as echarts from "echarts";
-import { PLATFORM_CONFIG } from "@/stores/uniqueMode";
+import { PLATFORM_CONFIG } from "@/services/scriptEvaluator";
 import { useUniqueModeStore } from "@/stores/uniqueMode";
-import type { PredictionResult, Platform } from "@/stores/uniqueMode";
+import type { PredictionResult } from "@/stores/uniqueMode";
+import type { Platform } from "@/services/scriptEvaluator";
 
 const store = useUniqueModeStore();
 

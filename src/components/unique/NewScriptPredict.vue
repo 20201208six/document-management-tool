@@ -816,11 +816,9 @@ import { computed, ref, reactive, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   useUniqueModeStore,
-  PLATFORM_CONFIG,
-  SCORING_DIMENSION_CONFIG,
-  type Platform,
   type PredictionLogEntry,
 } from "@/stores/uniqueMode";
+import { PLATFORM_CONFIG, SCORING_DIMENSION_CONFIG, type Platform } from "@/services/scriptEvaluator";
 import PredictionDashboard from "./PredictionDashboard.vue";
 
 const store = useUniqueModeStore();

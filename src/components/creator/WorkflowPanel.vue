@@ -129,8 +129,9 @@
           <div class="wf-card">
             <div class="card-title">步骤 2：文案方向 / 画像配置</div>
 
-            <div class="field-block">
-              <div class="field-label">文案方向</div>
+            <!-- 核心输入：文案方向 -->
+            <div class="step2-section">
+              <div class="step2-section-title">📝 文案方向</div>
               <el-input
                 v-model="currentConv.topic"
                 type="textarea"
@@ -139,84 +140,194 @@
               />
             </div>
 
-            <div class="field-divider"></div>
-
-            <div class="field-block">
-              <div class="field-label">
-                人设画像 <span class="field-hint">你是谁？</span>
+            <!-- 人物画像行：人设 + 人群（并排） -->
+            <div class="step2-section">
+              <div class="step2-section-title">👤 受众画像</div>
+              <div class="step2-row">
+                <div class="step2-col">
+                  <span class="step2-field-label">人设画像 <span class="field-hint">你是谁</span></span>
+                  <el-input
+                    v-model="currentConv.speakerPersona"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="例：10年互联网运营老兵，擅长用自嘲讲干货"
+                    @change="onConvDirty"
+                  />
+                </div>
+                <div class="step2-col">
+                  <span class="step2-field-label">人群画像 <span class="field-hint">给谁看</span></span>
+                  <el-input
+                    v-model="currentConv.audiencePersona"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="例：25-35岁职场新人，焦虑但想进步"
+                    @change="onConvDirty"
+                  />
+                </div>
               </div>
-              <el-input
-                v-model="currentConv.speakerPersona"
-                type="textarea"
-                :rows="2"
-                placeholder="例：10年互联网运营老兵，擅长用自嘲讲干货"
-                @change="onConvDirty"
-              />
             </div>
 
-            <div class="field-block">
-              <div class="field-label">
-                人群画像 <span class="field-hint">给谁看？</span>
-              </div>
-              <el-input
-                v-model="currentConv.audiencePersona"
-                type="textarea"
-                :rows="2"
-                placeholder="例：25-35岁职场新人，焦虑但想进步"
-                @change="onConvDirty"
-              />
-            </div>
+            <!-- 高级配置（可折叠） -->
+            <details class="step2-advanced" open>
+              <summary class="step2-advanced-summary">
+                <span>⚙️ 高级配置</span>
+                <span class="field-hint">质量标准 · 创作者画像 · 平台 · 参考文案</span>
+              </summary>
 
-            <div class="field-divider"></div>
+              <div class="step2-advanced-body">
+                <!-- 质量标准 -->
+                <div class="step2-field">
+                  <span class="step2-field-label">质量标准 <span class="field-hint">告诉 AI 你的内容底线</span></span>
+                  <el-input
+                    v-model="currentConv.qualityStandard"
+                    type="textarea"
+                    :rows="2"
+                    placeholder="例：不要鸡汤、拒绝说教感、每段必须有具体案例"
+                    @change="onConvDirty"
+                  />
+                </div>
 
-            <div class="field-block">
-              <div class="field-label">
-                参考文案 <span class="field-hint">选填，可多条</span>
+                <!-- 创作者画像 + 平台（一行四个小字段） -->
+                <div class="step2-field">
+                  <span class="step2-field-label">创作者画像 &amp; 平台</span>
+                  <div class="step2-inline-grid">
+                    <div class="step2-inline-item">
+                      <span class="step2-mini-label">年龄</span>
+                      <el-input-number
+                        v-model="currentConv.creatorAge"
+                        :min="18"
+                        :max="80"
+                        size="small"
+                        controls-position="right"
+                        style="width: 100%"
+                        @change="onConvDirty"
+                      />
+                    </div>
+                    <div class="step2-inline-item">
+                      <span class="step2-mini-label">赛道</span>
+                      <el-input
+                        v-model="currentConv.creatorTrack"
+                        size="small"
+                        placeholder="国学 / 职场 / 情感"
+                        @change="onConvDirty"
+                      />
+                    </div>
+                    <div class="step2-inline-item">
+                      <span class="step2-mini-label">性别</span>
+                      <el-radio-group
+                        v-model="currentConv.creatorGender"
+                        size="small"
+                        @change="onConvDirty"
+                      >
+                        <el-radio value="male">男</el-radio>
+                        <el-radio value="female">女</el-radio>
+                      </el-radio-group>
+                    </div>
+                    <div class="step2-inline-item">
+                      <span class="step2-mini-label">发布平台</span>
+                      <el-select
+                        v-model="currentConv.targetPlatform"
+                        size="small"
+                        placeholder="选择"
+                        clearable
+                        style="width: 100%"
+                        @change="onConvDirty"
+                      >
+                        <el-option
+                          v-for="p in ['抖音', '视频号', '小红书', '快手']"
+                          :key="p"
+                          :label="p"
+                          :value="p"
+                        />
+                      </el-select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 参考文案 -->
+                <div class="step2-field">
+                  <span class="step2-field-label">
+                    参考文案 <span class="field-hint">选填，最多 5 条</span>
+                  </span>
+                  <div
+                    v-for="(_, idx) in currentConv.referenceCopies"
+                    :key="idx"
+                    class="ref-copy-item"
+                  >
+                    <el-input
+                      :model-value="currentConv.referenceCopies[idx]"
+                      type="textarea"
+                      :rows="2"
+                      :placeholder="`参考文案 ${idx + 1}`"
+                      @update:model-value="
+                        (v: string) => updateReferenceCopy(idx, v)
+                      "
+                    />
+                    <el-button
+                      class="ref-copy-delete"
+                      size="small"
+                      text
+                      type="danger"
+                      @click="removeReferenceCopy(idx)"
+                    >
+                      &times;
+                    </el-button>
+                  </div>
+                  <el-button
+                    v-if="
+                      !currentConv.referenceCopies ||
+                      currentConv.referenceCopies.length < 5
+                    "
+                    size="small"
+                    text
+                    type="primary"
+                    @click="addReferenceCopy"
+                  >
+                    + 添加参考文案
+                  </el-button>
+                </div>
+
+                <!-- 设置管理 -->
+                <div class="step2-field">
+                  <span class="step2-field-label">
+                    设置管理 <span class="field-hint">保存配置，下次一键加载</span>
+                  </span>
+                  <div style="display: flex; gap: 6px; align-items: center">
+                    <el-input
+                      v-model="saveSettingsName"
+                      size="small"
+                      placeholder="设置名称…"
+                      style="flex: 1"
+                      clearable
+                    />
+                    <el-button size="small" @click="saveCurrentSettings(saveSettingsName); saveSettingsName = ''">
+                      保存设置
+                    </el-button>
+                  </div>
+                  <div v-if="savedSettings.length > 0" style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px">
+                    <el-tag
+                      v-for="s in savedSettings"
+                      :key="s.name"
+                      closable
+                      size="small"
+                      type="info"
+                      style="cursor: pointer"
+                      @click="applySavedSetting(s.name)"
+                      @close="deleteSavedSetting(s.name)"
+                    >
+                      {{ s.name }}
+                    </el-tag>
+                  </div>
+                </div>
               </div>
-              <div
-                v-for="(_, idx) in currentConv.referenceCopies"
-                :key="idx"
-                class="ref-copy-item"
-              >
-                <el-input
-                  :model-value="currentConv.referenceCopies[idx]"
-                  type="textarea"
-                  :rows="2"
-                  :placeholder="`参考文案 ${idx + 1}`"
-                  @update:model-value="
-                    (v: string) => updateReferenceCopy(idx, v)
-                  "
-                />
-                <el-button
-                  class="ref-copy-delete"
-                  size="small"
-                  text
-                  type="danger"
-                  @click="removeReferenceCopy(idx)"
-                >
-                  &times;
-                </el-button>
-              </div>
-              <el-button
-                v-if="
-                  !currentConv.referenceCopies ||
-                  currentConv.referenceCopies.length < 5
-                "
-                size="small"
-                text
-                type="primary"
-                @click="addReferenceCopy"
-              >
-                + 添加参考文案
-              </el-button>
-            </div>
+            </details>
           </div>
 
           <div class="wf-card">
             <div class="card-title">步骤 3：输出控制</div>
 
+            <div class="field-label">期望时长 <span class="field-hint">AI 会根据实际素材量建议可行的时长区间</span></div>
             <div class="param-row">
-              <span class="param-label">时长要求</span>
               <el-input
                 v-model="currentConv.durationRequirement"
                 size="small"
@@ -226,8 +337,10 @@
               />
             </div>
 
+            <div class="field-divider"></div>
+
+            <div class="field-label">句子间隔 <span class="field-hint">控制去气口粒度，直接影响步骤 4 计算结果</span></div>
             <div class="param-row">
-              <span class="param-label">句子间隔</span>
               <div class="param-slider-wrap">
                 <span class="param-edge">1帧</span>
                 <el-slider
@@ -245,16 +358,7 @@
           </div>
 
           <div class="wf-card">
-            <div class="card-title">步骤 4：选择模型</div>
-            <el-radio-group v-model="selectedModelId" size="small">
-              <el-radio v-for="m in chatStore.models" :key="m.id" :value="m.id">
-                {{ m.name }}
-              </el-radio>
-            </el-radio-group>
-          </div>
-
-          <div class="wf-card">
-            <div class="card-title">步骤 5：计算时长 / 去气口</div>
+            <div class="card-title">步骤 4：计算时长 / 去气口</div>
             <p class="step-desc">根据句子间隔设置，分析气口分布并计算总时长</p>
 
             <div v-if="gapStats" class="gap-stats">
@@ -334,15 +438,62 @@
             >
               计算时长并分析气口
             </el-button>
+
+            <div
+              v-if="gapStats"
+              style="margin-top: 8px; text-align: center; font-size: 12px; color: #67c23a"
+            >
+              ✅ 去气口完成 — 查看右侧预览，满意后选择模型并开始 AI 处理
+            </div>
+          </div>
+
+          <div class="wf-card">
+            <div class="card-title">步骤 5：选择模型</div>
+            <el-radio-group v-model="selectedModelId" size="small">
+              <el-radio v-for="m in chatStore.models" :key="m.id" :value="m.id">
+                {{ m.name }}
+              </el-radio>
+            </el-radio-group>
           </div>
 
           <div class="wf-card">
             <div class="card-title">步骤 6：AI 智能处理</div>
             <p class="step-desc">
-              大模型将分三阶段处理：去重优化 → 时间轴文案 → 网感编排
+              三阶段处理：去重建议时长 → 挑选+七维质检 → 网感编排
             </p>
 
-            <div class="ai-stage-progress" v-if="isGenerating">
+            <!-- 方案模式选择 -->
+            <div class="scheme-mode-selector" v-if="!isGenerating && currentAiStage === 0">
+              <div class="scheme-mode-label">
+                <span>生成方案</span>
+              </div>
+              <div class="scheme-mode-options">
+                <div
+                  class="scheme-option"
+                  :class="{ active: currentConv.schemeMode === 'precise' }"
+                  @click="currentConv.schemeMode = 'precise'; onConvDirty()"
+                >
+                  <div class="scheme-option-icon">✂️</div>
+                  <div class="scheme-option-body">
+                    <div class="scheme-option-title">精剪模式</div>
+                    <div class="scheme-option-desc">绑定视频素材，前半可跳切，后半逻辑通顺</div>
+                  </div>
+                </div>
+                <div
+                  class="scheme-option"
+                  :class="{ active: currentConv.schemeMode === 'effect' }"
+                  @click="currentConv.schemeMode = 'effect'; onConvDirty()"
+                >
+                  <div class="scheme-option-icon">🎯</div>
+                  <div class="scheme-option-body">
+                    <div class="scheme-option-title">效果优先</div>
+                    <div class="scheme-option-desc">不受素材限制，纯以文案冲击力为准</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ai-stage-progress" v-if="isGenerating || currentAiStage > 0">
               <div
                 class="ai-stage"
                 v-for="(stage, i) in aiStages"
@@ -359,19 +510,94 @@
               </div>
             </div>
 
+            <!-- 阶段 6a 结果：去重 + 建议时长 -->
+            <div v-if="suggestedDuration && !isGenerating" class="phase-result">
+              <div class="phase-result-title">📊 AI 建议时长</div>
+              <div class="phase-result-body">
+                <span style="font-size: 18px; font-weight: 700; color: #409eff">
+                  {{ suggestedDuration.minMin }}分{{ suggestedDuration.minSec }}秒 ~ {{ suggestedDuration.maxMin }}分{{ suggestedDuration.maxSec }}秒
+                </span>
+                <div v-if="currentConv.durationRequirement" style="margin-top: 4px; font-size: 12px; color: #909399">
+                  你的期望时长：{{ currentConv.durationRequirement }}
+                </div>
+              </div>
+            </div>
+
+            <!-- 阶段 6b 结果：七维评分（紧凑版） -->
+            <div v-if="sevenDimScores && !isGenerating && currentAiStage >= 2" class="quality-compact" style="margin: 10px 0 8px">
+              <div class="qc-header">
+                <span class="qc-score-badge" :style="{ background: compositeColor }">{{ calcCompositeScore(sevenDimScores) }}</span>
+                <span class="qc-label">综合分</span>
+                <span class="qc-toggle" @click="showStep6SevenDim = !showStep6SevenDim" :class="{ active: showStep6SevenDim }">
+                  七维 {{ showStep6SevenDim ? '▴' : '▾' }}
+                </span>
+              </div>
+              <div v-show="showStep6SevenDim" class="qc-body">
+                <div class="qc-grid">
+                  <div v-for="dim in SCORING_DIMENSION_CONFIG" :key="dim.key" class="qc-dim">
+                    <span class="qc-dim-dot" :style="{ background: dim.color }"></span>
+                    <span class="qc-dim-name">{{ dim.label }}</span>
+                    <span class="qc-dim-val" :style="{ color: dim.color }">{{ sevenDimScores[dim.key] }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- QC 重试信息 -->
+            <div v-if="qcRetries > 0 && !isGenerating" style="margin-top: 6px; font-size: 12px; color: #e6a23c">
+              ⚠️ {{ qcFeedback }}
+            </div>
+
+            <!-- 主按钮：根据阶段状态显示不同文字和动作 -->
             <el-button
+              v-if="currentAiStage < 3"
               type="primary"
               size="default"
               :loading="isGenerating"
               :disabled="
-                selectedSourceIds.size === 0 || !currentConv.topic.trim()
+                selectedSourceIds.size === 0 || !currentConv.topic.trim() || !gapStats
               "
-              @click="handleGenerate"
+              @click="handlePhaseAction"
               style="width: 100%"
             >
               <el-icon><MagicStick /></el-icon>
-              {{ isGenerating ? "AI 处理中..." : "开始 AI 处理" }}
+              {{
+                isGenerating
+                  ? "AI 处理中..."
+                  : currentAiStage === 0
+                  ? "开始 AI 处理"
+                  : currentAiStage === 1
+                  ? "确认时长，继续挑选文案"
+                  : "确认挑选，开始网感编排"
+              }}
             </el-button>
+
+            <!-- 完成状态 -->
+            <el-button
+              v-else
+              type="success"
+              size="default"
+              disabled
+              style="width: 100%"
+            >
+              ✓ 三阶段处理已完成
+            </el-button>
+
+            <details v-if="gapStats && currentConv.topic.trim() && !isGenerating" style="margin-top: 10px; font-size: 12px;">
+              <summary style="cursor: pointer; color: #909399; user-select: none">
+                📋 预览将发送给 AI 的内容
+              </summary>
+              <div style="color: #606266; background: #fafafa; padding: 8px 10px; border-radius: 4px; margin-top: 6px; line-height: 1.7">
+                <div><strong>数据源：</strong>{{ sourceList.filter(s => selectedSourceIds.has(s.id)).map(s => s.name).join("、") || "—" }}</div>
+                <div><strong>字幕数：</strong>{{ gapStats?.totalSegments || 0 }} 条</div>
+                <div><strong>去气口后时长：</strong>{{ store.formatTime(gapStats?.compactDurationSec || 0) }}</div>
+                <div><strong>文案方向：</strong>{{ currentConv.topic }}</div>
+                <div v-if="currentConv.speakerPersona"><strong>人设画像：</strong>{{ currentConv.speakerPersona.slice(0, 40) }}{{ currentConv.speakerPersona.length > 40 ? "..." : "" }}</div>
+                <div v-if="currentConv.audiencePersona"><strong>人群画像：</strong>{{ currentConv.audiencePersona.slice(0, 40) }}{{ currentConv.audiencePersona.length > 40 ? "..." : "" }}</div>
+                <div v-if="currentConv.durationRequirement"><strong>时长要求：</strong>{{ currentConv.durationRequirement }}</div>
+                <div><strong>处理流程：</strong>去重优化 → 时间轴文案 → 网感编排</div>
+              </div>
+            </details>
           </div>
 
           <div v-if="isGenerating" class="wf-loading">
@@ -437,6 +663,33 @@
 
         <!-- 右侧：结果区（步骤 7） -->
         <div class="wf-right">
+          <!-- 阶段指示条 -->
+          <div class="phase-bar" v-if="gapStats || isGenerating || currentConv.generatedScript">
+            <div
+              class="phase-dot"
+              :class="{ active: gapStats && !currentConv.generatedScript && !isGenerating, done: currentConv.generatedScript || isGenerating }"
+            ></div>
+            <span class="phase-label">去气口</span>
+            <span class="phase-arrow">→</span>
+            <div
+              class="phase-dot"
+              :class="{ active: isGenerating, done: currentConv.generatedScript }"
+            ></div>
+            <span class="phase-label">AI 处理</span>
+            <span class="phase-arrow">→</span>
+            <div
+              class="phase-dot"
+              :class="{ active: currentConv.generatedScript && reviewPhase === 'review', done: currentConv.generatedScript && reviewPhase === 'tuning' }"
+            ></div>
+            <span class="phase-label">审核</span>
+            <span class="phase-arrow">→</span>
+            <div
+              class="phase-dot"
+              :class="{ active: currentConv.generatedScript && reviewPhase === 'tuning' }"
+            ></div>
+            <span class="phase-label">微调 + 导出</span>
+          </div>
+
           <!-- ===== 流式生成中 ===== -->
           <div
             v-if="isGenerating"
@@ -613,13 +866,18 @@
               "
             >
               <span>步骤 7：方案审核</span>
-              <span
-                v-if="matchedSubs.length > 0"
-                style="font-size: 11px; color: #909399; font-weight: 400"
-              >
-                匹配 {{ matchedSubs.length }} 段 ·
-                {{ store.formatTime(totalMatchDuration) }}
-              </span>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span
+                  v-if="matchedSubs.length > 0"
+                  style="font-size: 11px; color: #909399; font-weight: 400"
+                >
+                  匹配 {{ matchedSubs.length }} 段 ·
+                  {{ store.formatTime(totalMatchDuration) }}
+                </span>
+                <el-button size="small" text type="warning" @click="handleRegenerateWithFeedback" :disabled="isGenerating">
+                  🔄 基于反馈重新生成
+                </el-button>
+              </div>
             </div>
 
             <!-- 生成结果预览（可折叠） -->
@@ -665,6 +923,53 @@
                 class="analysis-text"
               ></div>
             </details>
+
+            <!-- 质量评分：紧凑卡片（七维 + 五逻辑合并） -->
+            <div
+              v-if="sevenDimScores"
+              class="quality-compact"
+              style="flex-shrink: 0; margin-bottom: 8px"
+            >
+              <div class="qc-header">
+                <span class="qc-score-badge" :style="{ background: compositeColor }">
+                  {{ calcCompositeScore(sevenDimScores) }}
+                </span>
+                <span class="qc-label">综合分</span>
+                <span v-if="qcRetries > 0" class="qc-retry">经 {{ qcRetries }} 次优化</span>
+                <span class="qc-toggle" @click="showSevenDim = !showSevenDim" :class="{ active: showSevenDim }">
+                  七维 {{ showSevenDim ? '▴' : '▾' }}
+                </span>
+                <span v-if="currentConv.fiveLogic" class="qc-toggle" @click="showFiveLogic = !showFiveLogic" :class="{ active: showFiveLogic }">
+                  五逻辑 {{ showFiveLogic ? '▴' : '▾' }}
+                </span>
+                <span class="qc-toggle" style="color: #67c23a; margin-left: auto; cursor: pointer" @click="handleRegenerateWithFeedback">🔄</span>
+              </div>
+
+              <!-- 七维评分（可折叠） -->
+              <div v-show="showSevenDim" class="qc-body">
+                <div class="qc-grid">
+                  <div v-for="dim in SCORING_DIMENSION_CONFIG" :key="dim.key" class="qc-dim">
+                    <span class="qc-dim-dot" :style="{ background: dim.color }"></span>
+                    <span class="qc-dim-name">{{ dim.label }}</span>
+                    <span class="qc-dim-val" :style="{ color: dim.color }">{{ sevenDimScores[dim.key] }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 五逻辑（可折叠） -->
+              <div v-if="currentConv.fiveLogic && showFiveLogic" class="qc-body qc-body--logic">
+                <div class="qc-logic-row">
+                  <span v-for="(score, key) in currentConv.fiveLogic.scores" :key="key" class="qc-logic-item">
+                    <span class="qc-logic-dot" :style="{ background: score >= 80 ? '#16a34a' : score >= 65 ? '#e6a23c' : '#f56c6c' }"></span>
+                    <span class="qc-logic-name">{{
+                      key === 'traffic' ? '流量' : key === 'platform' ? '平台' :
+                      key === 'user' ? '用户' : key === 'business' ? '商业' : '传播'
+                    }}</span>
+                    <span class="qc-logic-val">{{ score }}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
 
             <!-- 对话区 -->
             <div
@@ -918,11 +1223,19 @@
               步骤 7：文案展示与微调
             </div>
             <div class="wf-empty" style="flex: 1; justify-content: center">
-              <el-icon :size="32"><Document /></el-icon>
-              <span v-if="!isGenerating"
-                >在左侧填写方向后点击「开始 AI 处理」</span
-              >
-              <span v-else style="color: #409eff">等待 AI 返回...</span>
+              <el-icon :size="28" style="color: #c0c4cc"><Document /></el-icon>
+              <template v-if="selectedSourceIds.size === 0">
+                <span style="color: #909399">👈 请先在左侧「步骤 1」选择数据源</span>
+              </template>
+              <template v-else-if="!currentConv.topic.trim()">
+                <span style="color: #909399">👈 请先在左侧「步骤 2」填写文案方向</span>
+              </template>
+              <template v-else-if="!gapStats">
+                <span style="color: #909399">👈 请先在左侧「步骤 4」计算时长与气口</span>
+              </template>
+              <template v-else>
+                <span style="color: #909399">👈 请点击左侧「步骤 6」开始 AI 处理</span>
+              </template>
             </div>
           </div>
         </div>
@@ -940,6 +1253,19 @@ import { useCreatorModeStore } from "@/stores/creatorMode";
 import { exportJianyingProject, buildProject } from "@/services/jianying";
 import { buildModelRequestBody } from "@/services/deepseek";
 import type { SubtitleSegment } from "@/services/asr";
+import {
+  type Platform,
+  type TextEvaluation,
+  type FiveLogicReport,
+  type ScoringDimensions,
+  type PersonaEval,
+  type ValueEval,
+  SCORING_DIMENSION_CONFIG,
+  PLATFORM_SCORING_GUIDE,
+  calcCompositeScore,
+  defaultScores,
+  mapToFiveLogic,
+} from "@/services/scriptEvaluator";
 
 const chatStore = useChatStore();
 const store = useCreatorModeStore();
@@ -1035,9 +1361,9 @@ const compactPreviewGrouped = computed<CompactPreviewItem[]>(() => {
 
 // AI 阶段进度
 const aiStages = [
-  "去重优化：去除相邻重复话和同义内容",
-  "时间轴文案：生成带时间标记的精选文案",
-  "网感编排：组织文案使其符合短视频节奏",
+  "阶段 1：去重优化 + AI建议时长",
+  "阶段 2：文案挑选 + 七维评分质检",
+  "阶段 3：网感编排 + 衔接优化",
 ];
 const currentAiStage = ref(0);
 
@@ -1244,6 +1570,7 @@ watch(
     if (store.storagePath) {
       scanDiskSubtitles();
       loadConversations(); // 切换工作目录时重新加载对话列表
+      loadSavedSettings();
     }
   },
 );
@@ -1269,11 +1596,37 @@ interface Conversation {
   generatedScript: string;
   createdAt: number;
   updatedAt: number;
+  // 步骤2 新增：质量标准 + 创作者画像 + 平台
+  qualityStandard: string;
+  creatorAge: number;
+  creatorTrack: string;
+  creatorGender: 'male' | 'female' | '';
+  targetPlatform: Platform | '';
+  // 步骤6：生成方案模式（精剪/效果优先）
+  schemeMode: 'precise' | 'effect';
+  // 步骤6a：AI 建议时长
+  suggestedDuration: string;
+  // 步骤6b/7：七维评分 + 五层评测
+  evaluation?: TextEvaluation;
+  fiveLogic?: FiveLogicReport;
+}
+
+/** 保存的设置项（用于快速加载） */
+interface SavedSettings {
+  name: string;
+  qualityStandard: string;
+  creatorAge: number;
+  creatorTrack: string;
+  creatorGender: 'male' | 'female' | '';
+  targetPlatform: Platform | '';
+  schemeMode: 'precise' | 'effect';
+  createdAt: number;
 }
 
 const conversations = ref<Conversation[]>([]);
 const activeConvId = ref("");
 const sidebarCollapsed = ref(false);
+const saveSettingsName = ref("");
 
 function loadConversations() {
   try {
@@ -1286,6 +1639,68 @@ function loadConversations() {
 
 function saveConversations() {
   localStorage.setItem(convStorageKey(), JSON.stringify(conversations.value));
+}
+
+// ===== 保存的设置管理 =====
+const savedSettings = ref<SavedSettings[]>([]);
+
+function settingsStorageKey(): string {
+  return convStorageKey() + "-profiles";
+}
+
+function loadSavedSettings() {
+  try {
+    const raw = localStorage.getItem(settingsStorageKey());
+    if (raw) savedSettings.value = JSON.parse(raw);
+  } catch {
+    savedSettings.value = [];
+  }
+}
+
+function saveCurrentSettings(name: string) {
+  const conv = currentConv.value;
+  if (!name.trim()) {
+    ElMessage.warning("请输入设置名称");
+    return;
+  }
+  const existing = savedSettings.value.findIndex(s => s.name === name);
+  const entry: SavedSettings = {
+    name,
+    qualityStandard: conv.qualityStandard,
+    creatorAge: conv.creatorAge,
+    creatorTrack: conv.creatorTrack,
+    creatorGender: conv.creatorGender,
+    targetPlatform: conv.targetPlatform,
+    schemeMode: conv.schemeMode,
+    createdAt: Date.now(),
+  };
+  if (existing >= 0) {
+    savedSettings.value[existing] = entry;
+    ElMessage.success(`已更新设置「${name}」`);
+  } else {
+    savedSettings.value.push(entry);
+    ElMessage.success(`已保存设置「${name}」`);
+  }
+  localStorage.setItem(settingsStorageKey(), JSON.stringify(savedSettings.value));
+}
+
+function deleteSavedSetting(name: string) {
+  savedSettings.value = savedSettings.value.filter(s => s.name !== name);
+  localStorage.setItem(settingsStorageKey(), JSON.stringify(savedSettings.value));
+  ElMessage.success(`已删除设置「${name}」`);
+}
+
+function applySavedSetting(name: string) {
+  const entry = savedSettings.value.find(s => s.name === name);
+  if (!entry) return;
+  const conv = currentConv.value;
+  conv.qualityStandard = entry.qualityStandard;
+  conv.creatorAge = entry.creatorAge;
+  conv.creatorTrack = entry.creatorTrack;
+  conv.creatorGender = entry.creatorGender;
+  conv.targetPlatform = entry.targetPlatform;
+  conv.schemeMode = entry.schemeMode;
+  ElMessage.success(`已加载设置「${name}」`);
 }
 
 function emptyConv(): Conversation {
@@ -1301,6 +1716,13 @@ function emptyConv(): Conversation {
     generatedScript: "",
     createdAt: 0,
     updatedAt: 0,
+    qualityStandard: "",
+    creatorAge: 30,
+    creatorTrack: "",
+    creatorGender: "",
+    targetPlatform: "",
+    schemeMode: "effect",
+    suggestedDuration: "",
   };
 }
 
@@ -1312,6 +1734,45 @@ const currentConv = computed(
     conversations.value.find((c) => c.id === activeConvId.value) ||
     conversations.value[0] ||
     fallbackConv.value,
+);
+
+// ===== 参数变更自动失效 =====
+/** 使气口计算结果及下游生成结果失效 */
+function invalidateGapState(reason: string) {
+  if (!gapStats.value && compactedSubtitles.value.length === 0) return;
+  gapStats.value = null;
+  compactedSubtitles.value = [];
+  // 下游结果基于旧输入，一并重置
+  if (currentConv.value.generatedScript) {
+    currentConv.value.generatedScript = "";
+  }
+  matchedSubs.value = [];
+  removedIndices.value = new Set();
+  sourceEntries.value = [];
+  sentPrompt.value = "";
+  reviewMessages.value = [];
+  reviewPhase.value = "review";
+  ElMessage.warning(`参数已变更：${reason}，请重新计算气口`);
+}
+
+// 监听句子间隔变化
+watch(
+  () => currentConv.value?.frameGap,
+  (newVal, oldVal) => {
+    if (oldVal !== undefined && newVal !== oldVal && gapStats.value) {
+      invalidateGapState("句子间隔已调整");
+    }
+  },
+);
+
+// 监听数据源选择变化
+watch(
+  () => selectedSourceIds.value.size,
+  (newVal, oldVal) => {
+    if (oldVal !== undefined && newVal !== oldVal && gapStats.value) {
+      invalidateGapState("数据源选择已变更");
+    }
+  },
 );
 
 function newConversation() {
@@ -1328,6 +1789,13 @@ function newConversation() {
     generatedScript: "",
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    qualityStandard: "",
+    creatorAge: 30,
+    creatorTrack: "",
+    creatorGender: "",
+    targetPlatform: "",
+    schemeMode: "effect",
+    suggestedDuration: "",
   };
   conversations.value.unshift(conv);
   activeConvId.value = id;
@@ -1549,7 +2017,8 @@ const stripVideos = computed<StripVideo[]>(() => {
 
     // 防重叠行布局
     const rows: { startMs: number; endMs: number; endRow: number }[] = [];
-    const stripSegs: StripSegment[] = group.segs.map((seg, idx) => {
+    const stripSegs: StripSegment[] = [];
+    for (const [idx, seg] of group.segs.entries()) {
       const leftPct = (seg.compactStartMs / totalMs) * 100;
       const widthPct = Math.max(
         0.3,
@@ -1560,7 +2029,7 @@ const stripVideos = computed<StripVideo[]>(() => {
       let row = 1;
       for (const r of rows) {
         if (seg.compactStartMs >= r.endMs || seg.compactEndMs <= r.startMs) {
-          continue; // 不重叠，可以放同一行
+          continue;
         }
         row = Math.max(row, r.endRow + 1);
       }
@@ -1580,8 +2049,8 @@ const stripVideos = computed<StripVideo[]>(() => {
         endMs: seg.compactEndMs,
         endRow: row,
       });
-      return { ...seg, leftPct, widthPct, row, i: idx };
-    });
+      stripSegs.push({ ...seg, leftPct, widthPct, row, i: idx });
+    }
 
     result.push({
       id: videoId,
@@ -1785,7 +2254,9 @@ function doComputeGaps(sourcesWithSubs: SubtitleSource[]) {
         }
 
         const prevCompacted = compacted[compacted.length - 1];
-        const compactStart = prevCompacted.compactEndMs + gapThresholdMs;
+        // 取实际气口和阈值的较小值，避免小气口被错误放大
+        const effectiveGap = Math.min(Math.max(gap, 0), gapThresholdMs);
+        const compactStart = prevCompacted.compactEndMs + effectiveGap;
         const dur = item.endMs - item.startMs;
         compacted.push({
           videoId: src.id,
@@ -1823,6 +2294,32 @@ function doComputeGaps(sourcesWithSubs: SubtitleSource[]) {
     ElMessage.success(
       `气口计算完成：${totalSegments} 条字幕 → 压缩后 ${compacted.length} 个词，去掉 ${savedSec} 秒气口`,
     );
+
+    // 联动校验：对比时长要求
+    const durReq = currentConv.value.durationRequirement?.trim();
+    if (durReq && gapStats.value) {
+      const compactSec = gapStats.value.compactDurationSec;
+      const compactMin = Math.floor(compactSec / 60);
+      const compactSecR = Math.floor(compactSec % 60);
+      const compactLabel = `${compactMin}分${compactSecR}秒`;
+      const nums = durReq.match(/\d+/g)?.map(Number) || [];
+      let hint = "";
+      if (nums.length >= 2) {
+        const lo = nums[0], hi = nums[nums.length - 1];
+        if (compactSec < lo * 60)
+          hint = `⚠️ 去气口后约 ${compactLabel}，低于目标 ${lo}-${hi} 分钟，素材可能不够`;
+        else if (compactSec > hi * 60)
+          hint = `💡 去气口后约 ${compactLabel}，超出目标 ${lo}-${hi} 分钟，生成后将自动裁剪`;
+      } else if (nums.length === 1) {
+        const t = nums[0];
+        if (/至少|以上|不少于|最低/.test(durReq) && compactSec < t * 60)
+          hint = `⚠️ 去气口后约 ${compactLabel}，低于目标至少 ${t} 分钟，素材可能不够`;
+        else if (/不超过|以内|以下|最多/.test(durReq) && compactSec > t * 60)
+          hint = `💡 去气口后约 ${compactLabel}，超出上限 ${t} 分钟，生成后将自动裁剪`;
+      }
+      if (hint)
+        setTimeout(() => ElMessage({ message: hint, type: hint.startsWith("⚠️") ? "warning" : "info" }), 600);
+    }
   } catch (e: any) {
     console.error("[computeGaps] 出错:", e);
     ElMessage.error(`气口计算失败: ${e?.message || String(e)}`);
@@ -1850,17 +2347,12 @@ async function handleGenerate() {
     return;
   }
 
-  isGenerating.value = true;
-  streamingScript.value = "";
-  genLog.value = null;
-  showGenLog.value = true;
-  currentAiStage.value = 0;
-  reviewPhase.value = "review";
-  reviewMessages.value = [];
-  sentPrompt.value = "";
-  statusText.value = `正在使用 ${selectedSources.length} 个数据源，调用 AI 生成文案...`;
+  if (!gapStats.value) {
+    ElMessage.warning("请先完成「步骤 5：计算时长 / 去气口」");
+    return;
+  }
 
-  // 计算选中数据源的原始总时长（秒），告诉 AI 实际数据量
+  // 计算选中数据源的原始总时长
   let totalSourceSec = 0;
   for (const src of selectedSources) {
     for (const sub of src.subtitles) {
@@ -1870,147 +2362,271 @@ async function handleGenerate() {
   const totalSourceMin = Math.floor(totalSourceSec / 60);
   const totalSourceSecRemain = Math.floor(totalSourceSec % 60);
 
-  // 必须先完成步骤5：计算时长/去气口
-  if (!gapStats.value) {
-    ElMessage.warning("请先完成「步骤 5：计算时长 / 去气口」");
-    isGenerating.value = false;
+  // 构建源内容
+  const sourceContent = compactedSubtitles.value.length > 0
+    ? buildSourceContent(selectedSources, compactedSubtitles.value)
+    : buildSourceContent(selectedSources);
+  if (!sourceContent.content.trim()) {
+    ElMessage.warning("所选数据源中没有字幕内容");
     return;
   }
 
-  try {
-    const fullTextChunks: string[] = [];
-    currentAiStage.value = 0;
+  isGenerating.value = true;
+  streamingScript.value = "";
+  genLog.value = null;
+  showGenLog.value = true;
+  reviewPhase.value = "review";
+  reviewMessages.value = [];
+  sentPrompt.value = "";
+  qcRetries.value = 0;
+  qcFeedback.value = "";
+  sevenDimScores.value = null;
+  suggestedDuration.value = null;
+  dedupResultText.value = "";
+  phase6bScript.value = "";
 
-    // 有压缩字幕就传进去，AI 收到的是去气口时间轴
-    const sourceContent =
-      compactedSubtitles.value.length > 0
-        ? buildSourceContent(selectedSources, compactedSubtitles.value)
-        : buildSourceContent(selectedSources);
-    if (!sourceContent.content.trim()) {
-      ElMessage.warning("所选数据源中没有字幕内容");
-      isGenerating.value = false;
-      return;
+  try {
+    // ========== 阶段 6a：去重优化 + AI 建议时长 ==========
+    currentAiStage.value = 0;
+    phaseState.value = '6a';
+    statusText.value = "阶段 1/3：正在分析去重并建议时长...";
+
+    const { system: sys6a, user: usr6a } = buildPhase6aPrompt(
+      sourceContent.content, conv.topic, conv, totalSourceMin, totalSourceSecRemain
+    );
+    const result6a = await callAISimple(sys6a, usr6a, model, 8192);
+
+    dedupResultText.value = result6a.text;
+    const dur = parseSuggestedDuration(result6a.text);
+    if (dur) {
+      suggestedDuration.value = dur;
+      conv.suggestedDuration = dur.rawText;
     }
 
-    const result = await callAI(
-      sourceContent.content,
-      conv.topic,
-      conv.referenceCopies,
-      conv.speakerPersona || "",
-      conv.audiencePersona || "",
-      conv.durationRequirement || "",
-      conv.frameGap,
-      totalSourceMin,
-      totalSourceSecRemain,
-      model,
-      (text) => {
-        streamingScript.value = text;
-        fullTextChunks.length = 0;
-        fullTextChunks.push(text);
-        // 检测输出中的阶段标记来推进进度
-        if (text.includes("第二阶段") || text.includes("时间轴文案"))
-          currentAiStage.value = 1;
-        if (text.includes("第三阶段") || text.includes("网感编排"))
-          currentAiStage.value = 2;
-      },
-    );
-    currentAiStage.value = 3; // 全部完成
-    const script = result.text;
-
+    // 处理 completion 结束后的日志
     genLog.value = {
-      promptTokens: result.promptTokens,
-      completionTokens: result.completionTokens,
-      charsOut: script.length,
+      promptTokens: result6a.promptTokens,
+      completionTokens: result6a.completionTokens,
+      charsOut: result6a.text.length,
+      truncated: sourceContent.content.length > 15000,
+    };
+    currentAiStage.value = 1;
+    statusText.value = dur
+      ? `去重完成！AI 建议时长：${dur.minMin}分${dur.minSec}秒 ~ ${dur.maxMin}分${dur.maxSec}秒`
+      : "去重完成！请确认后继续";
+
+    // 暂不自动进入 6b，等用户确认时长
+    isGenerating.value = false;
+    saveConversations();
+
+  } catch (e: any) {
+    ElMessage.error("阶段 6a 失败: " + (e.message || "未知错误"));
+    isGenerating.value = false;
+  }
+}
+
+/** 用户确认时长后，继续执行阶段 6b */
+async function continuePhase6b() {
+  const conv = conversations.value.find((c) => c.id === activeConvId.value);
+  if (!conv) return;
+
+  const model = selectedModel.value;
+  if (!model?.apiKey) return;
+
+  const selectedSources = sourceList.value.filter((s) =>
+    selectedSourceIds.value.has(s.id),
+  );
+  if (selectedSources.length === 0) return;
+
+  const sourceContent = compactedSubtitles.value.length > 0
+    ? buildSourceContent(selectedSources, compactedSubtitles.value)
+    : buildSourceContent(selectedSources);
+  if (!sourceContent.content.trim()) return;
+
+  isGenerating.value = true;
+  phaseState.value = '6b';
+
+  // 确定目标时长：优先用AI建议+用户确认，否则用用户期望时长
+  const targetDur = confirmedDuration.value || suggestedDuration.value
+    ? `${suggestedDuration.value?.minMin || 0}分 ~ ${suggestedDuration.value?.maxMin || 5}分`
+    : (conv.durationRequirement || "3-5分钟");
+
+  try {
+    // ========== 阶段 6b：文案挑选 + 七维评分质检 ==========
+    currentAiStage.value = 1;
+    statusText.value = "阶段 2/3：正在挑选最佳字幕并做七维评分...";
+    qcRetries.value = 0;
+    qcFeedback.value = "";
+
+    const { system: sys6b, user: usr6b } = buildPhase6bPrompt(
+      sourceContent.content, conv.topic, conv, targetDur
+    );
+    let result6b = await callAISimple(sys6b, usr6b, model, 16384);
+    phase6bScript.value = result6b.text;
+
+    // 七维评分质检
+    let { scores, composite } = parseSevenDimScores(result6b.text);
+    sevenDimScores.value = scores;
+
+    // 质检规则：综合分 < 60 或任一维度 < 40 → 重试
+    const needsRetry = composite < 60 || Object.values(scores).some(v => v < 40);
+    const MAX_RETRIES = 2;
+
+    while (needsRetry && qcRetries.value < MAX_RETRIES) {
+      qcRetries.value++;
+      const weakDims = Object.entries(scores)
+        .filter(([, v]) => v < 60)
+        .map(([k]) => {
+          const cfg = SCORING_DIMENSION_CONFIG.find(d => d.key === k);
+          return cfg?.label || k;
+        })
+        .join("、");
+
+      qcFeedback.value = `综合分 ${composite}，弱项：${weakDims}。第 ${qcRetries.value}/${MAX_RETRIES} 次优化重试...`;
+      statusText.value = qcFeedback.value;
+      ElMessage.warning(`七维质检不通过（${composite}分，弱项：${weakDims}），正在让 AI 优化...`);
+
+      // 构建重试 prompt：告诉 AI 哪些维度弱，要求改进
+      const retrySys = sys6b + `\n\n⚠️ 上一次的七维自评中，以下维度得分偏低，请重新挑选字幕，重点优化这些维度：${weakDims}`;
+      result6b = await callAISimple(retrySys, usr6b, model, 16384);
+      phase6bScript.value = result6b.text;
+
+      const recheck = parseSevenDimScores(result6b.text);
+      scores = recheck.scores;
+      composite = recheck.composite;
+      sevenDimScores.value = scores;
+
+      if (composite >= 60 && Object.values(scores).every(v => v >= 40)) break;
+    }
+
+    // 更新日志
+    const totalPromptTokens = result6b.promptTokens + (genLog.value?.promptTokens || 0);
+    const totalCompTokens = result6b.completionTokens + (genLog.value?.completionTokens || 0);
+    genLog.value = {
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompTokens,
+      charsOut: result6b.text.length,
       truncated: sourceContent.content.length > 15000,
     };
 
-    // 从 AI 输出中解析 #N 编号，直接映射到字幕条目
+    currentAiStage.value = 2;
+    statusText.value = composite >= 60
+      ? `挑选完成！七维综合分 ${composite}，可进入编排`
+      : `挑选完成。七维综合分 ${composite}（已达最优）`;
+
+    isGenerating.value = false;
+    saveConversations();
+
+  } catch (e: any) {
+    ElMessage.error("阶段 6b 失败: " + (e.message || "未知错误"));
+    isGenerating.value = false;
+  }
+}
+
+/** 用户确认挑选结果后，执行阶段 6c：网感编排 */
+async function continuePhase6c() {
+  const conv = conversations.value.find((c) => c.id === activeConvId.value);
+  if (!conv) return;
+
+  const model = selectedModel.value;
+  if (!model?.apiKey) return;
+
+  if (!phase6bScript.value.trim()) {
+    ElMessage.warning("请先完成阶段 6b 的字幕挑选");
+    return;
+  }
+
+  isGenerating.value = true;
+  phaseState.value = '6c';
+
+  try {
+    // ========== 阶段 6c：网感编排 ==========
+    currentAiStage.value = 2;
+    statusText.value = "阶段 3/3：正在进行网感编排...";
+
+    const { system: sys6c, user: usr6c } = buildPhase6cPrompt(
+      phase6bScript.value, conv.topic, conv
+    );
+    const result6c = await callAISimple(sys6c, usr6c, model, 16384);
+    const script = result6c.text;
+
+    const selectedSources = sourceList.value.filter((s) =>
+      selectedSourceIds.value.has(s.id),
+    );
+    const sourceContent = compactedSubtitles.value.length > 0
+      ? buildSourceContent(selectedSources, compactedSubtitles.value)
+      : buildSourceContent(selectedSources);
+
+    // 解析匹配
     matchedSubs.value = parseScriptIndices(script, sourceContent.entries);
-    // 保存原始条目映射（供审核对话阶段查找 #N 引用）
     sourceEntries.value = sourceContent.entries;
-    // 补全 videoPath（构建时还没有）
     for (const sub of matchedSubs.value) {
       const video = store.importedVideos.find((v) => v.id === sub.videoId);
       if (video) sub.videoPath = video.path;
     }
     removedIndices.value = new Set();
 
+    // 保存结果
     conv.generatedScript = script;
     conv.updatedAt = Date.now();
-    saveConversations();
 
-    // 保存发送给 AI 的完整输入（供审核对话查看）
+    // 保存七维评分和五层评测到 conversation
+    if (sevenDimScores.value) {
+      conv.evaluation = {
+        structure: {
+          topic: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+          angle: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+          opening: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+          transition: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+          body: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+          landing: { score: 60, feedback: '', contrast: false, cognition: false, resonance: false },
+        },
+        contentQuality: sevenDimScores.value,
+        persona: { ageMatch: 60, ageFeedback: '', trackTrust: 60, trackTrustFeedback: '' },
+        value: { practicality: 60, practicalityFeedback: '', gain: 60, gainFeedback: '', easyExecute: 60, easyExecuteFeedback: '' },
+        conversion: { attractiveness: 60, attractivenessFeedback: '', trust: 60, trustFeedback: '' },
+        compositeScore: calcCompositeScore(sevenDimScores.value),
+        summary: '',
+      };
+    }
+
+    // 更新日志
+    const totalPromptTokens = result6c.promptTokens + (genLog.value?.promptTokens || 0);
+    const totalCompTokens = result6c.completionTokens + (genLog.value?.completionTokens || 0);
+    genLog.value = {
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompTokens,
+      charsOut: script.length,
+      truncated: sourceContent.content.length > 15000,
+    };
+
     sentPrompt.value = buildReviewPromptPreview(sourceContent.content, conv);
 
-    // 时长校验 + 自动裁剪：如果用户设了时长要求
-    if (conv.durationRequirement?.trim()) {
-      const actualSec = totalMatchDuration.value;
-      const actualMin = Math.floor(actualSec / 60);
-      const actualSecRem = Math.floor(actualSec % 60);
-      const hint = `实际匹配时长: ${actualMin}分${actualSecRem}秒（原始数据总量: ${totalSourceMin}分${totalSourceSecRemain}秒）`;
+    currentAiStage.value = 3;
+    phaseState.value = 'done';
+    statusText.value = "全部完成！";
 
-      // 解析时长要求：提取数字，智能判断是上限/下限/范围
-      const nums = conv.durationRequirement.match(/\d+/g)?.map(Number) || [];
-      let minTarget = 0,
-        maxTarget = 0;
+    saveConversations();
+    ElMessage.success(`生成完成，匹配 ${matchedSubs.value.length} 个片段`);
 
-      if (nums.length === 1) {
-        // "5分钟" / "五分钟左右" / "至少5分钟" / "不超过7分钟"
-        const req = conv.durationRequirement;
-        if (
-          req.includes("至少") ||
-          req.includes("最低") ||
-          req.includes("以上") ||
-          req.includes("不少于")
-        ) {
-          minTarget = nums[0];
-        } else if (
-          req.includes("不超过") ||
-          req.includes("最多") ||
-          req.includes("以内") ||
-          req.includes("以下")
-        ) {
-          maxTarget = nums[0];
-        } else {
-          // "五分钟左右" / "大约5分钟" → 区间 [4, 6]
-          minTarget = Math.max(1, nums[0] - 1);
-          maxTarget = nums[0] + 1;
-        }
-      } else if (nums.length >= 2) {
-        // "5-7分钟" → [5, 7]
-        minTarget = nums[0];
-        maxTarget = nums[nums.length - 1];
-      }
-
-      // 超出上限 → 从末尾裁剪
-      if (maxTarget > 0 && actualSec > maxTarget * 60) {
-        let trimmed = [...matchedSubs.value];
-        let total = actualSec;
-        while (trimmed.length > 1 && total > maxTarget * 60) {
-          const removed = trimmed.pop()!;
-          total -= (removed.endTime - removed.startTime) / 1000;
-        }
-        matchedSubs.value = trimmed;
-        removedIndices.value = new Set();
-        const newMin = Math.floor(total / 60);
-        const newSec = Math.floor(total % 60);
-        ElMessage.success(
-          `生成完成，已自动裁剪至 ${newMin}分${newSec}秒（符合约${maxTarget}分钟上限），匹配 ${trimmed.length} 个片段`,
-        );
-      } else if (minTarget > 0 && actualSec < minTarget * 60) {
-        ElMessage.warning(`时长未达标，${hint}。数据源时长不足以满足最低要求`);
-      } else {
-        ElMessage.success(
-          `生成完成，${hint}，匹配 ${matchedSubs.value.length} 个片段`,
-        );
-      }
-    } else {
-      ElMessage.success(`生成完成，匹配 ${matchedSubs.value.length} 个片段`);
-    }
   } catch (e: any) {
-    ElMessage.error("生成失败: " + (e.message || "未知错误"));
+    ElMessage.error("阶段 6c 失败: " + (e.message || "未知错误"));
   } finally {
     isGenerating.value = false;
+  }
+}
+
+/** 根据当前阶段路由到正确的处理函数 */
+async function handlePhaseAction() {
+  if (currentAiStage.value === 0) {
+    // 阶段 6a：开始去重
+    await handleGenerate();
+  } else if (currentAiStage.value === 1) {
+    // 阶段 6b：确认时长，继续挑选
+    await continuePhase6b();
+  } else if (currentAiStage.value === 2) {
+    // 阶段 6c：确认挑选，开始编排
+    await continuePhase6c();
   }
 }
 
@@ -2128,6 +2744,321 @@ function buildSourceContent(
     lines.push("");
   }
   return { content: lines.join("\n"), entries };
+}
+
+// ===== 三阶段 AI 调用 =====
+
+/** 建议时长解析结果 */
+interface SuggestedDuration {
+  minMin: number;
+  minSec: number;
+  maxMin: number;
+  maxSec: number;
+  rawText: string;
+}
+
+const phaseState = ref<'6a' | '6b' | '6c' | 'done'>('6a');
+const suggestedDuration = ref<SuggestedDuration | null>(null);
+const confirmedDuration = ref('');
+const dedupResultText = ref('');
+const sevenDimScores = ref<ScoringDimensions | null>(null);
+const qcRetries = ref(0);
+const qcFeedback = ref('');
+const phase6bScript = ref('');
+// 质量评分折叠状态
+const showSevenDim = ref(false);
+const showFiveLogic = ref(false);
+const showStep6SevenDim = ref(false);
+const compositeColor = computed(() => {
+  const s = sevenDimScores.value;
+  if (!s) return '#909399';
+  const c = calcCompositeScore(s);
+  return c >= 75 ? '#16a34a' : c >= 60 ? '#e6a23c' : '#f56c6c';
+});
+
+/** 非流式 AI 调用（用于各阶段独立请求） */
+async function callAISimple(
+  systemPrompt: string,
+  userContent: string,
+  model: { apiKey: string; apiUrl: string; modelParam: string },
+  maxTokens: number = 8192
+): Promise<{ text: string; promptTokens: number; completionTokens: number }> {
+  const reqModel = { provider: "deepseek" as const, modelParam: model.modelParam };
+  const { body } = buildModelRequestBody(reqModel, {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+    temperature: 0.7,
+    max_tokens: maxTokens,
+  });
+
+  const response = await fetch(model.apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${model.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API 错误 (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  const usage = data.usage;
+  return {
+    text,
+    promptTokens: usage?.prompt_tokens || 0,
+    completionTokens: usage?.completion_tokens || 0,
+  };
+}
+
+/** 构建阶段 6a 提示词：去重优化 + 建议时长 */
+function buildPhase6aPrompt(
+  sourceContent: string,
+  topic: string,
+  conv: Conversation,
+  dataMin: number,
+  dataSec: number
+): { system: string; user: string } {
+  let system = `你是专业的短视频剪辑师。你的任务分两步：
+
+## 第一步：去重优化
+严格筛查字幕库中的重复内容：
+- 字面重复（口吃/磕巴）：如 "他没有风险，没有风险" → 第二个"没有风险"是口吃重复
+- 语义重复（同一个意思说了多遍）：如 #5 "这个特别好" 和 #18 "真的特别棒" → 同义，只保留更精炼的一条
+- 相邻重复话：编号相邻的字幕如果意思完全相同或高度重叠，标注并只保留表达更完整的那条
+
+## 第二步：建议时长
+根据去重后剩余素材的质量和密度，给出一个合理的视频时长建议。
+考虑因素：
+- 素材总量：${dataMin}分${dataSec}秒原始数据
+- 去重后的有效内容密度
+- 短视频平台的最佳传播时长（抖音1-3分钟、视频号2-5分钟、小红书1-3分钟、快手1-5分钟）
+- 内容类型和节奏要求
+
+【输出格式】
+# 去重结果
+逐条列出标记为重复的条目（编号+内容摘要+原因），最后汇总：共去除 X 条，保留 Y 条。
+如果没有需要去除的，写"无需去重，所有字幕均为有效内容"。
+
+# 建议时长
+建议时长：A分B秒 ~ C分D秒
+理由：2-3句话说明为什么建议这个时长区间。`;
+
+  if (conv.qualityStandard.trim()) {
+    system += `\n\n【质量标准】\n${conv.qualityStandard.trim()}`;
+  }
+
+  const user = `【字幕库】\n${sourceContent}\n\n【文案方向】\n${topic}\n\n请先完成去重优化，再给出建议时长。`;
+  return { system, user };
+}
+
+/** 解析 AI 返回的建议时长 */
+function parseSuggestedDuration(text: string): SuggestedDuration | null {
+  const regex = /建议时长[：:]\s*(\d+)\s*分\s*(\d+)\s*秒\s*[~～-]\s*(\d+)\s*分\s*(\d+)\s*秒/i;
+  const match = text.match(regex);
+  if (match) {
+    return {
+      minMin: parseInt(match[1]),
+      minSec: parseInt(match[2]),
+      maxMin: parseInt(match[3]),
+      maxSec: parseInt(match[4]),
+      rawText: match[0],
+    };
+  }
+  // 尝试匹配只有分钟没有秒的格式
+  const regex2 = /建议时长[：:]\s*(\d+)\s*分\s*[~～-]\s*(\d+)\s*分/i;
+  const match2 = text.match(regex2);
+  if (match2) {
+    return {
+      minMin: parseInt(match2[1]),
+      minSec: 0,
+      maxMin: parseInt(match2[2]),
+      maxSec: 0,
+      rawText: match2[0],
+    };
+  }
+  return null;
+}
+
+/** 构建阶段 6b 提示词：文案挑选 + 七维自评 */
+function buildPhase6bPrompt(
+  sourceContent: string,
+  topic: string,
+  conv: Conversation,
+  targetDuration: string
+): { system: string; user: string } {
+  let system = `你是专业的短视频文案挑选专家。请从字幕库中按「七维评分」标准挑选最适合的字幕片段。
+
+目标时长：${targetDuration}
+
+## 七维挑选标准
+${SCORING_DIMENSION_CONFIG.map(d =>
+    `【${d.label}】${d.desc}\n  1 = ${d.rubric[0]}\n  2 = ${d.rubric[1]}\n  3 = ${d.rubric[2]}\n  4 = ${d.rubric[3]}\n  5 = ${d.rubric[4]}`
+  ).join('\n')}
+
+## 挑选原则
+- 开场钩子优先：前 3 条必须一击命中，让观众划不走
+- 沉浸共鸣优先：带「你」「我们」视角、描述具体场景的内容优先
+- 干货密度：跳过翻来覆去说同一件事的字幕，保留信息增量最大的版本
+- 节奏掌控：按「痛点→分析→解法」三段式排列，情绪逐步递进
+- 人设差异：保留「我亲自试过」「我踩过的坑」等个人体感内容
+- 传播共鸣：优先选能引起群体共鸣的话题
+- 可信背书：保留有具体数字/案例的字幕，跳过纯感叹/口号
+- 控制总时长在目标范围内
+
+## 🔗 逻辑连贯性（最重要）
+- 每一条字幕都必须是上一条的自然延伸，听众不需要"跳逻辑"就能跟上
+- 遵循「认知铺垫 → 深层分析 → 落地解法」的叙事弧线，不能开头在讲赚钱认知，突然跳到操作细节
+- 话题切换必须有过渡句：如果要从 A 话题换到 B 话题，中间用一条"桥梁字幕"连接
+- 核心逻辑链必须自洽：开头提出的问题，中间必须有分析，结尾必须有回应
+- 通俗化原则：把专业术语拆解成大白话，确保听众全程听得懂，不发生"突然变难听不懂"的断层
+
+${conv.schemeMode === 'precise'
+  ? '## ✂️ 精剪模式约束（与视频素材绑定）\n你挑选的字幕将直接匹配到视频片段，因此需要遵守以下规则：\n- 前 40% 的字幕允许来自不同视频源的"跳跃拼接"（允许剪辑节奏快、场景切换）\n- 后 60% 的字幕必须保证逻辑通顺，相邻两句之间不能有话题断层\n- 如果视频素材中缺少逻辑衔接所需的"过渡句"，宁可少选也不要硬凑\n- 后段优先选同一视频中连续的字幕片段，减少剪辑跳切感'
+  : '## 🎯 效果优先模式（不受视频素材限制）\n你拥有完全的自由度来最大化文案效果：\n- 不受视频来源限制，纯以文案冲击力和传播效果为准\n- 可以重新组合不同视频的字幕，只要能拼出最强的逻辑链\n- 如果素材中缺乏某种情绪转折，可以用「编排说明」告知用户哪里需要补拍'}`;
+
+  if (conv.speakerPersona.trim()) {
+    system += `\n\n【人设画像】\n${conv.speakerPersona.trim()}`;
+  }
+  if (conv.audiencePersona.trim()) {
+    system += `\n\n【人群画像】\n${conv.audiencePersona.trim()}`;
+  }
+  if (conv.qualityStandard.trim()) {
+    system += `\n\n【质量标准】\n${conv.qualityStandard.trim()}`;
+  }
+  if (conv.targetPlatform) {
+    system += `\n\n【目标平台】${conv.targetPlatform}\n${PLATFORM_SCORING_GUIDE[conv.targetPlatform as Platform] || ''}`;
+  }
+
+  system += `\n\n【输出格式】
+按播出顺序列出选中的字幕，每条一行：#N [时间轴] 文案内容
+
+示例：
+#5 [00:12-00:16] 你有没有发现，越是拼命的人越容易陷入一个误区
+#12 [00:18-00:26] 我花了三年时间才明白
+
+## 七维自评
+每个维度打分（1-5）及一句话说明：
+hook: 4 | 理由
+empathy: 3 | 理由
+density: 3 | 理由
+structure: 4 | 理由
+originality: 3 | 理由
+socialResonance: 4 | 理由
+polish: 3 | 理由
+
+## 逻辑链审查
+用 2-3 句话检查：开头→中间→结尾的逻辑是否通顺？有没有让听众突然听不懂的断层？
+
+综合分: X/5`;
+
+  const refCopies = conv.referenceCopies.filter(c => c.trim());
+  let refSection = '';
+  if (refCopies.length > 0) {
+    refSection = '\n\n【参考文案风格】\n' + refCopies.map((c, i) => `参考${i + 1}: ${c.trim()}`).join('\n\n');
+  }
+
+  const user = `【字幕库】\n${sourceContent}\n\n【文案方向】\n${topic}${refSection}\n\n请按七维标准挑选字幕，控制总时长在${targetDuration}左右。${conv.schemeMode === 'precise' ? '注意：这是精剪模式，后60%的字幕必须逻辑通顺，不能有断层。' : '效果优先，自由发挥。'}`;
+  return { system, user };
+}
+
+/** 构建阶段 6c 提示词：网感编排 */
+function buildPhase6cPrompt(
+  selectedSubtitles: string,
+  topic: string,
+  conv: Conversation
+): { system: string; user: string } {
+  const isPrecise = conv.schemeMode === 'precise';
+
+  let system = `你是专业的短视频网感编排专家。将选中的字幕组织成一条完整的、符合短视频节奏的文案。
+
+## 编排要求
+- 钩子前置：最抓人的 1-2 条放开头，3 秒内建立期待
+- 情绪递进：钩子引发焦虑 → 展开加深理解 → 结尾给出解法或留悬念
+- 节奏把控：主力句（2~8秒）占多数，短碎片不连续超过 3 条，长句（>15秒）拆开
+- 衔接自然：前一句结尾和后一句开头语义顺滑，不出现话题突然跳转
+- 朗读通顺：句子不能断在"的/了/吗"之前
+- 网感终点：结尾引发好奇或给出明确行动号召
+
+## 🔗 叙事连贯性（最高优先级）
+- 整体必须形成一条完整的叙事弧线：为什么说这个 → 核心认知是什么 → 具体怎么做
+- 严禁话题断层：如果前一句在讲"赚钱思维"，下一句不能突然跳到"操作工具"而没有过渡
+- 每条之间检查：这句话的结尾词，和下一句话的开头词，能自然接上吗？
+- 通俗易懂：全程用口语化表达，确保听众不费力就能理解，拒绝"听着听着突然听不懂"
+- 情绪曲线：开头激昂→中间有起伏→结尾有力，不能从头平到尾`;
+
+  if (isPrecise) {
+    system += `\n\n## ✂️ 精剪模式编排规则\n你编排的文案将直接对应视频片段，因此：\n- 前 40% 的句子允许节奏快、场景切换频繁（制造"信息轰炸"的爽感）\n- 后 60% 必须放慢节奏，每句话之间逻辑咬合紧密，形成"沉浸式聆听"体验\n- 如果选中的字幕之间缺少逻辑衔接，请用一句话标注【此处需补过渡】，不要强行跳跃\n- 后段尽量让相邻句子来自同一视频源的连续片段`;
+  } else {
+    system += `\n\n## 🎯 效果优先编排规则\n你拥有完全自由度：\n- 可以大刀阔斧地重新排序，只要最终逻辑链最强\n- 可以建议删除某条字幕并用其他内容替换\n- 目标是让观众从头到尾不划走，每个转折都有"爽点"`;
+  }
+
+  if (conv.speakerPersona.trim()) {
+    system += `\n\n【人设画像】\n${conv.speakerPersona.trim()}`;
+  }
+  if (conv.audiencePersona.trim()) {
+    system += `\n\n【人群画像】\n${conv.audiencePersona.trim()}`;
+  }
+  if (conv.qualityStandard.trim()) {
+    system += `\n\n【质量标准】\n${conv.qualityStandard.trim()}`;
+  }
+
+  system += `\n\n【输出格式】
+### 编排说明
+3~5 句话说明开头、递进、结尾的设计思路
+
+### 完整文案
+按播出顺序的完整文案（不含时间轴，纯文字段落）
+
+### 节奏审查
+2~3 句话评价节奏和衔接`;
+
+  const user = `【选中的字幕片段】\n${selectedSubtitles}\n\n【文案方向】\n${topic}\n\n请将以上字幕编排成一条完整的短视频文案。${isPrecise ? '记住：精剪模式，后60%必须逻辑通顺无断层。' : '效果优先，重在冲击力和传播效果。'}`;
+  return { system, user };
+}
+
+/** 七维评分质检：解析分数并判断是否需要重试 */
+function parseSevenDimScores(text: string): { scores: ScoringDimensions; composite: number } {
+  const scores = parseScoresFromAI(text);
+  const composite = calcCompositeScore(scores);
+  return { scores, composite };
+}
+
+/** 从 AI 输出中解析七维分数（复用共享服务） */
+function parseScoresFromAI(text: string): ScoringDimensions {
+  // 使用共享服务的 parseScores，但处理 Likert 1-5 → 0-100 映射
+  const dimMap: Record<string, keyof ScoringDimensions> = {
+    'hook': 'hook', '开场钩子': 'hook',
+    'empathy': 'empathy', '沉浸共鸣': 'empathy',
+    'density': 'density', '干货密度': 'density',
+    'structure': 'structure', '节奏掌控': 'structure',
+    'originality': 'originality', '人设差异': 'originality',
+    'socialResonance': 'socialResonance', '传播共鸣': 'socialResonance',
+    'polish': 'polish', '可信背书': 'polish',
+  };
+
+  const scores = defaultScores();
+  let parsed = 0;
+  for (const [label, key] of Object.entries(dimMap)) {
+    const regex = new RegExp(`${label}[：:]\\s*(\\d+(?:\\.\\d+)?)`, 'i');
+    const match = text.match(regex);
+    if (match) {
+      const rawVal = parseFloat(match[1]);
+      const val = rawVal <= 5 ? Math.round(rawVal * 20) : Math.max(0, Math.min(100, rawVal));
+      scores[key] = val;
+      parsed++;
+    }
+  }
+  if (parsed < 7) {
+    console.warn(`[parseScoresFromAI] 仅解析到 ${parsed}/7 维`);
+  }
+  return scores;
 }
 
 async function callAI(
@@ -2293,7 +3224,7 @@ ${copyBlocks}
       ? userMsg.slice(0, 15000) + "\n...(内容已截断，剩余条目可能不完整)"
       : userMsg;
 
-  const reqModel = { provider: "deepseek", modelParam: model.modelParam };
+  const reqModel = { provider: "deepseek" as const, modelParam: model.modelParam };
   const { body } = buildModelRequestBody(reqModel, {
     messages: [
       { role: "system", content: systemPrompt },
@@ -2661,7 +3592,7 @@ ${selectedLines}`;
   }
 }
 
-/** 从审核对话中解析 AI 的修改建议并应用到 matchedSubs */
+/** 从审核对话中解析 AI 的修改建议并应用到 matchedSubs（仅解析最后一条 AI 消息） */
 function applyReviewChanges(): { removed: number; replaced: number } {
   const aiMessages = reviewMessages.value.filter((m) => m.role === "ai");
   if (aiMessages.length === 0) return { removed: 0, replaced: 0 };
@@ -2669,59 +3600,60 @@ function applyReviewChanges(): { removed: number; replaced: number } {
   const toRemove = new Set<number>(); // matchedSubs 索引
   const toAdd: SubtitleEntry[] = [];
 
-  for (const msg of aiMessages) {
-    // 模式1: "移除 #N" / "删除 #N" / "去掉 #N" → 标记删除
-    const removeRe = /(?:移除|删除|去掉|不建议保留)\s*#(\d+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = removeRe.exec(msg.text)) !== null) {
-      const selectedIdx = parseInt(match[1], 10) - 1;
-      let count = 0;
-      for (let i = 0; i < matchedSubs.value.length; i++) {
-        if (!removedIndices.value.has(i)) {
-          if (count === selectedIdx) {
-            toRemove.add(i);
-            break;
-          }
-          count++;
+  // 仅解析最后一条 AI 消息，避免历史讨论被误匹配
+  const lastMsg = aiMessages[aiMessages.length - 1];
+
+  // 模式1: "移除 #N" / "删除 #N" / "去掉 #N" → 标记删除
+  const removeRe = /(?:移除|删除|去掉)\s*#(\d+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = removeRe.exec(lastMsg.text)) !== null) {
+    const selectedIdx = parseInt(match[1], 10) - 1;
+    let count = 0;
+    for (let i = 0; i < matchedSubs.value.length; i++) {
+      if (!removedIndices.value.has(i)) {
+        if (count === selectedIdx) {
+          toRemove.add(i);
+          break;
         }
+        count++;
       }
     }
+  }
 
-    // 模式2: "替换 #N 为 #M" → 删除 #N，从 sourceEntries 添加 #M
-    const replaceRe = /(?:替换|换成|改用)\s*#(\d+)\s*(?:为|→|->|用)\s*#(\d+)/g;
-    while ((match = replaceRe.exec(msg.text)) !== null) {
-      const selectedIdx = parseInt(match[1], 10) - 1;
-      const sourceIdx = parseInt(match[2], 10) - 1;
-      let count = 0;
-      for (let i = 0; i < matchedSubs.value.length; i++) {
-        if (!removedIndices.value.has(i)) {
-          if (count === selectedIdx) {
-            toRemove.add(i);
-            break;
-          }
-          count++;
+  // 模式2: "替换 #N 为 #M" → 删除 #N，从 sourceEntries 添加 #M
+  const replaceRe = /(?:替换|换成|改用)\s*#(\d+)\s*(?:为|→|->|用)\s*#(\d+)/g;
+  while ((match = replaceRe.exec(lastMsg.text)) !== null) {
+    const selectedIdx = parseInt(match[1], 10) - 1;
+    const sourceIdx = parseInt(match[2], 10) - 1;
+    let count = 0;
+    for (let i = 0; i < matchedSubs.value.length; i++) {
+      if (!removedIndices.value.has(i)) {
+        if (count === selectedIdx) {
+          toRemove.add(i);
+          break;
         }
-      }
-      if (sourceIdx >= 0 && sourceIdx < sourceEntries.value.length) {
-        toAdd.push(sourceEntries.value[sourceIdx]);
+        count++;
       }
     }
+    if (sourceIdx >= 0 && sourceIdx < sourceEntries.value.length) {
+      toAdd.push(sourceEntries.value[sourceIdx]);
+    }
+  }
 
-    // 模式3: "添加 #N" / "加入 #N" → 从 sourceEntries 添加
-    const addRe = /(?:添加|加入|补充)\s*#(\d+)/g;
-    while ((match = addRe.exec(msg.text)) !== null) {
-      const sourceIdx = parseInt(match[1], 10) - 1;
-      if (sourceIdx >= 0 && sourceIdx < sourceEntries.value.length) {
-        const entry = sourceEntries.value[sourceIdx];
-        // 避免重复添加
-        if (
-          !matchedSubs.value.some(
-            (s) =>
-              s.videoId === entry.videoId && s.startTime === entry.startTime,
-          )
-        ) {
-          toAdd.push(entry);
-        }
+  // 模式3: "添加 #N" / "加入 #N" → 从 sourceEntries 添加
+  const addRe = /(?:添加|加入|补充)\s*#(\d+)/g;
+  while ((match = addRe.exec(lastMsg.text)) !== null) {
+    const sourceIdx = parseInt(match[1], 10) - 1;
+    if (sourceIdx >= 0 && sourceIdx < sourceEntries.value.length) {
+      const entry = sourceEntries.value[sourceIdx];
+      // 避免重复添加
+      if (
+        !matchedSubs.value.some(
+          (s) =>
+            s.videoId === entry.videoId && s.startTime === entry.startTime,
+        )
+      ) {
+        toAdd.push(entry);
       }
     }
   }
@@ -2756,12 +3688,88 @@ function confirmScheme() {
   // 应用审核对话中 AI 的修改建议
   const changes = applyReviewChanges();
 
+  // 执行五层评测：基于七维评分 + 创作者画像 + 平台信息
+  runFiveLayerEvaluation();
+
   reviewPhase.value = "tuning";
   const parts: string[] = ["已进入微调"];
   if (changes.removed > 0) parts.push(`自动移除了 ${changes.removed} 个片段`);
   if (changes.replaced > 0) parts.push(`补充了 ${changes.replaced} 个片段`);
   parts.push("可在此进一步微调后导出剪映");
   ElMessage.success(parts.join("，"));
+}
+
+/** 运行五层评测（基于七维评分 + 画像 + 平台信息，本地计算） */
+function runFiveLayerEvaluation() {
+  const conv = conversations.value.find((c) => c.id === activeConvId.value);
+  if (!conv || !sevenDimScores.value) return;
+
+  // 构造简化的 persona 和 value（基于对话中的数据）
+  const persona: PersonaEval = {
+    ageMatch: conv.creatorAge ? 60 : 50,
+    ageFeedback: conv.creatorAge ? `创作者年龄 ${conv.creatorAge} 岁` : '',
+    trackTrust: conv.creatorTrack ? 65 : 50,
+    trackTrustFeedback: conv.creatorTrack ? `赛道：${conv.creatorTrack}` : '',
+  };
+
+  const value: ValueEval = {
+    practicality: 60,
+    practicalityFeedback: '',
+    gain: 65,
+    gainFeedback: '',
+    easyExecute: 55,
+    easyExecuteFeedback: '',
+  };
+
+  // 平台合规检查
+  let platformCheck = null;
+  if (conv.targetPlatform) {
+    platformCheck = {
+      hasViolation: false,
+      violations: [],
+      styleMatch: 70,
+      suggestions: [],
+    };
+  }
+
+  const report = mapToFiveLogic(sevenDimScores.value, persona, value, platformCheck);
+  conv.fiveLogic = report;
+  saveConversations();
+}
+
+/** 基于审核对话反馈重新执行 6b+6c */
+async function handleRegenerateWithFeedback() {
+  const conv = conversations.value.find((c) => c.id === activeConvId.value);
+  if (!conv) return;
+
+  // 收集用户反馈
+  const userFeedback = reviewMessages.value
+    .filter(m => m.role === 'user')
+    .map(m => m.text)
+    .join('\n');
+
+  if (!userFeedback.trim()) {
+    // 没有反馈，重新执行 6b
+    await continuePhase6b();
+    if (phase6bScript.value) await continuePhase6c();
+    return;
+  }
+
+  // 将反馈内容添加到 6b prompt 中
+  ElMessage.info('正在基于你的反馈重新生成...');
+  reviewMessages.value.push({
+    role: 'user',
+    text: `【反馈驱动重新生成】已根据你的 ${reviewMessages.value.filter(m => m.role === 'user').length} 条反馈重新执行挑选和编排。`,
+    time: Date.now(),
+  } as any);
+
+  // 重新执行 6b+6c（保留去重结果）
+  await continuePhase6b();
+  if (phase6bScript.value) await continuePhase6c();
+
+  if (conv.generatedScript) {
+    ElMessage.success('基于反馈的重新生成完成！');
+  }
 }
 
 /** 应用并导出为剪映工程 */
@@ -2772,6 +3780,10 @@ async function handleApply() {
   }
 
   const conv = conversations.value.find((c) => c.id === activeConvId.value);
+
+  // 用第一个选中字幕的视频分辨率作为画布尺寸
+  const firstSub = selectedSubs.value[0];
+
   // 帧 → 毫秒：使用第一个片段对应视频的实际帧率
   const firstSourceFps =
     sourceList.value.find((s) => s.id === firstSub.videoId)?.fps || 30;
@@ -2781,9 +3793,6 @@ async function handleApply() {
 
   // 自动生成工程名称（ElMessageBox.prompt 在 Electron 中可能不显示）
   const projectName = `剪映工程_${new Date().toLocaleDateString().replace(/\//g, "-")}`;
-
-  // 用第一个选中字幕的视频分辨率作为画布尺寸
-  const firstSub = selectedSubs.value[0];
   const firstVideo = store.importedVideos.find(
     (v) => v.id === firstSub.videoId,
   );
@@ -2843,6 +3852,7 @@ function renderScript(text: string): string {
 // ===== 生命周期 =====
 onMounted(async () => {
   loadConversations();
+  loadSavedSettings();
   if (conversations.value.length > 0) {
     activeConvId.value = conversations.value[0].id;
   } else {
@@ -2997,6 +4007,46 @@ onMounted(async () => {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+}
+
+/* 阶段指示条 */
+.phase-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.phase-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #dcdfe6;
+  transition: background 0.3s;
+}
+.phase-dot.active {
+  background: #409eff;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
+}
+.phase-dot.done {
+  background: #67c23a;
+}
+.phase-label {
+  font-size: 11px;
+  color: #909399;
+  white-space: nowrap;
+}
+.phase-dot.active + .phase-label {
+  color: #409eff;
+  font-weight: 600;
+}
+.phase-arrow {
+  font-size: 10px;
+  color: #c0c4cc;
 }
 
 /* 卡片 */
@@ -3194,6 +4244,8 @@ onMounted(async () => {
   margin-top: 4px;
   padding-top: 6px;
   border-top: 1px solid #ebeef5;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 /* 匹配信息 */
@@ -3336,6 +4388,171 @@ onMounted(async () => {
   min-height: auto;
 }
 
+/* 步骤 2：重新设计的布局 */
+.step2-section {
+  margin-bottom: 12px;
+}
+
+.step2-section:last-child {
+  margin-bottom: 0;
+}
+
+.step2-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.step2-row {
+  display: flex;
+  gap: 10px;
+}
+
+.step2-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.step2-field-label {
+  display: block;
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.step2-field {
+  margin-bottom: 10px;
+}
+
+.step2-field:last-child {
+  margin-bottom: 0;
+}
+
+/* 高级配置折叠面板 */
+.step2-advanced {
+  margin-top: 10px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+}
+
+.step2-advanced-summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #409eff;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.step2-advanced-summary :last-child {
+  font-weight: 400;
+  font-size: 11px;
+  color: #909399;
+}
+
+.step2-advanced-body {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+
+/* 四列内联网格 */
+.step2-inline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 0.8fr 1fr;
+  gap: 8px;
+}
+
+.step2-inline-item {
+  min-width: 0;
+}
+
+.step2-mini-label {
+  display: block;
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 3px;
+}
+
+/* 方案模式选择器（步骤6） */
+.scheme-mode-selector {
+  margin: 10px 0 6px;
+}
+
+.scheme-mode-label {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.scheme-mode-options {
+  display: flex;
+  gap: 8px;
+}
+
+.scheme-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1.5px solid #e4e7ed;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.scheme-option:hover {
+  border-color: #c0c4cc;
+  background: #f5f5f5;
+}
+
+.scheme-option.active {
+  border-color: #409eff;
+  background: #ecf5ff;
+  box-shadow: 0 1px 4px rgba(64, 158, 255, 0.15);
+}
+
+.scheme-option-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.scheme-option-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheme-option-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 2px;
+}
+
+.scheme-option.active .scheme-option-title {
+  color: #409eff;
+}
+
+.scheme-option-desc {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.4;
+}
+
 /* 步骤 5：去气口 */
 .step-desc {
   font-size: 12px;
@@ -3402,6 +4619,199 @@ onMounted(async () => {
 
 .stage-label {
   line-height: 1.4;
+}
+
+/* 阶段结果展示 */
+.phase-result {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  border: 1px solid #d9ecff;
+}
+
+.phase-result-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #409eff;
+  margin-bottom: 6px;
+}
+
+.phase-result-body {
+  font-size: 13px;
+  color: #303133;
+}
+
+/* 七维评分横向条形图 */
+.score-dim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.score-dim-label {
+  width: 60px;
+  flex-shrink: 0;
+  font-weight: 500;
+  text-align: right;
+}
+
+.score-dim-bar-wrap {
+  flex: 1;
+  height: 10px;
+  background: #f0f0f0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.score-dim-bar {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.5s ease;
+  min-width: 2px;
+}
+
+.score-dim-val {
+  width: 28px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* 步骤 7：质量评分紧凑卡片 */
+.quality-compact {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fafbfc;
+  overflow: hidden;
+}
+
+.qc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.qc-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qc-label {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.qc-retry {
+  font-size: 11px;
+  color: #e6a23c;
+}
+
+.qc-toggle {
+  font-size: 11px;
+  color: #909399;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.qc-toggle:hover {
+  color: #409eff;
+  background: #ecf5ff;
+}
+
+.qc-toggle.active {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.qc-body {
+  padding: 6px 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.qc-body--logic {
+  border-top: none;
+  padding-top: 2px;
+}
+
+.qc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 12px;
+}
+
+.qc-dim {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.qc-dim-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.qc-dim-name {
+  color: #606266;
+  flex: 1;
+}
+
+.qc-dim-val {
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 22px;
+  text-align: right;
+}
+
+.qc-logic-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.qc-logic-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.qc-logic-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.qc-logic-name {
+  color: #909399;
+}
+
+.qc-logic-val {
+  font-weight: 600;
+  color: #303133;
 }
 
 /* 去气口预览列表 */

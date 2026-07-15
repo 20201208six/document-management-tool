@@ -312,9 +312,8 @@ import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
   useUniqueModeStore,
-  PLATFORM_CONFIG,
-  type Platform,
 } from "@/stores/uniqueMode";
+import { PLATFORM_CONFIG, type Platform } from "@/services/scriptEvaluator";
 
 const store = useUniqueModeStore();
 const submitMsg = ref("");

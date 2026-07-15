@@ -3,6 +3,21 @@ import { ref, computed, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { buildModelRequestBody, computeEmbedding, findSimilar } from '@/services/deepseek'
+import {
+  type Platform,
+  PLATFORM_CONFIG,
+  PLATFORM_SCORING_GUIDE,
+  type ScoringDimensions,
+  SCORING_DIMENSION_CONFIG,
+  type FiveLogicReport,
+  type FiveLogicScores,
+  type PlatformCompliance,
+  type LegacyScoringDimensions,
+  migrateScores,
+  isOldFormat,
+  defaultScores,
+  calcCompositeScore,
+} from '@/services/scriptEvaluator'
 
 // ===== 类型定义 =====
 
@@ -68,58 +83,8 @@ export interface Account {
   createdAt: string
 }
 
-/** 支持的平台 */
-export type Platform = '抖音' | '视频号' | '小红书' | '快手'
-
-/** 平台配置 */
-export const PLATFORM_CONFIG: Record<Platform, { label: string; icon: string }> = {
-  '抖音': { label: '抖音', icon: '🎵' },
-  '视频号': { label: '视频号', icon: '📺' },
-  '小红书': { label: '小红书', icon: '📕' },
-  '快手': { label: '快手', icon: '📱' }
-}
-
-/** 平台评分锚定指南（纯算法规则，不包含受众描述） */
-export const PLATFORM_SCORING_GUIDE: Record<Platform, string> = {
-  '抖音': `【平台算法规则·抖音】
-- 核心分发：算法推荐为主，完播率决定是否进入下一流量池
-- 关键权重：完播率 > 停留时长 > 互动率（点赞/评论/转发）
-- 钩子要求：前3秒完播率直接决定推流规模，必须在极短时间内让受众产生"不可划走"的感觉
-- 节奏要求：快节奏、高密度输出，每5-8秒需要一个信息点或情绪点来维持停留
-- 互动要求：评论和转发信号强于单纯点赞，触发讨论的内容比触发认同的内容推得更远`,
-
-  '视频号': `【平台算法规则·视频号】
-- 核心分发：社交关系链推荐为主（微信好友圈），熟人传播优先
-- 关键权重：点赞/收藏权重高于完播率，社交推荐信号强
-- 钩子要求：信任感优先于刺激感，不需要过度夸张，可用"一个真实的经历/发现"开头
-- 节奏要求：允许深度展开和较慢节奏，但必须有清晰的结构感
-- 互动要求：收藏率是关键指标，被收藏意味着受众认为"值得回看"`,
-
-  '小红书': `【平台算法规则·小红书】
-- 核心分发：搜索流量占比高 + 推荐流双引擎
-- 关键权重：收藏率 + 搜索关键词匹配 + 笔记质量评分
-- 钩子要求：标题和首图决定点击，需要"身份标签+具体利益"的组合，而非纯粹冲突
-- 结构要求：信息结构化（分点/步骤/清单），实用导向，方便受众收藏和日后检索
-- 互动要求：收藏 >> 点赞，被收藏的内容持续获得搜索流量`,
-
-  '快手': `【平台算法规则·快手】
-- 核心分发：关注关系和同城推荐优先，社区粘性强于算法推荐
-- 关键权重：关注转化率 + 评论区互动深度 + 直播联动
-- 钩子要求：真实感开场优先，"老铁们"式的亲近感，不宜过度精致或"端着"
-- 节奏要求：允许更生活化的叙事节奏，对话感重于节奏感
-- 互动要求：评论区的真实对话深度比评论数量更重要`
-}
-
-/** 7维评分维度（受众需求锚定，存储时×20映射为0-100） */
-export interface ScoringDimensions {
-  hook: number         // 开场钩子 0-100
-  empathy: number      // 代入共鸣 0-100
-  density: number      // 信息密度 0-100
-  structure: number    // 叙事结构 0-100
-  originality: number  // 稀缺独创 0-100
-  socialResonance: number // 社会共振 0-100
-  polish: number       // 执行质量 0-100
-}
+/** 支持的平台（从 scriptEvaluator 导入） */
+// Platform, PLATFORM_CONFIG, PLATFORM_SCORING_GUIDE, ScoringDimensions 已迁移至 @/services/scriptEvaluator
 
 /** 创作者信息（录入文案前必须配置） */
 export interface CreatorProfile {
@@ -173,39 +138,11 @@ export interface SnapshotEntry {
   customCriteria: Record<string, string>
 }
 
-/** 五逻辑报告层：将七维评分 + 五层评测映射为业务逻辑分值 */
-export interface FiveLogicScores {
-  /** 流量逻辑：当前人群是否爱看（话题引力+完播设计+防跳失） */
-  traffic: number
-  /** 平台逻辑：不同平台规则/违禁词/人群喜好的适配度 */
-  platform: number
-  /** 用户逻辑：用户认不认可、喜不喜欢、有没有感受 */
-  user: number
-  /** 商业逻辑：内容是否具有价值（获得感+稀缺性+行动力） */
-  business: number
-  /** 传播逻辑：赛道-开头-价值-时长-易懂-落脚，各节点传播势能 */
-  spread: number
-}
+// FiveLogicScores, FiveLogicReport 已迁移至 @/services/scriptEvaluator
 
-export interface FiveLogicReport {
-  scores: FiveLogicScores
-  /** 平台合规检查结果 */
-  platformCheck: PlatformCompliance | null
-  /** 各逻辑层的详细分析（AI 输出） */
-  analysis: Record<string, string>
-}
+// 评估类型已迁移至 @/services/scriptEvaluator
 
-/** 平台合规检查结果 */
-export interface PlatformCompliance {
-  /** 是否包含违禁词/敏感词 */
-  hasViolation: boolean
-  /** 违禁词列表 */
-  violations: string[]
-  /** 平台风格匹配度（0-100） */
-  styleMatch: number
-  /** 平台优化建议 */
-  suggestions: string[]
-}
+// ===== uniqueMode 特有 =====
 
 /** 结构链节点评测 */
 export interface StructureNodeEval {
@@ -272,134 +209,7 @@ export interface TextEvaluation {
   fiveLogic?: FiveLogicReport
 }
 
-/** 评分维度标签配置 */
-export const SCORING_DIMENSION_CONFIG: Array<{
-  key: keyof ScoringDimensions
-  label: string
-  desc: string
-  color: string
-  /** Likert 5级锚定描述 */
-  rubric: string[]
-}> = [
-    {
-      key: 'hook', label: '开场钩子', desc: '前3秒能否让受众划不走', color: '#f56c6c', rubric: [
-        '无具体指向，泛泛而谈，受众没有任何"这是在对我说"的感觉',
-        '提到了一个普遍话题但没对准具体困惑，受众可能好奇但不一定被击中',
-        '明确指向了某个群体共有的困境，受众产生"这说的是我的事"的识别感',
-        '精准命中受众心中正在纠结但还没想清楚的问题，受众感到"你怎么知道我在想这个"',
-        '一击命中受众最隐秘的困惑，产生强烈的被看穿感和不可划走的本能反应'
-      ]
-    },
-    {
-      key: 'empathy', label: '沉浸共鸣', desc: '是否让受众觉得「这说的就是我」', color: '#e6a23c', rubric: [
-        '与受众无关的抽象话题，没有任何代入路径',
-        '泛泛涉及了可能与受众相关的话题，但停留在表面',
-        '说出了受众心里知道但没表达出来的感受，产生"对，就是这样"的认可',
-        '不仅说出了受众的感受，还帮他们理清了情绪的来龙去脉，产生被解读的深层满足',
-        '受众感到"这个人说出了我一直想说但说不清的东西"，产生强烈的精神连接'
-      ]
-    },
-    {
-      key: 'density', label: '干货密度', desc: '每段是否都在提供新知，不注水', color: '#9b59b6', rubric: [
-        '翻来覆去讲一个已知道理，没有任何新认知',
-        '有1个有价值的角度但展开拖沓，信息稀疏',
-        '2-3个递进的解释角度，每个角度都有信息增量',
-        '持续提供新的理解框架，每个段落都让受众对问题的理解更进一层',
-        '全程高密度输出，受众感觉"每句话都在刷新我对这个问题的认知"'
-      ]
-    },
-    {
-      key: 'structure', label: '节奏掌控', desc: '受众是否经历了「被戳中→被解读→被点醒」', color: '#1abc9c', rubric: [
-        '流水账，没有情绪引导，受众看完没有感受变化',
-        '有基本的结构但缺乏情绪起伏，受众看完和看完前感觉差不多',
-        '有清晰的起承转合，受众经历了从困惑到理解的感受变化',
-        '结构精心设计，受众经历了被理解→被解释→被给予希望的完整情绪弧线',
-        '情绪路径如大师布局，受众经历多轮"啊！原来是这个原因→那我该怎么做→原来如此"的认知升级'
-      ]
-    },
-    {
-      key: 'originality', label: '人设差异', desc: '换个同行来讲，是否就没这个味儿了', color: '#e74c3c', rubric: [
-        '重复同赛道常见观点，换个同行也能讲，无差异',
-        '有个人经历但不独特，同行用类似角度也能覆盖',
-        '有独特的解读角度或案例组合，同行不太容易复制',
-        '"只有这个人能讲"的内容，结合了独特的经验/案例/表达方式',
-        '开创性洞察，为赛道带来了全新的理解维度，受众从未听过这个角度的解读'
-      ]
-    },
-    {
-      key: 'socialResonance', label: '传播共鸣', desc: '是否让受众产生「必须转给谁看」的冲动', color: '#3498db', rubric: [
-        '纯个人琐事，与任何群体性困境无关',
-        '提及了某个社会话题但没有切中痛点，共鸣面窄',
-        '触及了一个具体的人群困境，相关群体能对号入座',
-        '准确命名了一个"人人都感觉到但没人说清"的人生阶段困境，具备自发传播动力',
-        '击中了某一人生阶段核心的未被言说的集体隐痛，让受众产生"终于有人说出来了"的转发冲动'
-      ]
-    },
-    {
-      key: 'polish', label: '可信背书', desc: '是否让人觉得你说的有根据、不忽悠', color: '#409eff', rubric: [
-        '语言粗糙/夸张/无根据，受众感到"这是忽悠"',
-        '基本通顺但缺乏可信度背书，受众半信半疑',
-        '语言流畅工整，有一定可信度支撑（如引经据典/案例佐证）',
-        '文字考究有节制，引用/案例/逻辑完整，受众感到"这个人是真懂的"',
-        '每个论断都建立在可感知的根基上，受众感到"这不是在说服我，是在帮我看到真相"'
-      ]
-    }
-  ]
-
-/** 旧版9维评分（用于数据迁移） */
-export interface LegacyScoringDimensions {
-  openingHook?: number
-  characterScene?: number
-  emotionalPeak?: number
-  audienceEngagement?: number
-  viewpointCompression?: number
-  structureClarity?: number
-  contentScarcity?: number
-  accountMatch?: number
-  lowLikeRisk?: number
-}
-
-/** 将旧版9维映射为新版7维 */
-export function migrateScores(legacy: LegacyScoringDimensions): ScoringDimensions {
-  return {
-    hook: legacy.openingHook ?? 60,
-    empathy: Math.round(((legacy.characterScene ?? 60) + (legacy.audienceEngagement ?? 60)) / 2),
-    density: Math.round(((legacy.viewpointCompression ?? 60) + (legacy.contentScarcity ?? 60)) / 2),
-    structure: legacy.structureClarity ?? 60,
-    originality: legacy.contentScarcity ?? 60,
-    socialResonance: legacy.accountMatch ?? 60,
-    polish: legacy.emotionalPeak ?? 60
-  }
-}
-
-/** 判断数据是否为新版7维 */
-export function isOldFormat(scores: any): boolean {
-  return scores && ('openingHook' in scores || 'lowLikeRisk' in scores)
-}
-
-/** 默认评分 */
-export function defaultScores(): ScoringDimensions {
-  return { hook: 60, empathy: 60, density: 60, structure: 60, originality: 60, socialResonance: 60, polish: 60 }
-}
-
-/** 计算综合评分（加权平均，无反向计分维度） */
-export function calcCompositeScore(scores: ScoringDimensions, customWeights?: Record<string, number>): number {
-  const wt = customWeights || {}
-  const weights: Record<keyof ScoringDimensions, number> = {
-    hook: (wt['hook'] ?? 18) / 100,
-    empathy: (wt['empathy'] ?? 14) / 100,
-    density: (wt['density'] ?? 16) / 100,
-    structure: (wt['structure'] ?? 14) / 100,
-    originality: (wt['originality'] ?? 16) / 100,
-    socialResonance: (wt['socialResonance'] ?? 12) / 100,
-    polish: (wt['polish'] ?? 10) / 100
-  }
-  let total = 0
-  for (const dim of SCORING_DIMENSION_CONFIG) {
-    total += scores[dim.key] * weights[dim.key]
-  }
-  return Math.round(total)
-}
+// SCORING_DIMENSION_CONFIG 已迁移至 @/services/scriptEvaluator
 
 /** 录入的一条文稿记录 */
 export interface ScriptRecord {
@@ -857,14 +667,18 @@ async function callAI(systemPrompt: string, userContent: string, temperature: nu
  * 对新文案做 embedding → 在样本库中找 Top-K 最相似的 → 返回格式化参考文本。
  * 失败时返回空字符串，不影响主流程。
  */
-async function buildSimilarityReference(content: string, platform?: string): Promise<string> {
+async function buildSimilarityReference(
+  content: string,
+  scriptRecords: ScriptRecord[],
+  platform?: string
+): Promise<string> {
   try {
     const chatStore = useChatStore()
     const model = chatStore.analysisModel
     if (!model?.apiKey) return ''
 
     // 只取有实际点赞数据的样本
-    const scoredScripts = scriptRecords.value
+    const scoredScripts = scriptRecords
       .filter(s => s.actualLikes > 0 && s.content?.length > 20)
     if (scoredScripts.length < 5) return ''
 
